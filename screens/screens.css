@@ -1137,3 +1137,17 @@
 .onboarding .ob-restore { margin-top: 8px; width: 100%; }
 /* Compte Google en haut de Moi (2026-11-20, avec l'utilisateur : trop bas et caché pour quelque chose d'aussi important) */
 .me-sync-s { margin-top: 0; }
+
+/* À revoir (D21, 2026-11-20) : en rouge, pour que rien ne se perde sans qu'on le sache */
+.rv-alert .pill { background: color-mix(in srgb, var(--loss) 18%, transparent); color: var(--loss); }
+.rv-alert .t { color: var(--loss); font-weight: 600; }
+.rv-lead { margin: 4px 0 14px; color: var(--ink-2); line-height: 1.45; }
+.rv-list { display: flex; flex-direction: column; gap: 10px; }
+.rv-item { border: 1px solid color-mix(in srgb, var(--loss) 45%, transparent); background: color-mix(in srgb, var(--loss) 7%, transparent); border-radius: 14px; padding: 12px 14px; }
+html[data-radius="square"] .rv-item { border-radius: 0; }
+.rv-t { font-weight: 600; font-size: 15px; }
+.rv-s { color: var(--ink-2); font-size: 13px; margin-top: 3px; }
+.rv-why { display: flex; gap: 6px; align-items: flex-start; color: var(--loss); font-size: 13px; margin-top: 8px; line-height: 1.35; }
+.rv-why .ic { width: 15px; height: 15px; flex: none; margin-top: 1px; }
+.rv-acts { display: flex; gap: 8px; margin-top: 10px; }
+.rv-acts .btn { flex: 1; }

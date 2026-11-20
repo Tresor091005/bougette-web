@@ -14,6 +14,7 @@ import { listCopies } from '../core/backup.js';
 import { lockEnabled } from '../core/lock.js';
 import { googleAvailable, account } from '../core/google.js';
 import { syncLine } from './google.js';
+import { reviewItems } from '../core/review.js';
 import { versionLabel, updateAvailable, checkUpdate, installUpdate, installDownloaded, autoUpdate, setAutoUpdate } from '../core/update.js';
 
 // le numéro de version en clair (D20 : une version porte sa date et son heure)
@@ -94,6 +95,8 @@ export function render(app, { go }) {
       <span class="me-ava" aria-hidden="true">${spaceAvatar(space)}</span>
       <span class="me-name">${esc(space.name)}${icon('caret-down')}</span>
     </button>
+    ${reviewItems().length ? `<section class="section me-sync-s"><div class="group"><button class="row rv-alert" data-go="#/a-revoir"><span class="pill">${icon('warning')}</span>
+      <div class="main"><div class="t">À revoir</div><div class="s">${reviewItems().length === 1 ? 'Un changement pas synchronisé' : `${reviewItems().length} changements pas synchronisés`}</div></div><span class="end">${icon('caret-right')}</span></button></div></section>` : ''}
     ${googleAvailable() ? `<section class="section me-sync-s"><div class="group">${row('data-go="#/reglages/google"', 'cloud-check', 'Google Drive', esc(account() ? syncLine() : 'Garder tes données, les retrouver partout'))}</div></section>` : ''}
 
     <section class="section"><div class="section-h"><span class="eyebrow">Mon argent</span></div>

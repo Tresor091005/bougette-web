@@ -63,7 +63,9 @@ function effect(t, accId) {
 }
 
 // copy : une opération à refaire (Dupliquer, depuis sa fiche) — nouvelle saisie remplie comme elle, à la date du jour.
-export function openEntry({ type = 'expense', tx = null, copy = null, accountId = null, toAccountId = null, reserveId = null, completeReserve = null, due = null } = {}) {
+// date : la date proposée (À revoir, D21 : une opération mise de côté par la synchro garde la sienne) ; onSaved : appelé
+// une fois l'opération enregistrée.
+export function openEntry({ type = 'expense', tx = null, copy = null, accountId = null, toAccountId = null, reserveId = null, completeReserve = null, due = null, date = null, onSaved = null } = {}) {
   // aucun portefeuille (D10) : le + ouvre d'abord la fiche de création, puis la saisie sur le portefeuille créé
   if (!tx && !accounts().length) {
     openAccountSheet(null, { savings: false, intro: 'Pour noter une opération, crée d’abord un portefeuille.', onSaved: a => openEntry({ type: type === 'transfer' ? 'expense' : type, accountId: a.id }) });
@@ -94,7 +96,7 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
     accountId: tx?.accountId || live(ref?.accountId) || accountId || (last && !last.archived ? last.id : firstAcc),
     toAccountId: tx?.toAccountId || live(ref?.toAccountId) || toAccountId || null,
     categoryId: tx?.categoryId || (ref?.categoryId && category(ref.categoryId) && !category(ref.categoryId).archived ? ref.categoryId : null),
-    date: tx?.date || (due ? (due.date < today() ? due.date : today()) : today()),
+    date: tx?.date || date || (due ? (due.date < today() ? due.date : today()) : today()),
     note: src?.note || '',
     planned: canPlan,
     auto: false, // catégorie pré-choisie d'après le montant tapé (« proposée ») : un toucher la confirme, une autre la remplace
@@ -787,6 +789,7 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
     const closeIn = reducedMotion() ? 0 : 320;
     setTimeout(() => s.close(), closeIn);
     const done = await write;
+    if (done && onSaved) { try { onSaved(); } catch (e) { console.error(e); } }
     // de l'argent mis de côté (virement vers un portefeuille d'épargne, D17) donne une destination à l'argent arrivé
     if (done && data.type === 'transfer' && account(data.toAccountId)?.savings) {
       assigned();

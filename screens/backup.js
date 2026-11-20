@@ -218,6 +218,7 @@ export function openInboxSheet() {
     if (m.action.id === 'share') setTimeout(() => shareJournal(), 280);
     else if (m.action.id === 'backup') setTimeout(() => { location.hash = '#/reglages/donnees'; }, 280);
     else if (m.action.id === 'google') setTimeout(() => { location.hash = '#/reglages/google'; }, 280);
+    else if (m.action.id === 'review') setTimeout(() => { location.hash = '#/a-revoir'; }, 280);
     else if (m.action.id === 'update') setTimeout(() => window.dispatchEvent(new CustomEvent('bougette:open-update')), 280);
     else if (m.action.id === 'assign') setTimeout(() => { location.hash = '#/mois'; }, 280);
     else if (m.action.id === 'savings') setTimeout(() => { location.hash = '#/epargne'; }, 280);

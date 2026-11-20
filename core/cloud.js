@@ -11,6 +11,7 @@ import { syncSpace } from '../data/cloud.js';
 import { isPristine, describeEvent } from '../data/sync.js';
 import { createUlid } from '../domain/ulid.js';
 import { sheetOpen } from './ui.js';
+import { keepSkipped } from './review.js';
 
 const ulid = createUlid({ now: () => Date.now(), random: Math.random });
 const g = /** @type {any} */ (globalThis);
@@ -89,7 +90,8 @@ async function run(interactive) {
     if (r.skipped.length) {
       const n = r.skipped.length;
       const what = [...new Set(r.skipped.map(x => describeEvent(x.event)))].slice(0, 3).join(', ');
-      notify({ key: 'sync-skip', kind: 'warn', title: 'Synchronisation', body: `${n === 1 ? 'Un changement fait' : `${n} changements faits`} sur ce téléphone ${n === 1 ? 'n’a' : 'n’ont'} pas pu être ${n === 1 ? 'gardé' : 'gardés'} : un autre appareil avait déjà changé la même chose (${what}). L’état d’avant est dans une copie de sécurité (« Avant synchronisation »).`, action: { label: 'Voir', id: 'backup' } });
+      keepSkipped(r.skipped);
+      notify({ key: 'sync-skip', kind: 'error', title: 'À revoir', body: `${n === 1 ? 'Un changement fait' : `${n} changements faits`} sur ce téléphone ${n === 1 ? 'n’a' : 'n’ont'} pas pu passer : un autre appareil avait déjà changé la même chose (${what}). Revois-${n === 1 ? 'le' : 'les'} pour ${n === 1 ? 'le' : 'les'} refaire ou ${n === 1 ? 'le' : 'les'} laisser tomber.`, action: { label: 'Revoir', id: 'review' } });
     }
     if (r.kind === 'reset') notify({ key: 'sync-reset', kind: 'info', title: 'Synchronisation', body: `« ${space.name} » a été restauré ou effacé sur un autre appareil : ce téléphone a pris ce nouvel état, avec ce que tu avais noté ici depuis.` });
     if (r.forkedFrom) notify({ key: 'sync-fork', kind: 'info', title: 'Synchronisation', body: `Ce téléphone et ton compte avaient des données différentes pour « ${space.name} » : rien n’est mélangé, ton compte garde les deux, chacun son espace.` });
@@ -100,7 +102,7 @@ async function run(interactive) {
     return { ok: true };
   } catch (e) {
     const err = /** @type {Error} */ (e);
-    const needsAuth = err instanceof NeedsAuth || (err instanceof DriveError && (err.status === 401 || err.status === 403));
+    const needsAuth = err instanceof NeedsAuth || (err instanceof DriveError && err.status === 401);
     if (!(err instanceof NeedsAuth)) console.error('Synchronisation', e);
     setStatus({ error: err.message || String(e), needsAuth });
     if (needsAuth) notify({ key: 'sync-auth', kind: 'warn', title: 'Synchronisation en pause', body: 'Google demande de te reconnecter pour que tes changements suivent sur tes autres appareils.', action: { label: 'Reconnecter', id: 'google' } }, { every: 24 * 3600000 });

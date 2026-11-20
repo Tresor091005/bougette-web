@@ -26,6 +26,7 @@ import { autoCheck } from './update.js';
 import * as currencyScreen from '../screens/currency.js';
 import * as displayScreen from '../screens/display.js';
 import * as googleScreen from '../screens/google.js';
+import * as reviewScreen from '../screens/review.js';
 import { takeGoogleReturn } from './google.js';
 import { startCloud } from './cloud.js';
 import * as categoriesScreen from '../screens/categories.js';
@@ -64,6 +65,7 @@ const ROUTES = {
   'reglages/monnaie': { mod: currencyScreen },
   'reglages/affichage': { mod: displayScreen },
   'reglages/google': { mod: googleScreen },
+  'a-revoir': { mod: reviewScreen },
   'reglages/categories': { mod: categoriesScreen },
   'reglages/donnees': { mod: dataScreen },
   'reglages/dev': { mod: devScreen },
