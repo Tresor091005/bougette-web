@@ -34,6 +34,45 @@ function fromB64(b64) {
 
 export class SealError extends Error {}
 
+// Journal envoyé au Drive (D21) : compressé (gzip, quand le navigateur sait le faire) puis chiffré comme une sauvegarde.
+export const SYNC_HEADER = 'BOUGETTE-SYNC 1';
+/** @param {Uint8Array} bytes @param {'gzip'} fmt @param {boolean} inflate */
+async function gz(bytes, fmt, inflate) {
+  const g = /** @type {any} */ (globalThis);
+  const S = inflate ? g.DecompressionStream : g.CompressionStream;
+  const stream = new Blob([/** @type {BlobPart} */ (/** @type {unknown} */ (bytes))]).stream().pipeThrough(new S(fmt));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+/** Le journal (texte) → fichier pour le Drive, compressé et chiffré. @param {string} text */
+export async function sealSync(text) {
+  let bytes = new TextEncoder().encode(text);
+  const zip = typeof (/** @type {any} */ (globalThis)).CompressionStream === 'function';
+  if (zip) bytes = await gz(bytes, 'gzip', false);
+  const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await subtle().encrypt({ name: 'AES-GCM', iv }, await key(), bytes));
+  const all = new Uint8Array(iv.length + ct.length);
+  all.set(iv); all.set(ct, iv.length);
+  return `${SYNC_HEADER} ${zip ? 'gz' : 'txt'}\n${toB64(all)}\n`;
+}
+/** Fichier du Drive → journal (texte). @param {string} text */
+export async function unsealSync(text) {
+  const t = String(text ?? '').trim();
+  const nl = t.indexOf('\n');
+  const head = nl < 0 ? t : t.slice(0, nl);
+  if (!head.startsWith(SYNC_HEADER)) throw new SealError('Fichier du Drive illisible : ce n’est pas un journal Bougette.');
+  const zip = head.slice(SYNC_HEADER.length).trim() === 'gz';
+  let all;
+  try { all = fromB64(t.slice(nl + 1)); } catch (e) { throw new SealError('Fichier du Drive abîmé.'); }
+  if (all.length < 13) throw new SealError('Fichier du Drive abîmé.');
+  let pt;
+  try { pt = new Uint8Array(await subtle().decrypt({ name: 'AES-GCM', iv: all.subarray(0, 12) }, await key(), all.subarray(12))); } catch (e) { throw new SealError('Fichier du Drive abîmé ou fait par une autre app.'); }
+  if (zip) {
+    if (typeof (/** @type {any} */ (globalThis)).DecompressionStream !== 'function') throw new SealError('Ce navigateur ne sait pas lire ce fichier compressé : mets-le à jour.');
+    pt = await gz(pt, 'gzip', true);
+  }
+  return new TextDecoder().decode(pt);
+}
+
 /** Le journal (texte) → fichier de sauvegarde chiffré. @param {string} text */
 export async function seal(text) {
   const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));

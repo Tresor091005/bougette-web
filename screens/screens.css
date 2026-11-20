@@ -1127,3 +1127,11 @@
 .tab-ava { width: 23px; height: 23px; display: block; }
 .tab:not(.on) .tab-ava svg > g:first-child { filter: url(#ava-line); }
 .tab.on .tab-ava svg > g:last-child { fill: var(--dock); }
+
+/* Compte Google (D21, 2026-11-20) */
+.gg-lead { margin: 4px 0 16px; color: var(--ink-2); line-height: 1.45; }
+.settings .section > .btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.settings .section > .btn + .field-note { margin-top: 10px; }
+.btn.ghost.danger { background: none; color: var(--loss); }
+.settings .row.static { cursor: default; }
+.onboarding .ob-restore { margin-top: 8px; width: 100%; }

@@ -3,7 +3,7 @@
 // cloche quand l'intégrité est atteinte ou que la dernière sauvegarde hors du téléphone date.
 import { session, pref, transactions } from './store.js';
 import { today } from './format.js';
-import { autoCopy, safetyCopy, openCopyStore, checkJournalText } from '../data/copies.js';
+import { autoCopy, safetyCopy, safetyCopyText, openCopyStore, checkJournalText } from '../data/copies.js';
 import { currentStorage, currentSpace, spaces, storageOf } from './spaces.js';
 import { openDb } from '../data/db.js';
 import { openSession } from '../data/session.js';
@@ -133,9 +133,11 @@ export const inspect = async text => checkJournalText(await unseal(text));
 
 /**
  * Copie de sécurité de l'état présent avant une action qui remplace tout (D15, 2026-11-17) ; rejette si elle est impossible.
- * @param {'reset'|'restore'} reason
+ * @param {'reset'|'restore'|'sync'} reason sync : avant de refaire les changements du téléphone par-dessus ceux d'un autre appareil (D21)
  */
 export const keepSafety = async reason => safetyCopy({ session, store: await store(), reason });
+/** Copie de sécurité d'un journal donné (la synchro, juste avant de réécrire celui du téléphone, D21). @param {string} text */
+export const keepSafetyText = async text => safetyCopyText({ store: await store(), reason: 'sync', text });
 
 /** Restaure exactement l'état d'un journal (copie ou fichier, chiffré ou en clair), après vérification, et après une copie de sécurité de l'état présent. @param {string} text */
 export async function restore(text) {

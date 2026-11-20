@@ -12,6 +12,8 @@ import { spaceAvatar } from '../core/avatar.js';
 import { APP_VERSION } from '../data/session.js';
 import { listCopies } from '../core/backup.js';
 import { lockEnabled } from '../core/lock.js';
+import { googleAvailable, account } from '../core/google.js';
+import { syncLine } from './google.js';
 import { versionLabel, updateAvailable, checkUpdate, installUpdate, installDownloaded, autoUpdate, setAutoUpdate } from '../core/update.js';
 
 // le numéro de version en clair (D20 : une version porte sa date et son heure)
@@ -106,6 +108,7 @@ export function render(app, { go }) {
         ${row('data-display', 'eye', 'Affichage', display)}
         ${row('data-go="#/reglages/verrou"', 'lock-simple', 'Verrouillage', lockEnabled() ? 'Activé' : 'Désactivé')}
         ${updateAvailable() ? row('data-update', 'download-simple', 'Mises à jour', `Version du ${esc(VERSION)}`) : ''}
+        ${googleAvailable() ? row('data-go="#/reglages/google"', 'cloud-check', 'Compte Google', esc(syncLine())) : ''}
         ${row('data-go="#/reglages/donnees"', 'shield-check', 'Données et sauvegarde', '<span data-backup-s>Copies vérifiées, restaurer, export CSV</span>')}
       </div></section>
 
@@ -114,7 +117,7 @@ export function render(app, { go }) {
         ${row('data-go="#/reglages/dev"', 'code', 'Développeur', 'Intégrité, export du journal, opérations annulées')}
       </div></section>
 
-    <div class="about">${icon('logo')}<b>Bougette</b>Version du ${VERSION} · fonctionne hors ligne<br>Tes données restent sur ce téléphone.</div>
+    <div class="about">${icon('logo')}<b>Bougette</b>Version du ${VERSION} · fonctionne hors ligne<br>${account() ? 'Tes données restent sur ce téléphone et dans ton Google Drive.' : 'Tes données restent sur ce téléphone.'}</div>
   </div>`;
 
   $$('[data-go]', app).forEach(b => (b.onclick = () => go(b.dataset.go)));

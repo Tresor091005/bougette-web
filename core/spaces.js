@@ -8,8 +8,8 @@ export const MAIN = 'main';
 export const DEMO = 'demo';
 const NAME_MAX = 30;
 
-/** @typedef {{ id: string, name: string }} Space */
-/** @typedef {{ current: string, list: Space[] }} Registry */
+/** @typedef {{ id: string, name: string, cid?: string, seed?: string, nameAt?: number, cids?: Record<string, string> }} Space cid, seed, nameAt, cids : l'espace sur le compte Google lié (D21), et sur chaque compte déjà lié */
+/** @typedef {{ current: string, list: Space[], gone?: string[] }} Registry */
 
 /** @returns {Registry} */
 function load() {
@@ -73,8 +73,40 @@ export function renameSpace(id, name) {
   const s = v.list.find(x => x.id === id);
   if (!s) throw new Error('Espace introuvable.');
   s.name = cleanName(name, id);
+  s.nameAt = Date.now();
   save(v);
 }
+/**
+ * Ce que la synchro a appris (D21), appliqué sur la liste du moment (pas sur celle lue au début de la synchro : un
+ * renommage ou une suppression faits entre-temps restent) : l'identifiant de compte de l'espace synchronisé, les espaces
+ * du compte ajoutés ici, les noms changés ailleurs plus récemment.
+ * @param {{ email: string, me: Space, added: Space[], renamed: Space[] }} o
+ */
+export function applyCloud({ email, me, added, renamed }) {
+  const v = load();
+  const newer = (/** @type {Space} */ s, /** @type {Space} */ n) => (n.nameAt || 0) > (s.nameAt || 0) && n.name !== s.name;
+  const cur = v.list.find(s => s.id === me.id);
+  if (cur) {
+    if (me.cid) { cur.cid = me.cid; cur.cids = { ...(cur.cids || {}), [email]: me.cid }; }
+    if (me.seed) cur.seed = me.seed;
+    if (newer(cur, me)) { cur.name = me.name; cur.nameAt = me.nameAt; }
+  }
+  for (const n of renamed) { const s = v.list.find(x => x.id === n.id); if (s && newer(s, n)) { s.name = n.name; s.nameAt = n.nameAt; } }
+  for (const n of added) {
+    if (!n.cid || v.list.some(s => s.cid === n.cid) || (v.gone || []).includes(n.cid)) continue;
+    v.list.push({ id: n.id, name: n.name, cid: n.cid, seed: n.seed, nameAt: n.nameAt, cids: { [email]: n.cid } });
+  }
+  save(v);
+}
+/** Le compte lié change : chaque espace reprend l'identifiant qu'il avait sur ce compte (s'il y était déjà). @param {string} email */
+export function useAccount(email) {
+  const v = load();
+  v.list = v.list.map(({ cid, ...s }) => { const c = s.cids?.[email]; return c ? { ...s, cid: c } : s; });
+  save(v);
+}
+/** Les espaces supprimés de la liste sur ce téléphone (leur identifiant de compte) : la synchro ne les rajoute pas. */
+export const goneCids = () => new Set(load().gone || []);
+
 /** Ouvre un espace au prochain démarrage (l'appelant rouvre l'app). @param {string} id */
 export function chooseSpace(id) {
   const v = load();
@@ -86,6 +118,10 @@ export function chooseSpace(id) {
 export function removeSpace(id) {
   const v = load();
   if (id === MAIN || id === v.current) throw new Error('Cet espace ne peut pas être supprimé.');
+  const s = v.list.find(x => x.id === id);
+  // synchronisé (D21) : retiré aussi de la liste du compte à la prochaine synchro, et pas rajouté ici
+  const cids = [s?.cid, ...Object.values(s?.cids || {})].filter(Boolean);
+  if (cids.length) v.gone = [...new Set([...(v.gone || []), ...cids])];
   v.list = v.list.filter(s => s.id !== id);
   save(v);
 }

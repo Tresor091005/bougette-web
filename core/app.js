@@ -25,6 +25,9 @@ import { openUpdateSheet } from '../screens/settings.js';
 import { autoCheck } from './update.js';
 import * as currencyScreen from '../screens/currency.js';
 import * as displayScreen from '../screens/display.js';
+import * as googleScreen from '../screens/google.js';
+import { takeGoogleReturn } from './google.js';
+import { startCloud } from './cloud.js';
 import * as categoriesScreen from '../screens/categories.js';
 import * as onboarding from '../screens/onboarding.js';
 import * as dataScreen from '../screens/backup.js';
@@ -60,6 +63,7 @@ const ROUTES = {
   portefeuilles: { mod: accountsScreen },
   'reglages/monnaie': { mod: currencyScreen },
   'reglages/affichage': { mod: displayScreen },
+  'reglages/google': { mod: googleScreen },
   'reglages/categories': { mod: categoriesScreen },
   'reglages/donnees': { mod: dataScreen },
   'reglages/dev': { mod: devScreen },
@@ -231,9 +235,13 @@ window.addEventListener('bougette:reserve', e => {
   import('../screens/reserves.js').then(R => (d.when ? R.askWhen(d.id, openEntry) : R.useReserve(d.id, openEntry)));
 });
 // « Charger la démo » depuis un autre espace (D19) : l'app s'est rouverte sur l'espace Démo, on le remplit ici
+// Compte Google (D21) : le retour de la page de Google (navigateur) est lu avant le premier écran
+const googleReturn = takeGoogleReturn();
 if (takeThen() === 'demo' && isDemo()) { try { await loadDemo(); toast('Espace Démo prêt'); } catch (e) { console.error(e); toast('Démo impossible.'); } }
 render();
 document.documentElement.classList.add('ready');
+// synchro avec le Drive (D21) : à l'ouverture, après un changement, au retour dans l'app
+startCloud(googleReturn, toast);
 // Sauvegarde (ROADMAP 1b) : copie du jour vérifiée, un peu après l'ouverture (l'écran d'abord) ; la cloche de
 // l'accueil se met à jour quand un message arrive.
 onInbox(() => {

@@ -85,7 +85,7 @@ export function render(app, { back, go }) {
   app.innerHTML = `<div class="screen data-screen no-tabs">
     <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
       <h1 class="title sm">Données et sauvegarde</h1></div></div>
-    <p class="screen-help">Une copie vérifiée chaque jour sur ce téléphone. Garde aussi une copie ailleurs : le fichier est chiffré, seul Bougette sait le lire.</p>
+    <p class="screen-help">Une copie vérifiée chaque jour sur ce téléphone. Garde aussi une copie ailleurs : le fichier est chiffré, il ne se lit pas comme un texte.</p>
 
     <section class="section"><div class="section-h"><span class="eyebrow">Sauvegarde</span></div>
       <div class="group">
@@ -115,7 +115,7 @@ export function render(app, { back, go }) {
     const daily = list.filter(c => !isSafety(c));
     $('[data-last]', app).textContent = daily[0] ? `Dernière : ${when(daily[0].at).toLowerCase()}` : 'Aucune encore';
     // copies du jour, puis copies de sécurité (D15, 2026-11-17), chacune avec ce qui l'a déclenchée
-    const why = (/** @type {any} */ c) => ({ reset: 'Avant Tout effacer', restore: 'Avant restauration' }[safetyReason(c) || ''] || 'Copie de sécurité');
+    const why = (/** @type {any} */ c) => ({ reset: 'Avant Tout effacer', restore: 'Avant restauration', sync: 'Avant synchronisation' }[safetyReason(c) || ''] || 'Copie de sécurité');
     host.innerHTML = list.length
       ? [...daily, ...list.filter(isSafety)].map(c => `<button class="row" data-copy="${esc(c.id)}"><span class="pill acc">${icon(isSafety(c) ? 'shield-check' : 'clock-counter-clockwise')}</span><div class="main"><div class="t">${isSafety(c) ? `${why(c)} · ${when(c.at).toLowerCase()}` : when(c.at)}</div><div class="s">${opsLabel(c.ops)} · vérifiée</div></div><span class="end act">Restaurer</span></button>`).join('')
       : '<div class="row"><div class="main"><div class="s">La première copie se fait à la prochaine ouverture.</div></div></div>';
@@ -217,6 +217,7 @@ export function openInboxSheet() {
     s.close();
     if (m.action.id === 'share') setTimeout(() => shareJournal(), 280);
     else if (m.action.id === 'backup') setTimeout(() => { location.hash = '#/reglages/donnees'; }, 280);
+    else if (m.action.id === 'google') setTimeout(() => { location.hash = '#/reglages/google'; }, 280);
     else if (m.action.id === 'update') setTimeout(() => window.dispatchEvent(new CustomEvent('bougette:open-update')), 280);
     else if (m.action.id === 'assign') setTimeout(() => { location.hash = '#/mois'; }, 280);
     else if (m.action.id === 'savings') setTimeout(() => { location.hash = '#/epargne'; }, 280);

@@ -88,6 +88,22 @@ export async function safetyCopy({ session, store, reason, now = new Date() }) {
   return { status: 'done', copy };
 }
 
+/**
+ * Copie de sécurité d'un journal déjà en main (D21 : celui du téléphone, juste avant que la synchro le réécrive ; pris dans
+ * la file des commandes de la session, sans repasser par elle). Relue et rejouée comme les autres.
+ * @param {{ store: CopyStore, reason: string, text: string, now?: Date }} o
+ */
+export async function safetyCopyText({ store, reason, text, now = new Date() }) {
+  const list = (await store.list()).filter(isSafety);
+  const info = await checkJournalText(text);
+  if (list[0] && list[0].state === info.state) return { status: 'same', copy: list[0] };
+  /** @type {Copy} */
+  const copy = { id: `safe-${reason}-${now.toISOString()}`, at: now.toISOString(), events: info.events, ops: info.ops, state: info.state, bytes: text.length, text };
+  await store.put(copy);
+  for (const old of [copy, ...list].slice(KEEP_SAFETY)) await store.remove(old.id);
+  return { status: 'done', copy };
+}
+
 /** Copies en mémoire (tests, ou stockage indisponible). @returns {CopyStore} */
 export function memoryStore() {
   /** @type {Map<string, Copy>} */

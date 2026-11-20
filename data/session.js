@@ -15,6 +15,7 @@ import {
   migrate, schemaVersion, getMeta, setMeta, writeBatch, rewriteProjections, replaceAll, loadState, readEvents, sqlStateHash, sqlChecks,
 } from './journal.js';
 import { toJsonl, parseJsonl, ImportError } from './exchange.js';
+import { syncPlan, merged, rebase, isPristine } from './sync.js';
 
 /** @typedef {import('./db.js').Db} Db */
 /** @typedef {import('../domain/projection.js').State} State */
@@ -187,6 +188,17 @@ export async function openSession({ db, clock = () => Date.now(), random = Math.
     state = await loadState(db);
   }
 
+  /** Journal en JSON Lines pour des événements donnés (copie, envoi au Drive). @param {StoredEvent[]} events */
+  const journalText = async events => toJsonl({ app: 'cauri', kind: 'journal', version: APP_VERSION, schema, events: events.length, head: events.length ? events[events.length - 1].hash : '', state: await stateHash(replayStored(events)) }, events);
+  // Restaurer, Tout effacer (D21) : ce journal remplace voulu ; à la prochaine synchro il remplacera aussi celui du Drive
+  // (au lieu d'être rejoint avec lui, ce qui annulerait le geste).
+  // Rangé à part du repère de synchro (une synchro déjà en cours ne peut pas l'effacer en écrivant son repère), avec sa
+  // date : un geste fait pendant qu'aucun compte n'était lié ne remplace rien après une nouvelle liaison.
+  const markForce = async () => {
+    if (!(await getMeta(db, 'sync'))) return;
+    try { await commit(tx => setMeta(tx, 'sync_force', new Date(clock()).toISOString())); } catch (e) { console.error(e); }
+  };
+
   return {
     db,
     /** État courant. */
@@ -236,6 +248,7 @@ export async function openSession({ db, clock = () => Date.now(), random = Math.
         let prepared;
         try { prepared = await prepare({ news: conv.events }); } catch (e) { throw new ImportError('Conversion impossible : ' + /** @type {Error} */ (e).message); }
         const hash = await replace(prepared.events, prepared.next);
+        await markForce();
         notify(ALL_KEYS);
         return { hash, events: prepared.events.length, legacy: true };
       }
@@ -245,9 +258,70 @@ export async function openSession({ db, clock = () => Date.now(), random = Math.
       const h = await stateHash(s);
       if (header.state !== h) throw new ImportError('Empreinte d’état différente après rejeu : le fichier ne redonne pas les mêmes données.');
       await replace(events, s);
+      await markForce();
       notify(ALL_KEYS);
       return { hash: h, events: events.length, legacy: false };
     }),
+
+    /**
+     * Synchronisation (D21) : le journal du Drive (déjà vérifié) rejoint celui du téléphone, dans la file des commandes
+     * (rien ne s'écrit entre la lecture et l'écriture). Prendre ou adopter le journal du Drive, ou refaire les changements
+     * du téléphone par-dessus. Jamais de mélange sans début commun : fork (l'appelant garde les deux à part).
+     * since : le dernier point synchronisé, quand le journal du Drive a été remplacé ailleurs (restauration, Tout effacer)
+     * — seuls les changements faits ici depuis ce point sont refaits par-dessus le nouveau journal.
+     * safety(texte) : appelé avec le journal du téléphone juste avant de le réécrire en refaisant ses changements (copie
+     * de sécurité, prise dans la même file : aucun changement ne peut se glisser entre la copie et la réécriture).
+     * @param {StoredEvent[]|null} remote
+     * @param {{ since?: { seq: number, hash: string }|null, safety?: ((text: string) => Promise<any>)|null }} [opts]
+     */
+    merge: (remote, { since = null, safety = null } = {}) => serial(async () => {
+      // Restaurer ou Tout effacer vient d'être fait ici pendant la synchro : on ne rejoint rien, l'appelant recommence
+      if (await getMeta(db, 'sync_force')) return { plan: { kind: 'same', k: 0 }, forced: true, fork: false, events: [], skipped: [], push: false };
+      const local = await readEvents(db);
+      /** @type {{ kind: string, k: number }} */
+      let plan = syncPlan(local, remote);
+      /** @type {StoredEvent[]|null} */
+      let extra = null;
+      if (since && remote) {
+        const ok = since.seq <= local.length && (since.seq === 0 || local[since.seq - 1].hash === since.hash);
+        if (ok) {
+          extra = local.slice(since.seq);
+          if (since.seq === 0 && isPristine(extra)) extra = [];
+          plan = { kind: extra.length ? 'rebase' : 'adopt', k: 0 };
+        }
+      }
+      if (plan.kind === 'rebase' && plan.k === 0 && !extra) return { plan, fork: true, events: local, skipped: [], push: false };
+      /** @type {{ events: StoredEvent[], state: State|null, skipped: { event: StoredEvent, reason: string }[] }|null} */
+      let m = null;
+      if (plan.kind === 'rebase') {
+        if (safety) await safety(await journalText(local));
+        const r = await rebase(/** @type {StoredEvent[]} */ (remote), extra || local.slice(plan.k));
+        m = { events: r.events, state: r.state, skipped: r.skipped };
+      } else {
+        // le journal du Drive remplacé ailleurs, rien de neuf ici : on le prend, après une copie de celui du téléphone
+        if (plan.kind === 'adopt' && since && safety && !isPristine(local)) await safety(await journalText(local));
+        m = await merged(local, remote, /** @type {any} */ (plan));
+      }
+      if (m) {
+        await replace(m.events, m.state || replayStored(m.events));
+        notify(ALL_KEYS);
+      }
+      const events = m ? m.events : local;
+      const push = !remote || events.length !== remote.length || (events.length > 0 && events[events.length - 1].hash !== remote[remote.length - 1].hash);
+      return { plan, fork: false, events, skipped: m ? m.skipped : [], push };
+    }),
+    /** En-tête d'export pour des événements donnés (le journal envoyé au Drive). @param {StoredEvent[]} events */
+    journalText: events => journalText(events),
+    /** Le repère de synchro de cet espace (D21) : { cid, seq, hash, epoch, force } ou null. */
+    getSync: async () => {
+      const v = await getMeta(db, 'sync');
+      const force = (await getMeta(db, 'sync_force')) || '';
+      try { return v ? { ...JSON.parse(v), force: force || undefined } : null; } catch (e) { return null; }
+    },
+    /** Le geste Restaurer / Tout effacer a été envoyé (ou ne compte pas) : on l'oublie. */
+    clearForce: () => serial(() => commit(tx => setMeta(tx, 'sync_force', ''))),
+    /** @param {Record<string, any>|null} v */
+    setSync: v => serial(() => commit(tx => { const { force, ...rest } = v || {}; setMeta(tx, 'sync', v ? JSON.stringify(rest) : ''); })),
 
     /** Supprime et rejoue les projections ; compare l'empreinte d'état avant / après. */
     rebuild: () => serial(async () => {
@@ -305,6 +379,7 @@ export async function openSession({ db, clock = () => Date.now(), random = Math.
     reset: () => serial(async () => {
       const { events, next } = await prepare({ cmds: [{ type: 'setup', currency: detectCurrency() }] });
       await replace(events, next);
+      await markForce();
       notify(ALL_KEYS);
     }),
   };
