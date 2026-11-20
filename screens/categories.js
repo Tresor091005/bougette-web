@@ -1,0 +1,216 @@
+// Moi → Catégories : onglets Dépenses / Revenus, puis la liste des catégories partagée (catlist.js, la même que
+// « Toutes »), sans recherche ; « Ranger » montre les poignées pour ranger les catégories et, dans leur groupe, les
+// sous-catégories (l'ordre se retrouve partout) ; + flottant pour en créer une ; créer / modifier (nom, « Ranger dans », teinte D8, icône du catalogue Phosphor avec recherche en français et
+// rubriques, D7), archiver, supprimer (seulement sans sous-catégorie ni opération : sinon on archive).
+// Sous-catégories (deux niveaux) : dans la fiche d'une catégorie, liste de ses sous-catégories et « Ajouter une
+// sous-catégorie ». Une sous-catégorie a un nom et une icône ; sa teinte est celle de sa catégorie.
+import {
+  categories, allCategories, category, subcategories, categoryLabel, addCategory, updateCategory, reorderCategories, categoryTxCount, deleteCategory, hasBudget,
+} from '../core/store.js';
+import { esc } from '../core/format.js';
+import { icon, catIcon, searchIcons } from '../core/icons.js';
+import { openSheet, seg, wireSeg, buzz, toast, confirmSheet, chip, noticeHTML, enableReorder, afterSheets, wireArrange, arrangeBtnHTML, isArranging, fabHTML, $, $$ } from '../core/ui.js';
+import { pickColor, brushHTML } from './pickers.js';
+import { catTreeHTML, paintTree, catSearchHTML, wireCatSearch } from './catlist.js';
+
+let tab = 'expense';
+const TAB_SEG = [['expense', 'Dépenses'], ['income', 'Revenus']];
+
+// Grille du catalogue, par rubriques (ou résultats d'une recherche).
+function catalogHTML(query, current) {
+  const sections = searchIcons(query);
+  if (!sections.length) return `<p class="hint">Aucune icône pour « ${esc(query)} ». Essaie un autre mot.</p>`;
+  return sections.map(sct => `<div class="ic-sec"><div class="eyebrow">${esc(sct.title)}</div><div class="ic-grid">${sct.icons.map(i =>
+    `<button type="button" class="icb${i.name === current ? ' on' : ''}" data-icon="${i.name}" role="radio" aria-checked="${i.name === current}" aria-label="${esc(i.label)}">${catIcon(i.name)}</button>`).join('')}</div></div>`).join('');
+}
+
+// Fiche unique (catégorie ou sous-catégorie) : « Ranger dans » choisit aucune (catégorie principale) ou une catégorie
+// principale (sous-catégorie : elle en prend la teinte, pas de choix de teinte). À la modification, changer ce champ
+// déplace la catégorie ; une catégorie qui a des sous-catégories reste principale (son budget la suit).
+// parent : catégorie proposée dans « Ranger dans » pour une création. name : nom proposé pour une création (ex. le
+// texte cherché à la saisie) ; onSaved(catégorie) : appelé après l'enregistrement (ex. la saisie choisit la nouvelle).
+export function openCategorySheet(id, type, { parent = null, name = '', onSaved = null } = {}) {
+  const c = id ? category(id) : null;
+  const was = c ? category(c.parent) || null : null; // place d'origine (libellés d'archivage)
+  const f = { name: c?.name || name, icon: c?.icon || 'dots-three', own: c?.color || 'c1', /* devenue principale, elle garde la teinte qu'elle affichait */ q: '', parent: c ? c.parent || null : parent || null };
+  const par = () => category(f.parent) || null;
+  const color = () => par()?.color || f.own;
+  const used = c ? categoryTxCount(c.id) : 0;
+  const activeSame = categories(type);
+  const lastActive = c && !c.parent && !c.archived && activeSame.length <= 1;
+  const subs = c && !c.parent ? subcategories(c.id, { all: true }) : [];
+  // une principale qui a des sous-catégories ne peut pas devenir sous-catégorie (deux niveaux) ; son budget, lui, la suit
+  const stayTop = c && !c.parent && subs.length ? `« ${esc(c.name)} » a des sous-catégories : elle reste une catégorie principale.` : '';
+  const what = was ? 'la sous-catégorie' : 'la catégorie';
+  // supprimer : seulement sans sous-catégorie ni opération ; sinon le bouton est éteint et la raison écrite dessous
+  const noDelete = !c ? '' : subs.length ? `« ${esc(c.name)} » a des sous-catégories : supprime-les d’abord, ou archive-la.`
+    : used ? `« ${esc(c.name)} » a des opérations : archive-la, elles restent dans l’historique.` : '';
+  const s = openSheet(`<div class="cat-sheet">
+    <div class="sheet-head"><div class="head-id cat-pv" data-pv></div></div>
+    <label class="field"><span>Nom</span><input data-name maxlength="24" value="${esc(f.name)}" placeholder="${type === 'income' ? 'Ex. Tontine, Loyer perçu' : 'Ex. Zem, Coiffure, Loyer'}" autocomplete="off"></label>
+    <div class="field"><span>Ranger dans</span>
+      <button type="button" class="field-btn" data-par ${stayTop ? 'aria-disabled="true"' : ''}><b data-parl></b>${icon(stayTop ? 'lock-simple' : 'caret-right')}</button>
+      ${stayTop ? `<small class="field-note">${stayTop}</small>` : '<small class="field-note" data-parn></small>'}
+    </div>
+    ${c && !c.parent ? `<div class="field" data-subsf><span>Sous-catégories</span>
+      <div class="group plain cat-subs">${subs.map(x => `<button type="button" class="row${x.archived ? ' dim' : ''}" data-sub="${x.id}">${chip(x)}
+        <div class="main"><div class="t">${esc(x.name)}</div>${x.archived ? '<div class="s">Archivée</div>' : ''}</div><span class="end">${icon('caret-right')}</span></button>`).join('')}
+        <button type="button" class="row add-row" data-add-sub><span class="pill">${icon('plus')}</span><div class="main"><div class="t">Ajouter une sous-catégorie</div></div></button>
+      </div></div>` : ''}
+    <div class="field"><span>Icône</span>
+      <div class="search ic-search">${icon('magnifying-glass')}<input type="search" data-q placeholder="Chercher : marché, zem, coiffure…" autocomplete="off" enterkeyhint="search"></div>
+      <div data-icons role="radiogroup" aria-label="Icônes"></div></div>
+    <div data-err></div>
+    <div class="sheet-actions"><button class="btn primary" data-save>${icon('check')}<span data-savel></span></button></div>
+    <div class="sheet-more">
+      ${c && !lastActive ? `<div class="btn-row">
+        <button class="btn ghost" data-arch>${icon('archive')}${c.archived ? 'Désarchiver' : 'Archiver'}</button>
+        <button class="btn ghost" data-del style="color:var(--loss)"${noDelete ? ' disabled' : ''}>${icon('trash')}Supprimer</button></div>
+        ${noDelete ? `<p class="hint">${noDelete}</p>` : ''}` : ''}
+      ${lastActive ? `<p class="hint">Garde au moins une catégorie de ${type === 'income' ? 'revenus' : 'dépenses'}.</p>` : ''}
+    </div></div>`, { label: c ? `Modifier ${what}` : 'Nouvelle catégorie' });
+  const el = s.el, nameIn = $('[data-name]', el), errEl = $('[data-err]', el), iconsEl = $('[data-icons]', el);
+
+  function paint() {
+    const p = par();
+    // teinte : le pinceau sur la pastille (une sous-catégorie prend celle de sa catégorie : pas de pinceau)
+    $('[data-pv]', el).innerHTML = `${p ? chip({ color: color(), icon: f.icon }, 'lg') : `<button type="button" class="pv-btn" data-tint aria-label="Teinte">${chip({ color: color(), icon: f.icon }, 'lg')}${brushHTML()}</button>`}<h2 class="sheet-title">${esc(nameIn.value.trim() || (p ? 'Nouvelle sous-catégorie' : 'Nouvelle catégorie'))}</h2>`;
+    $$('[data-icon]', el).forEach(b => { const on = b.dataset.icon === f.icon; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+    el.querySelector('.cat-sheet').style.setProperty('--c', `var(--${color()})`);
+    $('[data-parl]', el).textContent = p ? p.name : 'Aucune : catégorie principale';
+    const note = $('[data-parn]', el);
+    if (note) note.textContent = p ? `Rangée dans « ${p.name} », elle en prend la teinte.` : '';
+    // une sous-catégorie n'a pas de teinte à elle ; seule une principale déjà enregistrée montre ses sous-catégories
+    const subsF = $('[data-subsf]', el);
+    if (subsF) subsF.hidden = !!p;
+    $('[data-savel]', el).textContent = c ? 'Enregistrer' : p ? 'Ajouter la sous-catégorie' : 'Ajouter la catégorie';
+  }
+  const paintIcons = () => { iconsEl.innerHTML = catalogHTML(f.q, f.icon); paint(); };
+  paintIcons();
+  nameIn.oninput = paint;
+  $('[data-q]', el).oninput = e => { f.q = e.target.value; paintIcons(); };
+  $('[data-pv]', el).addEventListener('click', async e => {
+    if (!/** @type {HTMLElement} */ (e.target).closest('[data-tint]')) return;
+    buzz(6);
+    const c = await pickColor({ current: f.own, title: 'Teinte de la catégorie' });
+    if (c) { f.own = c; paint(); }
+  });
+  iconsEl.onclick = e => { const b = e.target.closest('[data-icon]'); if (!b) return; f.icon = b.dataset.icon; buzz(8); paint(); };
+  $('[data-par]', el).onclick = async () => {
+    if (stayTop) { buzz([10, 40, 10]); return; }
+    buzz(6);
+    const to = await pickParent({ type, current: f.parent, exclude: c?.id });
+    if (to === undefined) return;
+    f.parent = to;
+    paint();
+  };
+
+  const err = (text, field) => { errEl.innerHTML = noticeHTML(text); buzz(14); if (field) field.focus(); };
+  $('[data-save]', el).onclick = async () => {
+    errEl.innerHTML = '';
+    const name = nameIn.value.trim().replace(/\s+/g, ' ');
+    if (!name) return err('Donne-lui un nom.', nameIn);
+    // un nom est unique dans le type, principales et sous-catégories confondues (D13)
+    const p = par();
+    const scope = p ? p.id : null;
+    const twin = allCategories(type).find(x => x.id !== c?.id && !x.archived && x.name.toLowerCase() === name.toLowerCase());
+    if (twin) {
+      const tp = twin.parent ? category(twin.parent) : null;
+      return err(tp ? `« ${esc(twin.name)} » existe déjà, dans « ${esc(tp.name)} ».` : 'Une catégorie porte déjà ce nom.', nameIn);
+    }
+    const data = p ? { name, icon: f.icon } : { name, color: f.own, icon: f.icon };
+    // modifier : « parent » déplace la catégorie (le domaine refuse ce qui casserait les deux niveaux)
+    const saved = c ? ((await updateCategory(c.id, { ...data, parent: scope })) && category(c.id)) : await addCategory({ ...data, type, parent: scope });
+    if (!saved) return;
+    buzz(12);
+    s.close();
+    if (onSaved) onSaved(saved);
+    const moved = c && (c.parent || null) !== scope;
+    toast(moved ? (p ? `Rangée dans « ${p.name} »` : 'Devenue catégorie principale') : c ? (p ? 'Sous-catégorie enregistrée' : 'Catégorie enregistrée') : p ? 'Sous-catégorie ajoutée' : 'Catégorie ajoutée');
+  };
+  // sous-catégories : on ferme cette fiche, puis on ouvre celle de la sous-catégorie (une seule fiche à la fois)
+  $$('[data-sub]', el).forEach(b => (b.onclick = () => { buzz(6); s.close(); afterSheets(() => openCategorySheet(b.dataset.sub, type)); }));
+  const addSub = $('[data-add-sub]', el);
+  if (addSub) addSub.onclick = () => { buzz(6); s.close(); afterSheets(() => openCategorySheet(null, type, { parent: c.id })); };
+
+  const arch = $('[data-arch]', el);
+  if (arch) arch.onclick = () => {
+    const to = !c.archived;
+    updateCategory(c.id, { archived: to });
+    s.close();
+    const W = was ? 'Sous-catégorie' : 'Catégorie';
+    toast(to ? `${W} archivée` : `${W} désarchivée`, to ? { label: 'Annuler', run: () => updateCategory(c.id, { archived: false }) } : null);
+  };
+  const del = $('[data-del]', el);
+  if (del && !noDelete) del.onclick = async () => {
+        const ok = await confirmSheet({ title: `Supprimer « ${esc(c.name)} » ?`, text: `Elle n’a aucune opération.${hasBudget(c.id) ? ' Son budget sera retiré.' : ''}`, yes: 'Supprimer', danger: true });
+    if (!ok) return;
+    if (!(await deleteCategory(c.id))) return;
+    s.close();
+    toast('Catégorie supprimée');
+  };
+}
+
+// « Ranger dans » : aucune (catégorie principale) ou une catégorie principale active du même type, dans l'ordre choisi ;
+// exclude : la catégorie qu'on modifie. Résout null (principale), un id, ou undefined si on ferme sans choisir.
+function pickParent({ type, current, exclude }) {
+  return new Promise(resolve => {
+    let picked;
+    // la liste partagée (catlist.js), catégories principales seules (deux niveaux), précédée de « Aucune »
+    const s = openSheet(`<h2 class="sheet-title">Ranger dans</h2>
+      <div class="group cl-g"><button type="button" class="row cl-row${current ? '' : ' on'}" data-pid><span class="pill">${icon('squares-four')}</span>
+        <div class="main"><div class="t">Aucune</div><div class="s">Catégorie principale</div></div>${current ? '' : `<span class="end">${icon('check')}</span>`}</button></div>
+      <div class="cl" data-tree>${catTreeHTML({ type, current, exclude, withSubs: false })}</div>`, {
+      label: 'Ranger dans', onClose: () => resolve(picked),
+    });
+    paintTree($('[data-tree]', s.el));
+    $('[data-tree] [data-cat]', s.el)?.classList.add('rule'); // filet sous « Aucune »
+    $$('[data-pid], [data-cat]', s.el).forEach(b => (b.onclick = () => { picked = b.dataset.cat || null; buzz(10); s.close(); }));
+  });
+}
+
+export function render(app, { back }) {
+  // archivées dans l'ordre de l'arbre : une catégorie, puis ses sous-catégories, comme la liste au-dessus
+  const archived = allCategories(tab).filter(c => !c.parent).flatMap(c => [c, ...subcategories(c.id, { all: true })]).filter(c => c.archived);
+  app.innerHTML = `<div class="screen cats no-tabs has-fab">
+    <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
+      <h1 class="title sm">Catégories</h1></div>
+      <div class="right"><button class="iconbtn" data-find aria-label="Chercher une catégorie" aria-pressed="false">${icon('magnifying-glass')}</button>${arrangeBtnHTML()}</div></div>
+    <p class="screen-help">Touche pour modifier ; l’ordre choisi (bouton en haut à droite) se retrouve partout.</p>
+    <div data-findbox hidden>${catSearchHTML()}</div>
+    ${seg(TAB_SEG, tab, 'tab-seg')}
+    <section class="section" style="margin-top:16px">
+      <div class="cl" data-tree>${catTreeHTML({ type: tab, handle: true })}</div>
+      <p class="muted b-note" data-none hidden>Aucune catégorie ne correspond.</p>
+    </section>
+    ${archived.length ? `<section class="section"><div class="section-h"><span class="eyebrow">Archivées</span></div>
+      <div class="group">${archived.map(c => `<button type="button" class="row dim" data-cat="${c.id}">${chip(c)}
+        <div class="main"><div class="t">${esc(categoryLabel(c.id))}</div></div><span class="end">${icon('caret-right')}</span></button>`).join('')}</div></section>` : ''}
+  </div>
+  ${fabHTML(tab === 'income' ? 'Nouvelle catégorie de revenus' : 'Nouvelle catégorie de dépenses')}`;
+
+  // même modèle que Portefeuilles (D9) : « Ranger » montre les poignées, + flottant
+  wireArrange($('.screen', app), $('[data-arrange]', app), 'categories');
+  $('[data-back]', app).onclick = () => back('#/reglages');
+  wireSeg($('.tab-seg', app), v => { tab = v; setTimeout(() => render(app, { back }), 160); });
+  $$('[data-cat]', app).forEach(b => (b.onclick = e => {
+    if (e.target.closest('.handle') || isArranging('categories')) return;
+    openCategorySheet(b.dataset.cat, tab);
+  }));
+  $('[data-add]', app).onclick = () => openCategorySheet(null, tab);
+  // loupe (comme Portefeuilles) : filtre l'arbre par nom ; une sous-catégorie trouvée garde sa catégorie comme repère
+  const find = $('[data-find]', app), box = $('[data-findbox]', app), q = /** @type {HTMLInputElement} */ ($('input[data-q]', box));
+  wireCatSearch($('[data-tree]', app), q, total => { $('[data-none]', app).hidden = total > 0 || !q.value.trim(); });
+  find.onclick = () => {
+    const on = box.hidden;
+    buzz(6);
+    box.hidden = !on;
+    find.setAttribute('aria-pressed', String(on));
+    if (on) q.focus(); else if (q.value) { q.value = ''; q.dispatchEvent(new Event('input')); }
+  };
+  // ranger : les catégories (chaque groupe avec ses sous-catégories), et les sous-catégories dans leur groupe
+  const tree = $('[data-tree]', app);
+  paintTree(tree);
+  enableReorder(tree, ids => reorderCategories(tab, ids));
+  $$('[data-g]', tree).forEach(g => enableReorder(g, ids => reorderCategories(tab, ids)));
+}

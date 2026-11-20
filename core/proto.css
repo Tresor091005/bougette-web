@@ -1,0 +1,107 @@
+/* Style « Proto » (D1, 2026-11-17, avec l'utilisateur ; essayé d'abord dans une copie, « Protofinance ») : monospace carrée
+   pour les chiffres et les petites étiquettes (seules en capitales), la police de Bougette pour les noms et les phrases ; nuit #101015, bleu ardoise #506385, crème #F1F0E1, gris chaud des tuiles claires, coins presque carrés.
+   Chargé après theme.css et screens.css, actif seulement quand html[data-style="proto"] (Moi › Affichage › Style) :
+   il redéfinit les jetons et quelques règles communes ; l'accueil en tuiles est src/screens/home-proto.js.
+   Capitales et monospace seulement pour les petites étiquettes et les chiffres (tout en capitales se lisait mal). */
+
+@font-face {
+  font-family: 'ShareTechMono';
+  src: url('../fonts/sharetechmono.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+html[data-style="proto"] {
+  --paper: #101015; --card: #1C1C22; --field: #26262D;
+  --ink: #F1F0E1; --ink-2: #A9A89E; --ink-3: #6B6A63; --rule: #26262D; --line: #34343C;
+  --accent: #506385; --accent-text: #93A5C7; --accent-soft: #1E2433; --on-accent: #F1F0E1;
+  --gain: #A9C49F; --loss: #D9876F;
+  --brand: #506385; --brand-ink: #F1F0E1;
+  --dock: #16161B; --dock-ink: #F1F0E1; --dock-ring: #26262D;
+  --stone: #BDBCB0; 
+  --mono: 'ShareTechMono', ui-monospace, 'Roboto Mono', monospace; }
+html[data-style="proto"] .eyebrow,
+html[data-style="proto"] .label,
+html[data-style="proto"] .section-h h2,
+html[data-style="proto"] .pf-l,
+html[data-style="proto"] .pf-d,
+html[data-style="proto"] .pf-s,
+html[data-style="proto"] .pf-top,
+html[data-style="proto"] .pf-ring span,
+html[data-style="proto"] .dock .lbl,
+html[data-style="proto"] .tab-label,
+html[data-style="proto"] .axis,
+html[data-style="proto"] .fil-axis {
+  font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+html[data-style="proto"] .big,
+html[data-style="proto"] .amt,
+html[data-style="proto"] .pf-v,
+html[data-style="proto"] .pf-ring b,
+html[data-style="proto"] .pf-wl span:last-child,
+html[data-style="proto"] .jar .a,
+html[data-style="proto"] .mrow .v,
+html[data-style="proto"] .wal .v b,
+html[data-style="proto"] .hero .big,
+html[data-style="proto"] .fil-big,
+html[data-style="proto"] .odo {
+  font-family: var(--mono); font-weight: 400 !important; letter-spacing: -.01em; }
+html[data-radius="square"] *:not(.pill):not(.dot):not(.switch):not(.switch *):not(.round):not(.fab-add):not(.knob):not(.disc):not(.pf-arr):not(.goal-ring) { border-radius: 2px !important; }
+html[data-style="proto"] .eyebrow,
+html[data-style="proto"] .label { font-size: 11px; color: var(--ink-2); }
+html[data-style="proto"] .pf-home { padding-top: calc(var(--sat) + 14px); }
+html[data-style="proto"] .pf-top { display: flex; align-items: center; gap: 10px; margin: 0 2px 12px; font-size: 11px; letter-spacing: .08em; color: var(--ink-2); }
+html[data-style="proto"] .pf-brand { display: flex; align-items: center; gap: 6px; color: var(--ink); }
+html[data-style="proto"] .pf-brand .ic { width: 15px; height: 15px; }
+html[data-style="proto"] .pf-date { margin-left: auto; }
+html[data-style="proto"] .pf-top .bell { width: 34px; height: 34px; }
+html[data-style="proto"] .pf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+html[data-style="proto"] .pf-t { position: relative; display: flex; flex-direction: column; min-height: 104px; padding: 11px; border: 0; background: var(--card); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+html[data-style="proto"] .pf-t.w { grid-column: 1 / 3; }
+html[data-style="proto"] .pf-t.tall { min-height: 132px; }
+html[data-style="proto"] .pf-t.blue { background: var(--accent); }
+html[data-style="proto"] .pf-t.stone { background: var(--stone); color: #101015; min-height: 84px; }
+html[data-style="proto"] .pf-l { display: flex; justify-content: space-between; gap: 8px; font-size: 10.5px; letter-spacing: .08em; }
+html[data-style="proto"] .pf-l i { font-style: normal; color: var(--ink-2); }
+html[data-style="proto"] .pf-t.blue .pf-l i { color: var(--ink); }
+html[data-style="proto"] .pf-l em { font-style: normal; }
+html[data-style="proto"] .pf-l em.on { color: var(--ink); }
+html[data-style="proto"] .pf-row { display: flex; align-items: flex-end; gap: 8px; margin-top: auto; }
+html[data-style="proto"] .pf-col { display: flex; flex-direction: column; }
+html[data-style="proto"] .pf-v { font-size: 40px; line-height: .95; letter-spacing: -.02em; white-space: nowrap; }
+html[data-style="proto"] .pf-v.sm { font-size: 30px; }
+html[data-style="proto"] .pf-v.md { font-family: var(--sans); font-weight: 500 !important; font-size: 22px; line-height: 1.1; letter-spacing: -.01em; }
+html[data-style="proto"] .pf-v.loss { color: var(--loss); }
+html[data-style="proto"] .pf-d { margin-left: auto; font-size: 11px; color: var(--ink-2); white-space: nowrap; }
+html[data-style="proto"] .pf-t.blue .pf-d { color: var(--ink); opacity: .8; }
+html[data-style="proto"] .pf-t.stone .pf-d { color: #3A3A40; }
+html[data-style="proto"] .pf-s { font-size: 10px; letter-spacing: .06em; color: var(--ink-2); }
+html[data-style="proto"] .pf-next { font-family: var(--sans); text-transform: none; letter-spacing: 0; font-size: 12px; margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html[data-style="proto"] .pf-bars { display: flex; align-items: flex-end; gap: 6px; height: 64px; margin-left: auto; }
+html[data-style="proto"] .pf-bars i { width: 18px; background: var(--stone); }
+html[data-style="proto"] .pf-bars i.on { background: var(--accent); }
+html[data-style="proto"] .pf-t.ring { align-items: center; justify-content: center; min-height: 140px; cursor: default; }
+html[data-style="proto"] .pf-t.ring svg { width: 112px; height: 112px; }
+html[data-style="proto"] .pf-t.ring .trk { fill: none; stroke: var(--line); stroke-width: 3; }
+html[data-style="proto"] .pf-t.ring .arc { fill: none; stroke: var(--accent); stroke-width: 3; }
+html[data-style="proto"] .pf-ring { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+html[data-style="proto"] .pf-ring b { font-size: 24px; }
+html[data-style="proto"] .pf-ring span { font-size: 9px; letter-spacing: .08em; color: var(--ink-2); }
+html[data-style="proto"] .pf-t.list { min-height: auto; gap: 0; }
+html[data-style="proto"] .pf-t.list .pf-l { margin-bottom: 6px; }
+html[data-style="proto"] .pf-wl { display: flex; justify-content: space-between; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+html[data-style="proto"] .pf-arr { position: absolute; top: 10px; right: 10px; width: 26px; height: 26px; border-radius: 50% !important; background: #101015; color: var(--ink); display: flex; align-items: center; justify-content: center; }
+html[data-style="proto"] .pf-arr .ic { width: 14px; height: 14px; }
+
+/* L'affichage réglé à la main (2026-11-20, Moi › Affichage) : la police des chiffres, celle de tout le texte. Les coins
+   carrés sont la règle data-radius ci-dessus (le style Proto la met par défaut). */
+:root { --mono: 'ShareTechMono', ui-monospace, 'Roboto Mono', monospace; }
+html[data-font-num="mono"] .big, html[data-font-num="mono"] .amt, html[data-font-num="mono"] .pf-v, html[data-font-num="mono"] .pf-ring b,
+html[data-font-num="mono"] .pf-wl span:last-child, html[data-font-num="mono"] .jar .a, html[data-font-num="mono"] .mrow .v,
+html[data-font-num="mono"] .wal .v b, html[data-font-num="mono"] .hero .big, html[data-font-num="mono"] .fil-big, html[data-font-num="mono"] .odo {
+  font-family: var(--mono); letter-spacing: -.01em; }
+html[data-font-num="geist"] .big, html[data-font-num="geist"] .amt, html[data-font-num="geist"] .pf-v, html[data-font-num="geist"] .pf-ring b,
+html[data-font-num="geist"] .pf-wl span:last-child, html[data-font-num="geist"] .jar .a, html[data-font-num="geist"] .mrow .v,
+html[data-font-num="geist"] .wal .v b, html[data-font-num="geist"] .hero .big, html[data-font-num="geist"] .fil-big, html[data-font-num="geist"] .odo {
+  font-family: var(--sans); }
+html[data-font-text="mono"] body, html[data-font-text="mono"] body *:not(svg):not(svg *) { font-family: var(--mono) !important; }
