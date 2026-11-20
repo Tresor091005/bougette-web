@@ -94,6 +94,7 @@ export function render(app, { go }) {
       <span class="me-ava" aria-hidden="true">${spaceAvatar(space)}</span>
       <span class="me-name">${esc(space.name)}${icon('caret-down')}</span>
     </button>
+    ${googleAvailable() ? `<section class="section me-sync-s"><div class="group">${row('data-go="#/reglages/google"', 'cloud-check', 'Google Drive', esc(account() ? syncLine() : 'Garder tes données, les retrouver partout'))}</div></section>` : ''}
 
     <section class="section"><div class="section-h"><span class="eyebrow">Mon argent</span></div>
       <div class="group">
@@ -108,7 +109,6 @@ export function render(app, { go }) {
         ${row('data-display', 'eye', 'Affichage', display)}
         ${row('data-go="#/reglages/verrou"', 'lock-simple', 'Verrouillage', lockEnabled() ? 'Activé' : 'Désactivé')}
         ${updateAvailable() ? row('data-update', 'download-simple', 'Mises à jour', `Version du ${esc(VERSION)}`) : ''}
-        ${googleAvailable() ? row('data-go="#/reglages/google"', 'cloud-check', 'Compte Google', esc(syncLine())) : ''}
         ${row('data-go="#/reglages/donnees"', 'shield-check', 'Données et sauvegarde', '<span data-backup-s>Copies vérifiées, restaurer, export CSV</span>')}
       </div></section>
 

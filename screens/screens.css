@@ -1135,3 +1135,5 @@
 .btn.ghost.danger { background: none; color: var(--loss); }
 .settings .row.static { cursor: default; }
 .onboarding .ob-restore { margin-top: 8px; width: 100%; }
+/* Compte Google en haut de Moi (2026-11-20, avec l'utilisateur : trop bas et caché pour quelque chose d'aussi important) */
+.me-sync-s { margin-top: 0; }
