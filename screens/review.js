@@ -17,7 +17,7 @@ export function render(app, { back }) {
   app.innerHTML = `<div class="screen settings no-tabs">
     <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
       <h1 class="title sm">À revoir</h1></div></div>
-    ${views.length ? `<p class="rv-lead">${views.length === 1 ? 'Ce changement fait sur ce téléphone n’est pas passé' : 'Ces changements faits sur ce téléphone ne sont pas passés'} à la synchronisation : un autre appareil avait déjà supprimé ou changé la même chose. Refais ce qui compte, laisse tomber le reste.</p>
+    ${views.length ? `<p class="rv-lead">${views.length === 1 ? 'Ce changement fait ici n’est pas passé' : 'Ces changements faits ici ne sont pas passés'} à la synchronisation : un autre appareil avait déjà supprimé ou changé la même chose. Refais ce qui compte, laisse tomber le reste.</p>
     <section class="section"><div class="rv-list">
       ${views.map(({ it, v }) => `<div class="rv-item">
         <div class="rv-t">${esc(v.title)}</div>

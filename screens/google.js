@@ -8,7 +8,6 @@ import { syncNow, syncStatus, onSync, linkAccount, unlinkAccount, reconnect } fr
 import { isDemo } from '../core/spaces.js';
 
 const g = /** @type {any} */ (globalThis);
-const WEB_URL = 'https://tresor091005.github.io/bougette-web/';
 
 /** « il y a 2 min » @param {string|undefined} at */
 function ago(at) {
@@ -44,7 +43,7 @@ export function render(app, { back }) {
       ? `<p class="field-note">La Démo ne se synchronise jamais : ouvre un autre espace pour lier ton compte Google.</p>`
     : !a
       ? `<section class="section">
-          <p class="gg-lead">Tes espaces gardés dans ton Google Drive : si tu perds ce téléphone, tu retrouves tout sur un autre, ou sur iPhone par le web. Chaque changement suit tout seul.</p>
+          <p class="gg-lead">Tes espaces gardés dans ton Google Drive : tu les retrouves sur tous tes appareils, et chaque changement suit tout seul.</p>
           <button class="btn primary" data-link>${icon('cloud-check')} Lier un compte Google</button>
           <p class="field-note">Bougette n’a accès qu’à son propre dossier caché dans ton Drive : ni à tes fichiers, ni à ton mot de passe. Aucun serveur entre toi et Google : personne d’autre ne voit tes données.</p>
         </section>`
@@ -56,9 +55,9 @@ export function render(app, { back }) {
         ${isDemo() ? '' : st.needsAuth && web
           ? `<button class="btn primary" data-reconnect>Reconnecter</button>`
           : `<button class="btn secondary" data-sync ${st.running ? 'disabled' : ''}>Synchroniser maintenant</button>`}
-        <p class="field-note">Chaque espace de ce téléphone (sauf la Démo) se synchronise quand il est ouvert. Sur un autre appareil, lie le même compte : tu y retrouves tes espaces${web ? '' : ` — sur iPhone, ouvre ${WEB_URL.replace('https://', '')} dans Safari, puis Partager › « Sur l’écran d’accueil »`}.</p>
+        <p class="field-note">Chaque espace (sauf la Démo) se synchronise quand il est ouvert. Sur un autre appareil, lie le même compte pour y retrouver tes espaces.</p>
         </section>
-        <section class="section"><button class="btn ghost danger" data-unlink>Délier ce téléphone</button></section>`;
+        <section class="section"><button class="btn ghost danger" data-unlink>Délier cet appareil</button></section>`;
   app.innerHTML = `<div class="screen settings no-tabs">
     <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
       <h1 class="title sm">Compte Google</h1></div></div>
@@ -88,7 +87,7 @@ export function render(app, { back }) {
   if (rc) rc.onclick = () => reconnect();
   const un = $('[data-unlink]', app);
   if (un) un.onclick = async () => {
-    const ok = await confirmSheet({ title: 'Délier ce téléphone ?', text: 'Tes données restent sur ce téléphone, et celles déjà dans ton Drive y restent aussi. Les changements ne suivront plus d’un appareil à l’autre.', yes: 'Délier', danger: true });
+    const ok = await confirmSheet({ title: 'Délier cet appareil ?', text: 'Tes données restent sur cet appareil, et celles déjà dans ton Drive y restent aussi. Les changements ne suivront plus d’un appareil à l’autre.', yes: 'Délier', danger: true });
     if (!ok) return;
     await unlinkAccount();
     toast('Compte délié');

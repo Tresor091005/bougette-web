@@ -91,11 +91,11 @@ async function run(interactive) {
       const n = r.skipped.length;
       const what = [...new Set(r.skipped.map(x => describeEvent(x.event)))].slice(0, 3).join(', ');
       keepSkipped(r.skipped);
-      notify({ key: 'sync-skip', kind: 'error', title: 'À revoir', body: `${n === 1 ? 'Un changement fait' : `${n} changements faits`} sur ce téléphone ${n === 1 ? 'n’a' : 'n’ont'} pas pu passer : un autre appareil avait déjà changé la même chose (${what}). Revois-${n === 1 ? 'le' : 'les'} pour ${n === 1 ? 'le' : 'les'} refaire ou ${n === 1 ? 'le' : 'les'} laisser tomber.`, action: { label: 'Revoir', id: 'review' } });
+      notify({ key: 'sync-skip', kind: 'error', title: 'À revoir', body: `${n === 1 ? 'Un changement fait' : `${n} changements faits`} ici ${n === 1 ? 'n’a' : 'n’ont'} pas pu passer : un autre appareil avait déjà changé la même chose (${what}). Revois-${n === 1 ? 'le' : 'les'} pour ${n === 1 ? 'le' : 'les'} refaire ou ${n === 1 ? 'le' : 'les'} laisser tomber.`, action: { label: 'Revoir', id: 'review' } });
     }
-    if (r.kind === 'reset') notify({ key: 'sync-reset', kind: 'info', title: 'Synchronisation', body: `« ${space.name} » a été restauré ou effacé sur un autre appareil : ce téléphone a pris ce nouvel état, avec ce que tu avais noté ici depuis.` });
-    if (r.forkedFrom) notify({ key: 'sync-fork', kind: 'info', title: 'Synchronisation', body: `Ce téléphone et ton compte avaient des données différentes pour « ${space.name} » : rien n’est mélangé, ton compte garde les deux, chacun son espace.` });
-    if (r.added.length) notify({ key: 'sync-spaces', kind: 'info', title: 'Espaces de ton compte', body: `${r.added.length === 1 ? 'Ajouté' : 'Ajoutés'} sur ce téléphone : ${r.added.map(s => s.name).join(', ')}. Ouvre-${r.added.length === 1 ? 'le' : 'les'} depuis Moi.` });
+    if (r.kind === 'reset') notify({ key: 'sync-reset', kind: 'info', title: 'Synchronisation', body: `« ${space.name} » a été restauré ou effacé sur un autre appareil : cet appareil a pris ce nouvel état, avec ce que tu avais noté ici depuis.` });
+    if (r.forkedFrom) notify({ key: 'sync-fork', kind: 'info', title: 'Synchronisation', body: `Cet appareil et ton compte avaient des données différentes pour « ${space.name} » : rien n’est mélangé, ton compte garde les deux, chacun son espace.` });
+    if (r.added.length) notify({ key: 'sync-spaces', kind: 'info', title: 'Espaces de ton compte', body: `${r.added.length === 1 ? 'Ajouté' : 'Ajoutés'} ici : ${r.added.map(s => s.name).join(', ')}. Ouvre-${r.added.length === 1 ? 'le' : 'les'} depuis Moi.` });
     resolve('sync-auth');
     setStatus({ at: r.kind === 'busy' ? syncStatus().at : new Date().toISOString(), kind: r.kind, error: '', needsAuth: false });
     if (r.kind === 'busy') again = true;
@@ -208,6 +208,6 @@ async function invite() {
     if (localStorage.getItem('bougette:google-invited')) return;
     if (isPristine(await session.events())) return;
     localStorage.setItem('bougette:google-invited', new Date().toISOString());
-    notify({ key: 'sync-invite', kind: 'info', title: 'Garde tes données dans ton Google Drive', body: 'Si tu perds ce téléphone, tu retrouves tout sur un autre, ou sur iPhone par le web. Elles vont dans un dossier caché de ton Drive, que seule Bougette peut lire.', action: { label: 'Lier un compte', id: 'google' } });
+    notify({ key: 'sync-invite', kind: 'info', title: 'Garde tes données dans ton Google Drive', body: 'Tu les retrouves sur tous tes appareils, même si tu en changes. Elles vont dans un dossier caché de ton Drive, que seule Bougette peut lire.', action: { label: 'Lier un compte', id: 'google' } });
   } catch (e) { /* plus tard */ }
 }
