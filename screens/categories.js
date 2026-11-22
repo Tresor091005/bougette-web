@@ -44,7 +44,7 @@ export function openCategorySheet(id, type, { parent = null, name = '', onSaved 
   const what = was ? 'la sous-catégorie' : 'la catégorie';
   // supprimer : seulement sans sous-catégorie ni opération ; sinon le bouton est éteint et la raison écrite dessous
   const noDelete = !c ? '' : subs.length ? `« ${esc(c.name)} » a des sous-catégories : supprime-les d’abord, ou archive-la.`
-    : used ? `« ${esc(c.name)} » a des opérations : archive-la, elles restent dans l’historique.` : '';
+    : used ? `« ${esc(c.name)} » a des opérations : archive-la, elles sont gardées.` : '';
   const s = openSheet(`<div class="cat-sheet">
     <div class="sheet-head"><div class="head-id cat-pv" data-pv></div></div>
     <label class="field"><span>Nom</span><input data-name maxlength="24" value="${esc(f.name)}" placeholder="${type === 'income' ? 'Ex. Tontine, Loyer perçu' : 'Ex. Zem, Coiffure, Loyer'}" autocomplete="off"></label>
@@ -176,12 +176,12 @@ export function render(app, { back }) {
     <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
       <h1 class="title sm">Catégories</h1></div>
       <div class="right"><button class="iconbtn" data-find aria-label="Chercher une catégorie" aria-pressed="false">${icon('magnifying-glass')}</button>${arrangeBtnHTML()}</div></div>
-    <p class="screen-help">Touche pour modifier ; l’ordre choisi (bouton en haut à droite) se retrouve partout.</p>
+    <p class="screen-help">Touche une catégorie pour la modifier. L’ordre choisi ici se retrouve partout.</p>
     <div data-findbox hidden>${catSearchHTML()}</div>
     ${seg(TAB_SEG, tab, 'tab-seg')}
     <section class="section" style="margin-top:16px">
       <div class="cl" data-tree>${catTreeHTML({ type: tab, handle: true })}</div>
-      <p class="muted b-note" data-none hidden>Aucune catégorie ne correspond.</p>
+      <p class="muted b-note" data-none hidden>Aucune catégorie trouvée.</p>
     </section>
     ${archived.length ? `<section class="section"><div class="section-h"><span class="eyebrow">Archivées</span></div>
       <div class="group">${archived.map(c => `<button type="button" class="row dim" data-cat="${c.id}">${chip(c)}

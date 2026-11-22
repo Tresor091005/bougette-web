@@ -30,7 +30,7 @@ export function atLabel(at) {
 }
 const longDate = d => cap(fmtLong.format(parse(d)));
 const KIND = { expense: 'Dépense', income: 'Revenu', transfer: 'Virement', opening: 'Solde de départ', adjustment: 'Correction du solde' };
-const amt = v => money(v.amount, { cur: v.currency, hide: false });
+const amt = v => money(v.amount, { cur: v.currency });
 const was = (a, b) => `<s>${a}</s> → ${b}`;
 
 // Différences entre deux versions : « Montant : 12 000 F (barré) → 12 500 F ».
@@ -41,7 +41,7 @@ function changes(a, b) {
   if (a.date !== b.date) out.push(`Date : ${was(shortDate(a.date), shortDate(b.date))}`);
   if (a.wallet !== b.wallet) out.push(`${b.kind === 'transfer' ? 'De' : 'Portefeuille'} : ${was(esc(accountName(a.wallet)), esc(accountName(b.wallet)))}`);
   if (a.to !== b.to && b.kind === 'transfer') out.push(`Vers : ${was(esc(accountName(a.to) || '–'), esc(accountName(b.to)))}`);
-  if (a.category !== b.category && b.category) out.push(`Catégorie : ${was(esc(accountName(a.category) || '–'), esc(accountName(b.category)))}`);
+  if (a.category !== b.category && b.category) out.push(`Catégorie : ${was(esc(category(a.category || '')?.name || '–'), esc(category(b.category)?.name || '–'))}`);
   if (a.status !== b.status && b.status !== 'void' && a.status !== 'void') out.push(b.status === 'planned' ? 'Marquée prévue' : 'Marquée payée');
   if ((a.note || '') !== (b.note || '')) out.push(b.note ? `Note : ${a.note ? `<s>${esc(a.note)}</s> → ` : ''}« ${esc(b.note)} »` : `Note retirée : <s>${esc(a.note)}</s>`);
   return out;
@@ -54,12 +54,12 @@ function line(h) {
     const when = v.date !== iso(new Date(h.at)) ? ` pour le ${shortDate(v.date)}` : '';
     return { t: `${v.status === 'planned' ? 'Prévue' : 'Créée'}${when}, ${amt(v)}` };
   }
-  if (h.action === 'amended') return { t: changes(h.before, h.after).join('<br>') || 'Enregistrée sans changement visible' };
-  if (h.action === 'voided') return { t: 'Annulée', s: 'ne compte plus, reste dans le journal' };
+  if (h.action === 'amended') return { t: changes(h.before, h.after).join('<br>') || 'Enregistrée sans changement' };
+  if (h.action === 'voided') return { t: 'Annulée', s: 'ne compte plus' };
   if (h.action === 'restored') return { t: 'Rétablie' };
   if (h.action === 'reset') {
     const d = changes(h.before, h.after);
-    return { t: h.before.status === 'void' ? ['Rétablie', ...d].join('<br>') : (d.join('<br>') || 'Remise comme avant'), s: 'retour à un état passé' };
+    return { t: h.before.status === 'void' ? ['Rétablie', ...d].join('<br>') : (d.join('<br>') || 'Remise comme avant'), s: 'remise à une version d’avant' };
   }
   return { t: esc(h.action) };
 }
@@ -173,5 +173,3 @@ export function openOperation(txId, go = h => { location.hash = h; }) {
   };
   return s;
 }
-// ancien nom (vue Développeur : opérations annulées)
-export const openHistory = txId => openOperation(txId);

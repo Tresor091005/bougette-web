@@ -9,7 +9,7 @@
 // Appui → fiche de l'opération (annuler se fait depuis la fiche). Glisser la liste vers la gauche ou la droite
 // → période voisine (comme Money Lover) : le geste touche l'onglet d'à côté.
 // Filtres et période dans l'adresse (#/operations?acc=…&cat=…&res=…&type=expense&from=AAAA-MM-JJ&to=AAAA-MM-JJ, ou
-// &avenir=1 pour l'onglet « À venir », qui garde la période d'où l'on vient) : un montant touché ailleurs (bocal, ligne de Budget) ouvre cet écran sur son
+// &avenir=1 pour l'onglet « À venir », qui garde la période d'où l'on vient) : un montant touché ailleurs (ligne de Budget) ouvre cet écran sur son
 // mois, et le retour Android ramène à l'écran d'origine. res : les opérations qui ont utilisé une réserve (ouvert depuis
 // son petit menu) ; une pastille sous le portefeuille la nomme, la toucher retire ce filtre.
 import {
@@ -28,7 +28,7 @@ import { pickAccount, pickCategory, pickDate } from './pickers.js';
 const MONTHS = 12;
 const f = { q: '', find: false, months: MONTHS, unit: 'month', group: 'day' };
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const TYPES = { expense: 'Dépenses', income: 'Entrées', transfer: 'Virements' };
+const TYPES = { expense: 'Dépenses', income: 'Revenus', transfer: 'Virements' };
 const UNITS = [['day', 'Jour'], ['week', 'Semaine'], ['month', 'Mois'], ['quarter', 'Trimestre'], ['year', 'Année'], ['all', 'Tout'], ['custom', 'Personnalisé']];
 // onglets de période : de la première opération à aujourd'hui, 30 au plus ; au-delà, « Plus loin » propose de changer
 // d'échelle (l'échelle ne dit que combien on voit à la fois ; une date précise se choisit avec « Personnalisé »)
@@ -138,7 +138,7 @@ function totals(list, cur, acc = null, soon = false) {
 // pour les dépenses, « Entrées » pour les entrées, rien pour les virements (sauf dans un portefeuille : ce qui y entre
 // et en sort).
 function sumHTML(t, cur, fl, foreign) {
-  const note = foreign ? '<p class="ops-note">Sans les opérations en autres devises (pas de conversion).</p>' : '';
+  const note = foreign ? '<p class="ops-note">Sans les opérations dans une autre devise.</p>' : '';
   const cell = (type, label, v, cls) => `<button type="button" class="c${fl.type === type ? ' on' : ''}" data-sumtype="${type}" aria-pressed="${fl.type === type}"><span>${label}</span><b class="${cls}">${v}</b></button>`;
   const inc = cell('income', 'Entrées', money(t.inc, { cur, sign: t.inc > 0 }), t.inc ? 'gain' : '');
   const out = cell('expense', 'Sorties', money(-t.out, { cur }), t.out ? 'loss' : '');
@@ -243,14 +243,14 @@ function tabsFor(w, ms, hasPlanned, first) {
   return { tabs, further };
 }
 const tabHTML = (x, on) => (x.group
-  ? `<button type="button" role="tab" class="ops-tab ops-gap${on ? ' on' : ''}" aria-selected="${on}" tabindex="${on ? 0 : -1}" data-gap="${x.group}" aria-label="${esc(x.label)} : rien">${esc(x.label)}</button>`
+  ? `<button type="button" role="tab" class="ops-tab ops-gap${on ? ' on' : ''}" aria-selected="${on}" tabindex="${on ? 0 : -1}" data-gap="${x.group}" aria-label="${esc(x.label)} : aucune opération">${esc(x.label)}</button>`
   : `<button type="button" role="tab" class="ops-tab${on ? ' on' : ''}" aria-selected="${on}" tabindex="${on ? 0 : -1}"${x.soon ? ' data-soon' : ` data-from="${x.w.start || ''}" data-to="${x.w.end || ''}"`}>${esc(x.label)}</button>`);
 const fmtGap = new Intl.DateTimeFormat('fr-FR', { month: 'short', year: 'numeric' });
 /**
  * Les périodes vides qui se suivent (2026-11-19, avec l'utilisateur : un portefeuille qui n'existait pas encore, ou qui ne
  * sert qu'aux grosses occasions, faisait défiler des onglets à 0) tiennent dans un seul onglet « déc. 2024 – mars 2025 » ; la barre part toujours de la première opération. Jamais la période affichée ni celle d'aujourd'hui ; deux
- * vides au moins. Il se choisit comme un autre onglet, sans rien déplier : le corps dit ce qu'il couvre (« Rien du
- * 25 oct 2024 au 27 nov 2025 · 13 périodes »). @param {any[]} tabs @param {(w: any) => boolean} empty
+ * vides au moins. Il se choisit comme un autre onglet, sans rien déplier : le corps dit ce qu'il couvre (« Aucune
+ * opération du 25 oct 2024 au 27 nov 2025. »). @param {any[]} tabs @param {(w: any) => boolean} empty
  * @param {(w: any) => boolean} keep
  */
 function groupEmpty(tabs, empty, keep) {
@@ -393,7 +393,7 @@ export function render(app, ctx) {
     let gap = null;
 
     // onglets de période et résumé (pas pendant une recherche : elle parcourt tout le journal)
-    if (searching) perEl.innerHTML = `<p class="muted ops-count">${list.length} résultat${list.length > 1 ? 's' : ''} dans tout le journal</p>`;
+    if (searching) perEl.innerHTML = `<p class="muted ops-count">${list.length} résultat${list.length > 1 ? 's' : ''}, toutes périodes</p>`;
     else {
       // la première opération (toutes, quels que soient les filtres) borne la barre
       const first = moves().reduce((m, x) => (!x.void && x.date < m ? x.date : m), today());
@@ -456,10 +456,10 @@ export function render(app, ctx) {
     let body;
     if (!list.length) {
       const clearBtn = nFilters || res ? '<button class="btn secondary sm" data-clear>Retirer les filtres</button>' : '';
-      if (gap) body = emptyState(`Rien${acc ? ` dans ${esc(acc.name)}` : ''} du ${esc(yearDate(gap.w.start))} au ${esc(yearDate(gap.w.end))} · ${gap.n} périodes${nFilters || res ? ' avec ces filtres' : ''}.`, '', 'calendar-blank');
+      if (gap) body = emptyState(`Aucune opération${acc ? ` dans ${esc(acc.name)}` : ''} du ${esc(yearDate(gap.w.start))} au ${esc(yearDate(gap.w.end))}${nFilters || res ? ' avec ces filtres' : ''}.`, '', 'calendar-blank');
       else if (searching) body = emptyState('Aucune opération ne correspond.', '', 'magnifying-glass');
-      else if (!moves().some(x => !x.void)) body = emptyState('Aucune opération pour l’instant.', '', 'list-bullets'); // le + du bas suffit
-      else body = emptyState(`Rien sur cette période${acc ? ` dans ${esc(acc.name)}` : ''}${nFilters || res ? ' avec ces filtres' : ''}.`, clearBtn, 'calendar-blank');
+      else if (!moves().some(x => !x.void)) body = emptyState('Pas encore d’opération.', '', 'list-bullets'); // le + du bas suffit
+      else body = emptyState(`Aucune opération sur cette période${acc ? ` dans ${esc(acc.name)}` : ''}${nFilters || res ? ' avec ces filtres' : ''}.`, clearBtn, 'calendar-blank');
     } else if (soonDues) body = `<div class="group ops-dues">${dueRowsHTML(soonDues)}</div>`; // les mêmes lignes que Plan, ses styles compris
     else if (searching) body = monthsHTML(list, cur, fl.acc, rowOpts);
     else if (f.group === 'cat') body = byCategoryHTML(list, cur, fl.acc, rowOpts);
@@ -504,14 +504,14 @@ export function render(app, ctx) {
         <div class="flt-dates" data-range hidden>
           <button type="button" class="flt-date" data-from><span>Du</span><b data-fromv></b></button>
           <button type="button" class="flt-date" data-to><span>Au</span><b data-tov></b></button></div>
-        ${further ? '<p class="flt-hint">Pour remonter plus loin, choisis tes dates, ou une période plus longue.</p>' : ''}</div>
+        ${further ? '<p class="flt-hint">Pour remonter plus loin, choisis tes dates ou une période plus longue.</p>' : ''}</div>
       <div class="flt-sec"><div class="eyebrow">Type</div><div class="flt-opts">${[['', 'Tous'], ...Object.entries(TYPES)].map(([k, l]) => `<button type="button" class="fchip" data-t="${k}">${l}</button>`).join('')}</div></div>
       <div class="flt-sec" data-catsec><div class="eyebrow">Catégorie</div><div class="flt-catrow">
         <button type="button" class="row flt-cat" data-cat><span data-catp></span><div class="main"><div class="t" data-catl></div></div>${icon('caret-right')}</button>
         <button type="button" class="iconbtn flt-catx" data-catx aria-label="Retirer la catégorie" hidden>${icon('x')}</button></div></div>
       <div class="flt-sec"><div class="eyebrow">Afficher par</div>${seg([['day', 'Jours'], ['cat', 'Catégories']], pick.group, 'sm flt-group')}</div>
       <div class="flt-acts"><button type="button" class="btn secondary" data-reset>Réinitialiser</button><button type="button" class="btn primary" data-apply></button></div>
-    </div>`, { cls: 'compact', label: 'Période et filtres' });
+    </div>`, { label: 'Période et filtres' });
     const el = s.el;
     const groupSeg = $('.flt-group', el);
     // la période que donnerait la feuille : même échelle, on reste sur la période affichée (et sur « À venir ») ; sinon

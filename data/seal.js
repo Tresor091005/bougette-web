@@ -1,13 +1,9 @@
-// Sauvegarde chiffrée (ROADMAP étape 2, sécurité, 2026-11-09) : le fichier qui part hors du téléphone (Drive, WhatsApp…)
-// est chiffré en AES-GCM avec une clé propre à Bougette. Il est illisible ailleurs, toute modification est détectée,
-// et il se restaure sur n'importe quel téléphone qui a Bougette, sans mot de passe à retenir.
-// Limite assumée : la clé est dans l'app ; quelqu'un qui démonterait l'app pourrait la retrouver. Cela protège d'une
-// lecture ordinaire du fichier, pas d'un expert (un mot de passe en plus : ROADMAP § 6).
-// Format : une ligne d'en-tête « BOUGETTE-SAUVEGARDE 1 », puis le chiffré en base64 (12 octets d'IV, puis le chiffré).
-// Un journal en clair (export Développeur, anciennes sauvegardes) reste accepté à la restauration.
+// Journal chiffré pour le Drive (D16, D21) : AES-GCM avec une clé propre à Bougette. Illisible ailleurs, toute
+// modification est détectée, il se relit sur n'importe quel appareil qui a Bougette, sans mot de passe à retenir.
+// Limite assumée : la clé est dans l'app (dont le code est public depuis la version web, D21). Cela protège d'une
+// lecture ordinaire du fichier, pas de quelqu'un qui la cherche.
 
-export const SEAL_HEADER = 'BOUGETTE-SAUVEGARDE 1';
-// Clé de l'app (256 bits), tirée d'une phrase fixe : la changer rendrait illisibles les sauvegardes déjà faites.
+// Clé de l'app (256 bits), tirée d'une phrase fixe : la changer rendrait illisibles les journaux déjà sur le Drive.
 const KEY_SEED = 'Bougette · sauvegarde du journal · clé 1 · ne pas changer';
 
 const subtle = () => /** @type {SubtleCrypto} */ (globalThis.crypto.subtle);
@@ -34,7 +30,8 @@ function fromB64(b64) {
 
 export class SealError extends Error {}
 
-// Journal envoyé au Drive (D21) : compressé (gzip, quand le navigateur sait le faire) puis chiffré comme une sauvegarde.
+// Format : une ligne d'en-tête « BOUGETTE-SYNC 1 gz » (ou « txt »), puis le chiffré en base64 (12 octets d'IV, puis le
+// chiffré) du journal compressé (gzip, quand le navigateur sait le faire).
 export const SYNC_HEADER = 'BOUGETTE-SYNC 1';
 /** @param {Uint8Array} bytes @param {'gzip'} fmt @param {boolean} inflate */
 async function gz(bytes, fmt, inflate) {
@@ -59,47 +56,17 @@ export async function unsealSync(text) {
   const t = String(text ?? '').trim();
   const nl = t.indexOf('\n');
   const head = nl < 0 ? t : t.slice(0, nl);
-  if (!head.startsWith(SYNC_HEADER)) throw new SealError('Fichier du Drive illisible : ce n’est pas un journal Bougette.');
+  if (!head.startsWith(SYNC_HEADER)) throw new SealError('Les données sur Google Drive ne viennent pas de Bougette.');
   const zip = head.slice(SYNC_HEADER.length).trim() === 'gz';
   let all;
-  try { all = fromB64(t.slice(nl + 1)); } catch (e) { throw new SealError('Fichier du Drive abîmé.'); }
-  if (all.length < 13) throw new SealError('Fichier du Drive abîmé.');
+  try { all = fromB64(t.slice(nl + 1)); } catch (e) { throw new SealError('Les données sur Google Drive sont abîmées.'); }
+  if (all.length < 13) throw new SealError('Les données sur Google Drive sont abîmées.');
   let pt;
-  try { pt = new Uint8Array(await subtle().decrypt({ name: 'AES-GCM', iv: all.subarray(0, 12) }, await key(), all.subarray(12))); } catch (e) { throw new SealError('Fichier du Drive abîmé ou fait par une autre app.'); }
+  try { pt = new Uint8Array(await subtle().decrypt({ name: 'AES-GCM', iv: all.subarray(0, 12) }, await key(), all.subarray(12))); } catch (e) { throw new SealError('Les données sur Google Drive sont abîmées, ou ne viennent pas de Bougette.'); }
   if (zip) {
-    if (typeof (/** @type {any} */ (globalThis)).DecompressionStream !== 'function') throw new SealError('Ce navigateur ne sait pas lire ce fichier compressé : mets-le à jour.');
+    if (typeof (/** @type {any} */ (globalThis)).DecompressionStream !== 'function') throw new SealError('Tes données sur Google Drive ne se lisent pas ici. Mets à jour ton navigateur.');
     pt = await gz(pt, 'gzip', true);
   }
   return new TextDecoder().decode(pt);
 }
 
-/** Le journal (texte) → fichier de sauvegarde chiffré. @param {string} text */
-export async function seal(text) {
-  const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
-  const ct = new Uint8Array(await subtle().encrypt({ name: 'AES-GCM', iv }, await key(), new TextEncoder().encode(text)));
-  const all = new Uint8Array(iv.length + ct.length);
-  all.set(iv); all.set(ct, iv.length);
-  return `${SEAL_HEADER}\n${toB64(all)}\n`;
-}
-
-/** Est-ce un fichier de sauvegarde chiffré ? @param {string} text */
-export const isSealed = text => String(text ?? '').replace(/^﻿/, '').trimStart().startsWith(SEAL_HEADER);
-
-/**
- * Fichier de sauvegarde → journal (texte). Un journal en clair est rendu tel quel. Rejette si le fichier chiffré est
- * abîmé ou n'a pas été fait par Bougette.
- * @param {string} text
- */
-export async function unseal(text) {
-  const t = String(text ?? '').replace(/^﻿/, '').trim();
-  if (!t.startsWith(SEAL_HEADER)) return String(text ?? '');
-  let all;
-  try { all = fromB64(t.slice(SEAL_HEADER.length)); } catch (e) { throw new SealError('Sauvegarde abîmée : elle ne se lit pas.'); }
-  if (all.length < 13) throw new SealError('Sauvegarde abîmée : elle ne se lit pas.');
-  try {
-    const pt = await subtle().decrypt({ name: 'AES-GCM', iv: all.subarray(0, 12) }, await key(), all.subarray(12));
-    return new TextDecoder().decode(pt);
-  } catch (e) {
-    throw new SealError('Sauvegarde abîmée ou faite par une autre app : elle ne se lit pas.');
-  }
-}

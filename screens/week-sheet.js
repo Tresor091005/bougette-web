@@ -43,7 +43,7 @@ function openWeekSheet(list) {
   const name = list[0].note || 'Échéance';
   const s = openSheet(`<div class="wk">
     <h2 class="sheet-title">${esc(name)} · la semaine</h2>
-    <p class="muted wk-help">Décoche le jour qui n’a pas eu lieu ; touche un montant pour le changer.</p>
+    <p class="muted wk-help">Décoche le jour qui n’a pas eu lieu. Touche un montant pour le changer.</p>
     <div class="group wk-list" data-list></div>
     <p class="wk-total" data-total></p>
     <div data-err></div>

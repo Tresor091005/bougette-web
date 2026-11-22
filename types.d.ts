@@ -13,9 +13,7 @@ interface Window {
   appPaused: () => void;
   appResumed: () => void;
   BougetteAndroid?: any;
-  BougetteFolder?: any;
   BougetteIcon?: any;
   BougetteUpdate?: any;
   appUpdate?: (json: string) => void;
-  appFolderPicked?: (name: string) => void;
 }

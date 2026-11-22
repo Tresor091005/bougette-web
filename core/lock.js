@@ -1,6 +1,10 @@
-// Verrouillage de l'app (ROADMAP étape 2, sécurité, 2026-11-09) : on ouvre Bougette avec son code (4 à 6 chiffres) ou
-// en laissant le téléphone attester que c'est toi (empreinte s'il en a une, sinon son code ou son schéma). Pas de
-// réglage « empreinte » : tous les téléphones ne l'ont pas, et le téléphone choisit lui-même. Demandé à l'ouverture et au retour dans l'app après une minute ailleurs. Le code n'est jamais
+// Code de Bougette et verrouillage (ROADMAP étape 2, sécurité, 2026-11-09 ; « code exigé, app libre », 2026-11-21, avec
+// l'utilisateur). Le code (4 à 6 chiffres) est exigé avant chaque action sensible : sans code, on en choisit un d'abord,
+// et il ne se retire plus (seulement se changer). Verrouiller l'app elle-même est un choix à part (« Verrouiller à
+// l'ouverture ») : demandé alors à l'ouverture et au retour dans l'app après une minute ailleurs. Un code choisi avant le
+// 2026-11-21 garde ce verrou (réglage absent = activé) ; un code choisi depuis ne l'active pas. Le téléphone peut aussi
+// attester que c'est toi (empreinte s'il en a une, sinon son code ou son schéma) ; pas de réglage « empreinte » : tous
+// les téléphones ne l'ont pas, et le téléphone choisit lui-même. Le code n'est jamais
 // gardé : seulement son empreinte (PBKDF2-SHA256, sel aléatoire), dans les préférences du téléphone (pas dans le
 // journal, qui part dans les sauvegardes). Après 5 essais faux, une attente qui double à chaque nouvel échec.
 // Code oublié : le téléphone atteste (phoneUnlock) et ouvre l'app ; jamais d'effacement depuis l'écran verrouillé.
@@ -12,7 +16,15 @@ export const AWAY_MS = 60000; // au-delà d'une minute hors de l'app, le code es
 /** @typedef {{ salt: string, hash: string, len?: number }} LockConf */
 /** @returns {LockConf|null} */
 const conf = () => /** @type {LockConf|null} */ (pref('lock'));
-export const lockEnabled = () => !!conf();
+/** Un code est-il choisi ? (exigé alors avant chaque action sensible) */
+export const hasCode = () => !!conf();
+/** L'app se verrouille-t-elle à l'ouverture ? Il faut un code ; réglage absent (code d'avant le 2026-11-21) : oui. */
+export const lockAtOpen = () => hasCode() && pref('lockOpen') !== false;
+/** Verrouiller à l'ouverture, ou plus. @param {boolean} on */
+export function setLockOpen(on) {
+  if (on && !hasCode()) throw new Error('Choisis d’abord un code.');
+  pref('lockOpen', !!on);
+}
 /** Longueur du code (pour valider dès le dernier chiffre), ou null. */
 export const codeLength = () => conf()?.len || null;
 
@@ -30,14 +42,14 @@ async function derive(code, salt) {
 /** Code valide : 4 à 6 chiffres. @param {string} code */
 export const validCode = code => /^\d{4,6}$/.test(code);
 
-/** Active le verrouillage (ou change le code). @param {string} code */
+/** Choisit le code, ou le change. Un premier code ne verrouille pas l'app à l'ouverture (setLockOpen). @param {string} code */
 export async function setCode(code) {
   if (!validCode(code)) throw new Error('Le code fait 4 à 6 chiffres.');
+  if (!hasCode()) pref('lockOpen', false);
   const salt = crypto.getRandomValues(new Uint8Array(16));
   pref('lock', { salt: hex(salt), hash: await derive(code, salt), len: code.length });
   pref('lockFails', null);
 }
-export function disableLock() { pref('lock', null); pref('lockFails', null); }
 
 /** Attente restante (ms) avant un nouvel essai, après trop d'échecs. */
 export function waitMs(now = Date.now()) {
@@ -69,9 +81,10 @@ export const canAskPhone = () => typeof (/** @type {any} */ (globalThis).__TAURI
  * Le téléphone confirme que c'est toi : empreinte s'il en a une, sinon son code ou son schéma. true si reconnu ;
  * false s'il échoue, est annulé, ou si le téléphone n'a aucun verrouillage (il reste alors le code de Bougette).
  */
-export async function phoneUnlock() {
+/** @param {string} [reason] ce que la fenêtre du téléphone annonce */
+export async function phoneUnlock(reason = 'Déverrouiller Bougette') {
   try {
-    await invoke('plugin:biometric|authenticate', { reason: 'Déverrouiller Bougette', allowDeviceCredential: true, title: 'Bougette' });
+    await invoke('plugin:biometric|authenticate', { reason, allowDeviceCredential: true, title: 'Bougette' });
     return true;
   } catch (e) { return false; }
 }

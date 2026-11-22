@@ -36,6 +36,59 @@ export class DomainError extends Error {
 /** @param {string} msg @param {string} [code] @param {any} [detail] @returns {never} */
 const fail = (msg, code, detail) => { throw new DomainError(msg, code, detail); };
 
+// Refus qui reviennent : une même situation donne toujours le même message.
+const M = {
+  noWallet: 'Ce portefeuille n’existe pas.',
+  noCategory: 'Cette catégorie n’existe pas.',
+  noEntry: 'Cette opération n’existe pas.',
+  noReserve: 'Cette réserve n’existe pas.',
+  noBudget: 'Ce budget n’existe pas.',
+  noDue: 'Cette échéance n’existe pas.',
+  tooBig: 'Ce montant est trop grand.',
+  amount: 'Indique un montant.',
+  badDate: 'Date illisible.',
+  name: 'Donne-lui un nom.',
+  walletName: 'Un portefeuille porte déjà ce nom.',
+  to: 'Choisis le portefeuille de destination.',
+  sameWallet: 'Choisis deux portefeuilles différents.',
+  currency: 'Les deux portefeuilles doivent avoir la même devise.',
+  pickCategory: 'Choisis une catégorie.',
+  pickExpenseCat: 'Choisis une catégorie de dépenses.',
+  closed: 'Cette réserve est close.',
+  badBalance: 'Ce solde n’est pas un montant lisible.',
+  negative: 'Le solde ne peut pas être négatif.',
+  ident: 'L’identifiant ne peut contenir que des lettres, des chiffres, des espaces et . - /',
+  icon: 'Choisis une icône parmi celles proposées.',
+  sameKind: 'Choisis une catégorie du même type.',
+  twoLevels: 'Une sous-catégorie ne peut pas avoir de sous-catégories.',
+  settled: 'Cette échéance est déjà réglée.',
+  notDateOf: 'Cette date n’est pas une date de cette échéance.',
+  notPlanned: 'Cette opération n’est pas prévue.',
+  typeFixed: 'Une échéance garde son type : une dépense reste une dépense.',
+  catFixed: 'Une échéance garde sa catégorie : pour une autre, modifie l’échéance.',
+  times: 'Indique un nombre de fois.',
+  dueDate: 'Choisis la date de cette échéance.',
+  idTaken: 'Identifiant déjà utilisé.',
+  badColor: 'Couleur inconnue.',
+  badCurrency: 'Devise inconnue.',
+  badWalletKind: 'Type de portefeuille inconnu.',
+  badCatKind: 'Type de catégorie inconnu.',
+  badKind: 'Type d’opération inconnu.',
+  badOrder: 'Ordre invalide.',
+};
+/** @param {string} name */
+const archivedWallet = name => `Le portefeuille ${name} est archivé.`;
+/** @param {string} name */
+const archivedCat = name => `La catégorie ${name} est archivée.`;
+/** @param {string} name */
+const openReserves = name => `${name} a des réserves ouvertes : clos-les d’abord.`;
+/** Une dépense refusée sur une épargne (D17). @param {string} name */
+const savingsNoSpend = name => `${name} est une épargne : on n’y dépense pas. Passe par une réserve, ou active « Permettre les dépenses » dans sa fiche.`;
+/** Une catégorie qui n'est pas du type de l'opération. @param {string} kind */
+const catOfKind = kind => (kind === 'income' ? 'Choisis une catégorie de revenus.' : M.pickExpenseCat);
+/** Une date qui ne peut pas être passée (« La fin », « La première date »…). @param {string} what */
+const notPast = what => `${what} ne peut pas être passée.`;
+
 const COLORS = /^c(10|[0-9])$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const IDENT = /^[\p{L}\p{N} .\-/]*$/u;
@@ -49,13 +102,13 @@ const validDate = d => DATE.test(d) && !Number.isNaN(Date.parse(d + 'T00:00:00Z'
 /** @param {State} s @param {string} id */
 function wallet(s, id) {
   const a = s.accounts.get(id);
-  if (!a || a.kind !== 'wallet' || a.deleted_at) fail('Ce portefeuille n’existe pas.', 'not_found');
+  if (!a || a.kind !== 'wallet' || a.deleted_at) fail(M.noWallet, 'not_found');
   return a;
 }
 /** @param {State} s @param {string} id */
 function category(s, id) {
   const a = s.accounts.get(id);
-  if (!a || (a.kind !== 'expense' && a.kind !== 'income') || a.deleted_at) fail('Cette catégorie n’existe pas.', 'not_found');
+  if (!a || (a.kind !== 'expense' && a.kind !== 'income') || a.deleted_at) fail(M.noCategory, 'not_found');
   return a;
 }
 /** Sous-catégories non supprimées d'une catégorie. @param {State} s @param {string} id */
@@ -72,7 +125,7 @@ const toEnd = (s, kind, id) => {
 /** @param {State} s @param {string} id */
 function entry(s, id) {
   const e = s.entries.get(id);
-  if (!e) fail('Cette opération n’existe pas.', 'not_found');
+  if (!e) fail(M.noEntry, 'not_found');
   return e;
 }
 /** @param {State} s @param {string} kind @param {string} name @param {string|null} except */
@@ -131,7 +184,7 @@ function savingsChanges(s, w, c, ctx) {
   const savings = 'savings' in c ? !!c.savings : cur.savings;
   if (savings !== cur.savings) ch.savings = savings;
   if (!savings) {
-    if (w && cur.savings && reservesOf(s, { wallet: w.id, open: true }).length) fail(`${w.name} a des réserves ouvertes : clos-les d’abord.`, 'reserves');
+    if (w && cur.savings && reservesOf(s, { wallet: w.id, open: true }).length) fail(openReserves(w.name), 'reserves');
     // plus une épargne : ses réglages d'épargne partent avec
     if ('spendOk' in c && c.spendOk || 'emergency' in c && c.emergency || c.goal) fail('Ce réglage est réservé aux portefeuilles d’épargne.', 'savings');
     if (cur.spend_ok) ch.spend_ok = false;
@@ -145,11 +198,11 @@ function savingsChanges(s, w, c, ctx) {
     if (g == null) {
       if (cur.goal_amount != null) { ch.goal_amount = null; ch.goal_on = null; }
     } else {
-      if (Number.isSafeInteger(g.amount) && g.amount > MAX_AMOUNT) fail('Ce montant est trop grand.', 'goal');
+      if (Number.isSafeInteger(g.amount) && g.amount > MAX_AMOUNT) fail(M.tooBig, 'goal');
       if (!isPositiveAmount(g.amount)) fail('Indique le montant de l’objectif.', 'goal');
       const on = g.on || null;
-      if (on !== null && !validDate(on)) fail('Date illisible.', 'goal_date');
-      if (on !== null && on !== cur.goal_on && on < ctx.today) fail('La date de l’objectif est aujourd’hui ou plus tard.', 'goal_date');
+      if (on !== null && !validDate(on)) fail(M.badDate, 'goal_date');
+      if (on !== null && on !== cur.goal_on && on < ctx.today) fail(notPast('La date de l’objectif'), 'goal_date');
       // une épargne a des réserves ou un objectif, pas les deux (2026-11-20, avec l'utilisateur : deux calculs se
       // contredisaient) ; un ancien objectif posé avant ses réserves peut rester tel quel (il n'est plus suivi)
       if (w && (g.amount !== cur.goal_amount || on !== cur.goal_on) && reservesOf(s, { wallet: w.id, open: true }).length) fail(`${w.name} a des réserves : un objectif va dans une autre épargne.`, 'goal_reserves');
@@ -178,31 +231,31 @@ function savingsChanges(s, w, c, ctx) {
  * @returns {Draft}
  */
 function moveDraft(s, id, tx, ctx, old) {
-  if (!MOVE_KINDS.includes(tx.type)) fail('Type d’opération inconnu.');
-  if (Number.isSafeInteger(tx.amount) && tx.amount > MAX_AMOUNT) fail('Ce montant est trop grand.', 'amount');
-  if (!isPositiveAmount(tx.amount)) fail('Indique un montant.', 'amount');
-  if (!validDate(tx.date)) fail('Date illisible.', 'date');
+  if (!MOVE_KINDS.includes(tx.type)) fail(M.badKind);
+  if (Number.isSafeInteger(tx.amount) && tx.amount > MAX_AMOUNT) fail(M.tooBig, 'amount');
+  if (!isPositiveAmount(tx.amount)) fail(M.amount, 'amount');
+  if (!validDate(tx.date)) fail(M.badDate, 'date');
   const oldLines = old ? linesOf(s, old.id) : [];
   const usedBefore = (/** @type {string} */ acc) => oldLines.some(l => l.account === acc);
   const w = wallet(s, tx.accountId);
-  if (w.archived_at && !usedBefore(w.id)) fail(`${w.name} est archivé.`, 'archived');
+  if (w.archived_at && !usedBefore(w.id)) fail(archivedWallet(w.name), 'archived');
   if (tx.type === 'transfer') {
-    if (!tx.toAccountId) fail('Choisis le portefeuille de destination.', 'to');
-    if (tx.toAccountId === tx.accountId) fail('Choisis deux portefeuilles différents.', 'same_wallet');
+    if (!tx.toAccountId) fail(M.to, 'to');
+    if (tx.toAccountId === tx.accountId) fail(M.sameWallet, 'same_wallet');
     const t = wallet(s, tx.toAccountId);
-    if (t.archived_at && !usedBefore(t.id)) fail(`${t.name} est archivé.`, 'archived');
-    if (t.currency !== w.currency) fail('Les deux portefeuilles doivent avoir la même devise.', 'currency');
+    if (t.archived_at && !usedBefore(t.id)) fail(archivedWallet(t.name), 'archived');
+    if (t.currency !== w.currency) fail(M.currency, 'currency');
   } else {
     // épargne (D17) : pas de dépense directe, sauf « Permettre les dépenses » (une ancienne dépense reste modifiable)
     // une dépense qui utilise une réserve de ce portefeuille est toujours permise (utiliser une réserve = la dépenser)
     const viaReserve = tx.type === 'expense' && tx.reserve && reservesOf(s).some(r => r.id === tx.reserve && r.wallet === w.id && !r.closed);
-    if (tx.type === 'expense' && w.savings && !w.spend_ok && !w.emergency && !usedBefore(w.id) && !viaReserve) fail(`${w.name} est une épargne : les dépenses n’y sont pas permises (active « Permettre les dépenses » dans sa fiche).`, 'savings');
-    if (!tx.categoryId) fail('Choisis une catégorie.', 'category');
+    if (tx.type === 'expense' && w.savings && !w.spend_ok && !w.emergency && !usedBefore(w.id) && !viaReserve) fail(savingsNoSpend(w.name), 'savings');
+    if (!tx.categoryId) fail(M.pickCategory, 'category');
     const c = category(s, tx.categoryId);
-    if (c.kind !== tx.type) fail('Cette catégorie ne correspond pas au type d’opération.', 'category');
-    if (c.archived_at && !usedBefore(c.id)) fail(`La catégorie ${c.name} est archivée.`, 'archived');
+    if (c.kind !== tx.type) fail(catOfKind(tx.type), 'category');
+    if (c.archived_at && !usedBefore(c.id)) fail(archivedCat(c.name), 'archived');
   }
-  if (!tx.planned && tx.date > ctx.today) fail('Cette date est dans le futur : marque l’opération « Prévu ».', 'future');
+  if (!tx.planned && tx.date > ctx.today) fail('Cette date n’est pas encore arrivée : choisis aujourd’hui ou avant.', 'future');
   return { id, kind: tx.type, occurred_on: tx.date, status: tx.planned ? 'planned' : 'posted', note: clean(tx.note, 120), lines: txLines(tx, w.currency) };
 }
 
@@ -249,7 +302,7 @@ const SETTING_CHECK = {
   balancesSet: v => typeof v === 'boolean',
   monthStart: v => isMonthStart(v),
   theme: v => ['auto', 'light', 'dark'].includes(v),
-  discreet: v => typeof v === 'boolean',
+  discreet: v => typeof v === 'boolean', // mode discret retiré le 2026-11-21 : gardé lisible (anciens journaux), plus lu
   haptics: v => typeof v === 'boolean',
   onboarded: v => typeof v === 'boolean',
   showVoided: v => typeof v === 'boolean',
@@ -263,7 +316,7 @@ const DECIDERS = {
   // Premier lancement : réglages et catégories par défaut. Aucun portefeuille : l'utilisateur crée les siens (D10).
   // (les catégories sont des comptes du grand livre : s.accounts n'est jamais vide après un setup)
   setup(s, { currency }) {
-    if (s.accounts.size) fail('Bougette est déjà initialisée.');
+    if (s.accounts.size) fail('Bougette est déjà prête.');
     const cur = SETTING_CHECK.currency(currency) ? currency : 'XOF';
     const { onboarded, ...changes } = initialSettings(cur);
     return [
@@ -292,18 +345,18 @@ const DECIDERS = {
 
   'wallet.create'(s, c, ctx) {
     const name = clean(c.name, 28);
-    if (!name) fail('Donne-lui un nom.', 'name');
-    if (nameTaken(s, 'wallet', name, null)) fail('Un portefeuille porte déjà ce nom.', 'name');
-    const subtype = KINDS.includes(c.subtype) ? c.subtype : fail('Type de portefeuille inconnu.');
-    const currency = SETTING_CHECK.currency(c.currency) ? c.currency : fail('Devise inconnue.');
+    if (!name) fail(M.name, 'name');
+    if (nameTaken(s, 'wallet', name, null)) fail(M.walletName, 'name');
+    const subtype = KINDS.includes(c.subtype) ? c.subtype : fail(M.badWalletKind);
+    const currency = SETTING_CHECK.currency(c.currency) ? c.currency : fail(M.badCurrency);
     const identifier = subtype === 'cash' ? '' : clean(c.identifier, 34);
-    if (!IDENT.test(identifier)) fail('L’identifiant ne peut contenir que des lettres, des chiffres, des espaces et . - /', 'ident');
-    if (c.color != null && !COLORS.test(c.color)) fail('Couleur inconnue.');
+    if (!IDENT.test(identifier)) fail(M.ident, 'ident');
+    if (c.color != null && !COLORS.test(c.color)) fail(M.badColor);
     const balance = c.balance || 0;
-    if (!Number.isSafeInteger(balance)) fail('Ce solde n’est pas un montant lisible.', 'balance');
-    if (balance < 0 && settingsOf(s).blockNegative && !c.allow_negative) fail('Le solde ne peut pas être négatif : active « Autoriser le négatif » pour ce portefeuille.', 'negative');
+    if (!Number.isSafeInteger(balance)) fail(M.badBalance, 'balance');
+    if (balance < 0 && settingsOf(s).blockNegative && !c.allow_negative) fail(M.negative, 'negative');
     const id = c.id || ctx.newId();
-    if (s.accounts.has(id)) fail('Identifiant déjà utilisé.');
+    if (s.accounts.has(id)) fail(M.idTaken);
     // hors du total (D11), épargne (D17) : champs écrits seulement quand ils sont posés (un portefeuille ordinaire garde
     // l'événement d'avant)
     const sv = savingsChanges(s, null, c, ctx);
@@ -325,24 +378,24 @@ const DECIDERS = {
     const events = [];
     if ('name' in changes) {
       const name = clean(changes.name, 28);
-      if (!name) fail('Donne-lui un nom.', 'name');
-      if (nameTaken(s, 'wallet', name, id)) fail('Un portefeuille porte déjà ce nom.', 'name');
+      if (!name) fail(M.name, 'name');
+      if (nameTaken(s, 'wallet', name, id)) fail(M.walletName, 'name');
       if (name !== w.name) ch.name = name;
     }
     const subtype = 'kind' in changes ? changes.kind : changes.subtype;
     if (subtype !== undefined) {
-      if (!KINDS.includes(subtype)) fail('Type de portefeuille inconnu.');
+      if (!KINDS.includes(subtype)) fail(M.badWalletKind);
       if (subtype !== w.subtype) ch.subtype = subtype;
     }
     const identIn = 'ident' in changes ? changes.ident : changes.identifier;
     if (identIn !== undefined || ch.subtype === 'cash') {
       const identifier = (ch.subtype || w.subtype) === 'cash' ? '' : clean(identIn ?? w.identifier, 34);
-      if (!IDENT.test(identifier)) fail('L’identifiant ne peut contenir que des lettres, des chiffres, des espaces et . - /', 'ident');
+      if (!IDENT.test(identifier)) fail(M.ident, 'ident');
       if (identifier !== (w.identifier || '')) ch.identifier = identifier;
     }
     if ('color' in changes) {
       const color = changes.color || null;
-      if (color != null && !COLORS.test(color)) fail('Couleur inconnue.');
+      if (color != null && !COLORS.test(color)) fail(M.badColor);
       if (color !== w.color) ch.color = color;
     }
     const allow = 'allowNegative' in changes ? changes.allowNegative : changes.allow_negative;
@@ -353,12 +406,12 @@ const DECIDERS = {
     Object.assign(ch, sv.ch);
     events.push(...sv.before);
     if (changes.currency !== undefined && changes.currency !== w.currency) {
-      if (!SETTING_CHECK.currency(changes.currency)) fail('Devise inconnue.');
+      if (!SETTING_CHECK.currency(changes.currency)) fail(M.badCurrency);
       // la devise ne change plus dès qu'une écriture autre que le solde de départ le touche, même supprimée
       // (ses montants changeraient de valeur, et la rétablir mélangerait deux devises)
-      if (currencyLockCount(s, id)) fail('Ce portefeuille a des opérations : sa devise ne peut plus changer.', 'currency_locked');
+      if (currencyLockCount(s, id)) fail('Ce portefeuille a des opérations : sa devise ne change plus.', 'currency_locked');
       // ni sous une échéance (D18) : ses montants sont dans l'ancienne devise
-      if (schedulesOf(s).some(x => x.wallet === id || x.to === id)) fail('Des échéances utilisent ce portefeuille : sa devise ne peut pas changer.', 'currency_locked');
+      if (schedulesOf(s).some(x => x.wallet === id || x.to === id)) fail('Des échéances utilisent ce portefeuille : sa devise ne change pas.', 'currency_locked');
       ch.currency = changes.currency;
     }
     if (Object.keys(ch).length) events.push({ type: 'wallet.updated', payload: { id, changes: ch } });
@@ -371,14 +424,14 @@ const DECIDERS = {
       if (op) events.push({ type: 'entry.amended', payload: { id: op.id, changes: { lines: balanceLines(id, scaled, ch.currency) } } });
     }
     if ('archived' in changes && !!changes.archived !== !!w.archived_at) {
-      if (changes.archived && reservesOf(s, { wallet: id, open: true }).length) fail(`${w.name} a des réserves ouvertes : clos-les d’abord.`, 'reserves');
+      if (changes.archived && reservesOf(s, { wallet: id, open: true }).length) fail(openReserves(w.name), 'reserves');
       events.push({ type: changes.archived ? 'wallet.archived' : 'wallet.restored', payload: { id } });
     }
     return events;
   },
 
   'wallet.reorder'(s, { ids }) {
-    if (!Array.isArray(ids)) fail('Ordre invalide.');
+    if (!Array.isArray(ids)) fail(M.badOrder);
     ids.forEach(id => wallet(s, id));
     return [{ type: 'wallet.reordered', payload: { ids } }];
   },
@@ -388,7 +441,7 @@ const DECIDERS = {
   'wallet.delete'(s, { id }) {
     const w = wallet(s, id);
     if (moveCount(s, id)) fail(`${w.name} a des opérations : archive-le plutôt.`, 'used');
-    if (reservesOf(s, { wallet: id, open: true }).length) fail(`${w.name} a des réserves ouvertes : clos-les d’abord.`, 'reserves');
+    if (reservesOf(s, { wallet: id, open: true }).length) fail(openReserves(w.name), 'reserves');
     const live = entriesOn(s, id).filter(e => e.status !== 'void');
     return [
       ...live.map(e => ({ type: 'entry.voided', payload: { id: e.id, reason: 'portefeuille supprimé' } })),
@@ -399,7 +452,7 @@ const DECIDERS = {
   // Solde de départ : écriture opening contre « Solde initial ».
   'wallet.setOpening'(s, { id, amount }, ctx) {
     const w = wallet(s, id);
-    if (!Number.isSafeInteger(amount)) fail('Ce solde n’est pas un montant lisible.');
+    if (!Number.isSafeInteger(amount)) fail(M.badBalance);
     if (Math.abs(amount) > MAX_AMOUNT) fail('Ce solde est trop grand.');
     const { events, oldD, newD } = openingEvents(s, w, amount, ctx);
     guardBalance(s, oldD, newD);
@@ -414,21 +467,21 @@ const DECIDERS = {
   // la vérification est notée (date de la dernière).
   'wallet.check'(s, { id, actual }, ctx) {
     const w = wallet(s, id);
-    if (w.archived_at) fail('Ce portefeuille est archivé.');
-    if (!Number.isSafeInteger(actual)) fail('Ce solde n’est pas un montant lisible.', 'balance');
+    if (w.archived_at) fail(archivedWallet(w.name));
+    if (!Number.isSafeInteger(actual)) fail(M.badBalance, 'balance');
     const current = walletBalances(s)[id] || 0;
     /** @type {NewEvent[]} */
     const events = [];
     const others = [...s.entries.values()].some(e => e.status !== 'void' && e.kind !== 'opening' && linesOf(s, e.id).some(l => l.account === id));
     if (actual !== current && !others) {
-      if (actual < 0 && blocksNegative(s, id)) fail('Le solde ne peut pas être négatif : active « Autoriser le négatif » pour ce portefeuille.', 'negative');
+      if (actual < 0 && blocksNegative(s, id)) fail(M.negative, 'negative');
       const op = openingOf(s, id);
       const opening = op ? linesOf(s, op.id).find(l => l.account === id)?.amount || 0 : 0;
       const r = openingEvents(s, w, opening + actual - current, ctx);
       guardBalance(s, r.oldD, r.newD);
       events.push(...r.events);
     } else if (actual !== current) {
-      if (actual < 0 && blocksNegative(s, id)) fail('Le solde ne peut pas être négatif : active « Autoriser le négatif » pour ce portefeuille.', 'negative');
+      if (actual < 0 && blocksNegative(s, id)) fail(M.negative, 'negative');
       const type = actual < current ? 'expense' : 'income';
       const cid = UNTRACKED[type];
       const c = s.accounts.get(cid);
@@ -452,24 +505,24 @@ const DECIDERS = {
 
   // catType : « expense » ou « income » (le champ type désigne la commande elle-même)
   'category.create'(s, c, ctx) {
-    if (c.catType !== 'expense' && c.catType !== 'income') fail('Type de catégorie inconnu.');
+    if (c.catType !== 'expense' && c.catType !== 'income') fail(M.badCatKind);
     const name = clean(c.name, 28);
-    if (!name) fail('Donne-lui un nom.', 'name');
-    if (c.color != null && !COLORS.test(c.color)) fail('Couleur inconnue.');
-    if (c.emoji) fail('Les emoji ne sont plus proposés : choisis une icône du catalogue.', 'icon');
+    if (!name) fail(M.name, 'name');
+    if (c.color != null && !COLORS.test(c.color)) fail(M.badColor);
+    if (c.emoji) fail(M.icon, 'icon');
     const icon = c.icon || FALLBACK_ICON;
-    if (!isCatalogIcon(icon)) fail('Icône inconnue : choisis-en une dans le catalogue.', 'icon');
+    if (!isCatalogIcon(icon)) fail(M.icon, 'icon');
     // sous-catégorie : dans une catégorie principale du même type, encore active (deux niveaux seulement) ;
     // elle prend la teinte de sa catégorie
     let parent = null;
     if (c.parent) {
       parent = category(s, c.parent);
-      if (parent.kind !== c.catType) fail('Choisis une catégorie du même type.');
-      if (parent.parent_id) fail('Une sous-catégorie ne peut pas avoir de sous-catégories.');
-      if (parent.archived_at) fail('Cette catégorie est archivée.');
+      if (parent.kind !== c.catType) fail(M.sameKind);
+      if (parent.parent_id) fail(M.twoLevels);
+      if (parent.archived_at) fail(archivedCat(parent.name));
     }
     const id = c.id || ctx.newId();
-    if (s.accounts.has(id)) fail('Identifiant déjà utilisé.');
+    if (s.accounts.has(id)) fail(M.idTaken);
     const taken = catNameTaken(s, c.catType, name, null);
     if (taken) fail(taken, 'name');
     const color = parent ? parent.color : c.color || 'c1';
@@ -482,16 +535,16 @@ const DECIDERS = {
     const ch = {};
     if ('name' in changes) {
       const name = clean(changes.name, 28);
-      if (!name) fail('Donne-lui un nom.', 'name');
+      if (!name) fail(M.name, 'name');
       if (name !== c.name) ch.name = name;
     }
     for (const k of ['icon', 'emoji', 'color']) {
       if (!(k in changes)) continue;
       const v = changes[k] || null;
-      if (k === 'color' && v != null && !COLORS.test(v)) fail('Couleur inconnue.');
-      if (k === 'icon' && !isCatalogIcon(v)) fail('Icône inconnue : choisis-en une dans le catalogue.', 'icon');
+      if (k === 'color' && v != null && !COLORS.test(v)) fail(M.badColor);
+      if (k === 'icon' && !isCatalogIcon(v)) fail(M.icon, 'icon');
       // un emoji peut seulement être retiré (D7 : plus d'emoji)
-      if (k === 'emoji' && v != null) fail('Les emoji ne sont plus proposés : choisis une icône du catalogue.', 'icon');
+      if (k === 'emoji' && v != null) fail(M.icon, 'icon');
       if (v !== (c[k] ?? null)) ch[k] = v;
     }
     // choisir une icône remplace l'emoji d'avant
@@ -505,9 +558,9 @@ const DECIDERS = {
       if (to) {
         if (to === id) fail('Une catégorie ne peut pas se ranger dans elle-même.');
         const p = category(s, to);
-        if (p.kind !== c.kind) fail('Choisis une catégorie du même type.');
-        if (p.parent_id) fail('Une sous-catégorie ne peut pas avoir de sous-catégories.');
-        if (p.archived_at) fail('Cette catégorie est archivée.');
+        if (p.kind !== c.kind) fail(M.sameKind);
+        if (p.parent_id) fail(M.twoLevels);
+        if (p.archived_at) fail(archivedCat(p.name));
         if ([...s.accounts.values()].some(a => a.parent_id === id && !a.deleted_at)) fail(`« ${c.name} » a des sous-catégories : elle reste une catégorie principale.`);
         if (p.color !== (ch.color ?? c.color)) ch.color = p.color;
       }
@@ -546,8 +599,8 @@ const DECIDERS = {
   },
 
   'category.reorder'(s, { catType, ids }) {
-    if (catType !== 'expense' && catType !== 'income') fail('Type de catégorie inconnu.');
-    if (!Array.isArray(ids)) fail('Ordre invalide.');
+    if (catType !== 'expense' && catType !== 'income') fail(M.badCatKind);
+    if (!Array.isArray(ids)) fail(M.badOrder);
     ids.forEach(id => { if (category(s, id).kind !== catType) fail('Catégorie d’un autre type.'); });
     return [{ type: 'category.reordered', payload: { type: catType, ids } }];
   },
@@ -555,30 +608,31 @@ const DECIDERS = {
   // Supprimer : seulement une catégorie sans sous-catégorie ni opération ; sinon on l'archive (le journal reste entier,
   // aucune opération n'est déplacée).
   'category.delete'(s, { id }) {
-    category(s, id);
+    const c = category(s, id);
     if (childrenOf(s, id).length) fail('Cette catégorie a des sous-catégories : supprime-les ou archive-la.', 'children');
-    if (moveCount(s, id)) fail('Cette catégorie a des opérations : archive-la.', 'used');
+    if (moveCount(s, id)) fail('Cette catégorie a des opérations : archive-la plutôt.', 'used');
     // une échéance s'y tient (D18) : supprimée, elle ne pourrait plus se confirmer (sa catégorie est figée)
     const held = schedulesOf(s).find(r => r.category === id);
-    if (held) fail(`Cette catégorie tient une échéance (« ${held.note || 'sans nom'} ») : modifie ou arrête l’échéance d’abord, ou archive la catégorie.`, 'due');
+    if (held) fail(`L’échéance « ${held.note || c.name} » utilise cette catégorie : archive la catégorie, ou supprime l’échéance.`, 'due');
     return [{ type: 'category.deleted', payload: { id } }];
   },
 
   'entry.record'(s, { id, tx, created_at = null }, ctx) {
     const eid = id || ctx.newId();
-    if (s.entries.has(eid)) fail('Identifiant déjà utilisé.');
+    if (s.entries.has(eid)) fail(M.idTaken);
     // tx.reserve (D17) : une dépense depuis un portefeuille d'épargne qui utilise cette réserve
     if (tx.reserve != null) {
-      const r = reservesOf(s).find(x => x.id === tx.reserve) || fail('Cette réserve n’existe pas.', 'not_found');
-      if (r.closed) fail('Cette réserve est close.', 'closed');
-      if (tx.type !== 'expense' || r.wallet !== tx.accountId || tx.planned) fail('Une réserve s’utilise par une dépense depuis son portefeuille d’épargne.', 'reserve');
+      const r = reservesOf(s).find(x => x.id === tx.reserve) || fail(M.noReserve, 'not_found');
+      if (r.closed) fail(M.closed, 'closed');
+      if (tx.type !== 'expense' || r.wallet !== tx.accountId || tx.planned) fail('Une réserve s’utilise par une dépense depuis son épargne.', 'reserve');
       // revu le 2026-11-19 (avec l'utilisateur : chacun fait ce qu'il veut de son argent) : une réserve paie ce qu'on veut,
       // la seule limite est le solde de l'épargne ; la répartition (calculée) se refait d'elle-même. En une fois : seulement
       // quand l'épargne a de quoi la payer entièrement
       const need = r.amount - r.used;
-      if (r.mode === 'once' && (walletBalances(s)[r.wallet] || 0) < need) fail(`${r.name} se paie en une fois : il faut ${need.toLocaleString('fr-FR')} sur ce portefeuille.`, 'reserve_not_full');
+      const rw = s.accounts.get(r.wallet);
+      if (r.mode === 'once' && (walletBalances(s)[r.wallet] || 0) < need) fail(`${r.name} se paie en une fois : il faut ${money(need, { cur: rw?.currency })} dans ${rw?.name || 'son épargne'}.`, 'reserve_not_full');
       // pas plus que ce qu'elle vise encore (au-delà, ce n'est plus cette réserve)
-      if (Number.isSafeInteger(tx.amount) && tx.amount > need) fail(`${r.name} vise encore ${need.toLocaleString('fr-FR')} : pas plus.`, 'reserve_over');
+      if (Number.isSafeInteger(tx.amount) && tx.amount > need) fail(`Au plus ${money(need, { cur: rw?.currency })} pour ${r.name}.`, 'reserve_over');
     }
     const d = moveDraft(s, eid, tx, ctx, null);
     guardBalance(s, null, d);
@@ -594,17 +648,17 @@ const DECIDERS = {
   'entry.amend'(s, { id, tx }, ctx) {
     const e = entry(s, id);
     if (e.status === 'void') fail('Cette opération a été supprimée.', 'void');
-    if (!MOVE_KINDS.includes(e.kind)) fail('Cette écriture ne se modifie pas ici.');
+    if (!MOVE_KINDS.includes(e.kind)) fail('Cette opération ne se modifie pas ici.');
     const oldD = draftOf(s, e);
     // l'opération d'une échéance (D18, revu le 2026-11-12) : les règles de Confirmer valent aussi en la modifiant depuis
     // le Journal — ni son type ni sa catégorie ne changent, une nouvelle date reste entre la fois d'avant et aujourd'hui
     const rule = e.schedule_id ? scheduleById(s, e.schedule_id) : null;
     if (rule) {
-      if (tx.type != null && tx.type !== e.kind) fail('L’opération d’une échéance garde son type.', 'type');
-      if (tx.planned) fail('L’opération d’une échéance ne redevient pas prévue.', 'planned');
+      if (tx.type != null && tx.type !== e.kind) fail(M.typeFixed, 'type');
+      if (tx.planned) fail('Une échéance réglée ne redevient pas prévue.', 'planned');
       const old = linesToMove(e.kind, oldD.lines, x => isWallet(s, x));
       const was = old?.categoryId ?? null;
-      if (e.kind !== 'transfer' && (tx.categoryId ?? null) !== was) fail('L’opération d’une échéance garde sa catégorie.', 'category');
+      if (e.kind !== 'transfer' && (tx.categoryId ?? null) !== was) fail(M.catFixed, 'category');
       sameCurrency(s, tx.accountId, old?.accountId ?? rule.wallet, rule.currency);
       if (tx.date != null && tx.date !== e.occurred_on) confirmDate(tx.date, confirmRange(s, ctx.today, { schedule: rule.id, entry: null, date: e.due_on }));
     }
@@ -639,7 +693,7 @@ const DECIDERS = {
     const back = { ...d, status: e.status_before_void || 'posted' };
     for (const l of d.lines) {
       const a = s.accounts.get(l.account);
-      if (!a) fail('Un compte de cette opération n’existe plus.', 'not_found');
+      if (!a) fail('Un portefeuille ou une catégorie de cette opération n’existe plus.', 'not_found');
       if (a.kind === 'wallet') {
         const w = wallet(s, l.account);
         if (w.currency !== l.currency) fail(`${w.name} est passé en ${w.currency} : cette opération en ${l.currency} ne peut pas revenir.`, 'currency');
@@ -658,10 +712,10 @@ const DECIDERS = {
   // revu le 2026-11-11).
   'budget.create'(s, c, ctx) {
     const id = c.id || ctx.newId();
-    if (s.budgets.has(id)) fail('Identifiant déjà utilisé.');
+    if (s.budgets.has(id)) fail(M.idTaken);
     const b = budgetForm(s, { category: c.category, amount: c.amount, start: c.start ?? ctx.today, end: c.end, repeat: !!c.repeat }, ctx, null);
     // from : le budget terminé qu'on reconduit (D11)
-    if (c.from != null && !s.budgets.has(c.from)) fail('Ce budget n’existe pas.', 'from');
+    if (c.from != null && !s.budgets.has(c.from)) fail(M.noBudget, 'from');
     return [{ type: 'budget.created', payload: { id, category: b.category, amount: b.amount, currency: settingsOf(s).currency, start: b.start, end: b.end, repeat: b.repeat, ...(c.from ? { from: c.from } : {}) } }];
   },
 
@@ -669,11 +723,11 @@ const DECIDERS = {
   // pour une autre catégorie ou un autre début, un autre budget ; changes peut les redonner tels quels. Un ancien budget
   // mensuel prend les dates de sa période en cours.
   'budget.update'(s, { id, changes = {} }, ctx) {
-    const cur = budgetsOf(s).find(b => b.id === id) || fail('Ce budget n’existe pas.', 'not_found');
+    const cur = budgetsOf(s).find(b => b.id === id) || fail(M.noBudget, 'not_found');
     // un budget qui se répète repart de sa période en cours (même durée : rien ne change pour la suite)
     const w = (cur.repeat && currentWindow(cur, ctx.today)) || cur;
-    if ('category' in changes && changes.category !== cur.category) fail('La catégorie d’un budget ne change pas.', 'category');
-    if ('start' in changes && changes.start !== w.start && changes.start !== cur.start) fail('Le début d’un budget ne change pas.', 'start');
+    if ('category' in changes && changes.category !== cur.category) fail('La catégorie d’un budget ne change pas : crée un autre budget.', 'category');
+    if ('start' in changes && changes.start !== w.start && changes.start !== cur.start) fail('Le début d’un budget ne change pas : crée un autre budget.', 'start');
     const next = { category: cur.category, amount: cur.amount, start: w.start, end: w.end, repeat: cur.repeat };
     for (const k of /** @type {const} */ (['amount', 'end', 'repeat'])) if (k in changes) /** @type {any} */ (next)[k] = changes[k];
     const b = budgetForm(s, { ...next, repeat: !!next.repeat }, ctx, cur);
@@ -683,7 +737,7 @@ const DECIDERS = {
 
   // le budget seulement, jamais ses opérations
   'budget.delete'(s, { id }) {
-    budgetsOf(s).find(b => b.id === id) || fail('Ce budget n’existe pas.', 'not_found');
+    budgetsOf(s).find(b => b.id === id) || fail(M.noBudget, 'not_found');
     return [{ type: 'budget.deleted', payload: { id } }];
   },
 
@@ -691,15 +745,15 @@ const DECIDERS = {
   // c : wallet, name, amount, due, mode ('once' | 'gradual'), from (la réserve terminée qu'on reconduit, D17)
   'reserve.create'(s, c, ctx) {
     const w = wallet(s, c.wallet);
-    if (!w.savings) fail('Une réserve vit dans un portefeuille d’épargne.', 'savings');
-    if (w.emergency) fail(`${w.name} est ton fonds d’urgence : il ne porte pas de réserve.`, 'emergency');
-    if (w.archived_at) fail(`${w.name} est archivé.`, 'archived');
+    if (!w.savings) fail('Une réserve se crée dans une épargne.', 'savings');
+    if (w.emergency) fail(`${w.name} est ton fonds d’urgence : pas de réserve dedans.`, 'emergency');
+    if (w.archived_at) fail(archivedWallet(w.name), 'archived');
     // des réserves ou un objectif, pas les deux (2026-11-20, avec l'utilisateur) : la première réserve d'une épargne qui a
     // un objectif le retire, une fois l'utilisateur prévenu (dropGoal) ; sans cet accord, refusée
     const dropGoal = w.goal_amount != null && !reservesOf(s, { wallet: w.id, open: true }).length;
     if (dropGoal && !c.dropGoal) fail(`${w.name} a un objectif : une réserve le retire.`, 'goal');
     const id = c.id || ctx.newId();
-    if (s.reserves.has(id)) fail('Identifiant déjà utilisé.');
+    if (s.reserves.has(id)) fail(M.idTaken);
     const r = reserveFields(c, ctx, null, s);
     if (c.from != null && !reservesOf(s).some(x => x.id === c.from && x.closed)) fail('On ne reconduit qu’une réserve terminée.', 'from');
     return [...(dropGoal ? [{ type: 'wallet.updated', payload: { id: w.id, changes: { goal_amount: null, goal_on: null } } }] : []),
@@ -731,8 +785,8 @@ const DECIDERS = {
   // utilisée, avec l'opération qui fait sortir l'argent (entry : son identifiant) ; d'un coup : close
   'reserve.use'(s, { id, amount, entry = null }, ctx) {
     openReserve(s, id);
-    if (!isPositiveAmount(amount)) fail('Indique un montant.', 'amount');
-    if (entry != null && !s.entries.has(entry)) fail('Cette opération n’existe pas.', 'not_found');
+    if (!isPositiveAmount(amount)) fail(M.amount, 'amount');
+    if (entry != null && !s.entries.has(entry)) fail(M.noEntry, 'not_found');
     return [{ type: 'reserve.used', payload: { id, amount, on: ctx.today, ...(entry ? { entry } : {}) } }];
   },
 
@@ -748,7 +802,7 @@ const DECIDERS = {
   // 'month', 'year' ou null), interval (tous les combien, 1 par défaut), end, times, reserve
   'due.create'(s, c, ctx) {
     const id = c.id || ctx.newId();
-    if (s.schedules.has(id)) fail('Identifiant déjà utilisé.');
+    if (s.schedules.has(id)) fail(M.idTaken);
     const f = scheduleFields(s, c, ctx, null);
     return [{ type: 'schedule.created', payload: { id, ...f } }];
   },
@@ -764,26 +818,26 @@ const DECIDERS = {
   // - Le nombre de fois (changes.times) est celui de toute l'échéance, ses règles successives comprises (« en 12 fois ») :
   //   chaque règle en garde sa part. Une suite ne revient jamais avant sa coupe (avant, c'est la règle d'avant).
   'due.update'(s, { id, changes = {} }, ctx) {
-    const r = scheduleById(s, id) || fail('Cette échéance n’existe pas.', 'not_found');
+    const r = scheduleById(s, id) || fail(M.noDue, 'not_found');
     // une règle déjà continuée par une autre, ou arrêtée : ses retards se règlent un par un ; on modifie la plus récente
-    if (schedulesOf(s).some(x => x.from === id)) fail('Cette opération récurrente a été modifiée depuis : modifie la plus récente.', 'continued');
-    if (r.stopped) fail('Cette opération récurrente est arrêtée : ses retards se règlent un par un (Confirmer ou Passer).', 'stopped');
+    if (schedulesOf(s).some(x => x.from === id)) fail('Cette échéance a été modifiée depuis : modifie la version la plus récente.', 'continued');
+    if (r.stopped) fail('Cette échéance est arrêtée : ses retards se règlent un par un (Confirmer ou Passer).', 'stopped');
     const merged = { kind: r.kind, amount: r.amount, accountId: r.wallet, toAccountId: r.to, categoryId: r.category, note: r.note,
       start: r.start, every: r.every, interval: r.interval, end: r.end, times: r.times, reserve: r.reserve, days: r.days, ...changes };
     // une unité sans intervalle : chaque (comme avant le rythme libre)
     if ('every' in changes && !('interval' in changes)) merged.interval = 1;
-    const ended = () => fail('Cette opération récurrente est finie : il n’y a plus de date à modifier.', 'ended');
-    const notBefore = (/** @type {string} */ d) => fail(`La première date vient le ${shortDate(d)} ou plus tard (avant, c'est déjà réglé).`, 'start');
+    const ended = () => fail('Cette échéance est finie : il n’y a plus de date à modifier.', 'ended');
+    const notBefore = (/** @type {string} */ d) => fail(`Choisis une première date à partir du ${shortDate(d)} : avant, c’est déjà réglé.`, 'start');
     const [every, interval] = rhythmOf(merged.every, merged.interval);
     const reshaped = every !== r.every || (every ? interval : 1) !== (r.every ? r.interval : 1);
     // le nombre de fois voulu pour toute l'échéance (undefined : inchangé ; null : sans fin), et les fois des règles d'avant
     const total = 'times' in changes ? changes.times ?? null : undefined;
-    if (total != null && (!Number.isSafeInteger(total) || total < 1 || total > 999)) fail('Indique un nombre de fois.', 'times');
+    if (total != null && (!Number.isSafeInteger(total) || total < 1 || total > 999)) fail(M.times, 'times');
     const prior = chainOf(s, id).slice(0, -1).reduce((n, x) => n + ownCount(x), 0);
     /** Les fois qui restent à cette règle-ci : le total voulu moins celles d'avant ; sinon ce qui lui restait. @param {number} before @param {number|null} left */
     const ownLeft = (before, left) => {
       const n = total !== undefined ? (total === null ? null : total - before) : left;
-      if (n !== null && n < 1) total !== undefined ? fail(`Déjà ${before} fois avant : choisis plus de ${before}.`, 'times') : ended();
+      if (n !== null && n < 1) total !== undefined ? fail(`Il y a déjà eu ${before} fois : choisis plus de ${before}.`, 'times') : ended();
       return n;
     };
     /** Son nombre de fois à elle, compté depuis son ancrage (begins : les rangs d'avant comptent). @param {number|null} n @param {string} start @param {string|null} begins */
@@ -794,7 +848,7 @@ const DECIDERS = {
     const done = doneOf(s);
     const handled = handledDates(s, r, done);
     // le type ne change plus dès qu'une fois est réglée (D18, revu le 2026-11-12) : pour un autre, une autre échéance
-    if ('kind' in changes && changes.kind !== r.kind && settledIn(s, id)) fail('Une fois est déjà réglée : son type ne change plus. Pour un autre type, crée une autre échéance.', 'kind');
+    if ('kind' in changes && changes.kind !== r.kind && settledIn(s, id)) fail('Une date est déjà réglée : le type ne change plus. Pour un autre type, crée une autre échéance.', 'kind');
     const inPlace = () => {
       // une suite (from) ne revient pas avant sa coupe : ce qui est avant appartient à la règle d'avant
       const floor = r.begins || (r.from ? scheduleById(s, r.from)?.stopped ?? null : null);
@@ -807,7 +861,7 @@ const DECIDERS = {
         else {
           const own = nthDate(r, k0);
           if (!own) ended();
-          if (!every) fail('Choisis la date de cette échéance.', 'start');
+          if (!every) fail(M.dueDate, 'start');
           ({ start, begins } = continueAt(r.start, /** @type {string} */ (own), /** @type {any} */ (every), interval, r.every));
         }
       }
@@ -843,7 +897,7 @@ const DECIDERS = {
       if (!validDate(changes.start) || changes.start < P) notBefore(P);
       start = changes.start;
       begins = null;
-    } else if (!every) fail('Choisis la date de cette échéance.', 'start');
+    } else if (!every) fail(M.dueDate, 'start');
     // les fois d'avant la coupe : celles des règles d'avant et les siennes avant P (des dates qui ont existé : sa fin et
     // son nombre de fois comptent) ; celles qui lui restaient
     const k0 = r.begins ? gridAt(r.begins) : 0;
@@ -868,7 +922,7 @@ const DECIDERS = {
   // régler (2026-11-12, comme une modification coupe après ce qui est réglé). Un arrêt posé ne bouge plus.
   // Un seul geste (2026-11-13, avec l'utilisateur) : sans rien de réglé ni de retard, Arrêter l'efface (rien à garder).
   'due.stop'(s, { id }, ctx) {
-    const r = scheduleById(s, id) || fail('Cette échéance n’existe pas.', 'not_found');
+    const r = scheduleById(s, id) || fail(M.noDue, 'not_found');
     if (r.stopped) return [];
     if (stopErases(s, id, ctx.today)) return chainOf(s, id).reverse().map(x => ({ type: 'schedule.deleted', payload: { id: x.id } }));
     const next = nextPending(s, r, ctx.today);
@@ -878,7 +932,7 @@ const DECIDERS = {
   // Supprimer : l'échéance entière — ses règles successives (une modification la coupe en deux), avec leurs dates à venir
   // ou en retard ; jamais ses opérations confirmées (elles redeviennent des opérations comme les autres)
   'due.delete'(s, { id }) {
-    scheduleById(s, id) || fail('Cette échéance n’existe pas.', 'not_found');
+    scheduleById(s, id) || fail(M.noDue, 'not_found');
     return chainOf(s, id).reverse().map(r => ({ type: 'schedule.deleted', payload: { id: r.id } }));
   },
 
@@ -886,18 +940,18 @@ const DECIDERS = {
   'due.skip'(s, { id = null, on = null, entry: eid = null }) {
     if (eid) {
       const e = entry(s, eid);
-      if (e.status !== 'planned') fail('Cette opération n’est pas prévue.', 'not_planned');
+      if (e.status !== 'planned') fail(M.notPlanned, 'not_planned');
       return [{ type: 'entry.voided', payload: { id: eid, reason: 'passée' } }];
     }
-    const r = scheduleById(s, id) || fail('Cette échéance n’existe pas.', 'not_found');
-    if (!validDate(on) || !isDateOf(r, on)) fail('Cette date n’est pas une échéance de cette opération.', 'date');
-    if (!isPending(s, r, on)) fail('Cette échéance est déjà réglée.', 'done');
+    const r = scheduleById(s, id) || fail(M.noDue, 'not_found');
+    if (!validDate(on) || !isDateOf(r, on)) fail(M.notDateOf, 'date');
+    if (!isPending(s, r, on)) fail(M.settled, 'done');
     return [{ type: 'schedule.skipped', payload: { id, on } }];
   },
 
   // Rétablir une date passée par erreur
   'due.unskip'(s, { id, on }) {
-    const r = scheduleById(s, id) || fail('Cette échéance n’existe pas.', 'not_found');
+    const r = scheduleById(s, id) || fail(M.noDue, 'not_found');
     if (!r.skips.includes(on)) return [];
     return [{ type: 'schedule.unskipped', payload: { id, on } }];
   },
@@ -910,7 +964,7 @@ const DECIDERS = {
   'due.confirm'(s, { id = null, on = null, entry: eid = null, tx = {} }, ctx) {
     if (eid) {
       const e = entry(s, eid);
-      if (e.status !== 'planned') fail('Cette opération n’est pas prévue.', 'not_planned');
+      if (e.status !== 'planned') fail(M.notPlanned, 'not_planned');
       const d = draftOf(s, e);
       const mv = linesToMove(e.kind, d.lines, x => isWallet(s, x)) || fail('Cette opération ne se lit pas.');
       fixedFields(tx, e.kind, mv.categoryId ?? null);
@@ -921,13 +975,13 @@ const DECIDERS = {
       confirmDate(tx.date ?? base.date, range);
       return DECIDERS['entry.amend'](s, { type: 'entry.amend', id: eid, tx: { ...base, ...tx, planned: false } }, ctx);
     }
-    const r = scheduleById(s, id) || fail('Cette échéance n’existe pas.', 'not_found');
-    if (!validDate(on) || !isDateOf(r, on)) fail('Cette date n’est pas une échéance de cette opération.', 'date');
-    if (!isPending(s, r, on)) fail('Cette échéance est déjà réglée.', 'done');
+    const r = scheduleById(s, id) || fail(M.noDue, 'not_found');
+    if (!validDate(on) || !isDateOf(r, on)) fail(M.notDateOf, 'date');
+    if (!isPending(s, r, on)) fail(M.settled, 'done');
     // une à la fois (D18, revu le 2026-11-12) : d'avance, seulement la prochaine ; les retards, dans n'importe quel ordre
     if (on > ctx.today) {
       const next = nextOpenDate(s, r.id, ctx.today);
-      if (next !== on) fail(`Une à la fois : confirme d'abord celle du ${shortDate(/** @type {string} */ (next))}.`, 'order');
+      if (next !== on) fail(`Une à la fois : confirme d’abord celle du ${shortDate(/** @type {string} */ (next))}.`, 'order');
     }
     fixedFields(tx, r.kind, r.category);
     sameCurrency(s, tx.accountId, r.wallet, r.currency);
@@ -959,8 +1013,8 @@ const DECIDERS = {
  * @param {Record<string, any>} tx @param {string} kind @param {string|null} category
  */
 function fixedFields(tx, kind, category) {
-  if (tx.type != null && tx.type !== kind) fail('Une échéance se confirme avec son type : une dépense reste une dépense.', 'type');
-  if (kind !== 'transfer' && tx.categoryId != null && tx.categoryId !== category) fail('Une échéance se confirme dans sa catégorie : pour une autre, modifie l’échéance.', 'category');
+  if (tx.type != null && tx.type !== kind) fail(M.typeFixed, 'type');
+  if (kind !== 'transfer' && tx.categoryId != null && tx.categoryId !== category) fail(M.catFixed, 'category');
 }
 /**
  * Payer une échéance depuis un autre portefeuille que celui prévu (prévu MoMo, payé en espèces) : permis, mais seulement
@@ -971,13 +1025,13 @@ function fixedFields(tx, kind, category) {
 function sameCurrency(s, accountId, from, cur) {
   if (!accountId || accountId === from) return;
   const want = cur || s.accounts.get(from)?.currency;
-  if (want && s.accounts.get(accountId)?.currency !== want) fail('Une échéance se paie dans sa devise : choisis un portefeuille dans la même devise.', 'currency');
+  if (want && s.accounts.get(accountId)?.currency !== want) fail('Choisis un portefeuille dans la devise de l’échéance.', 'currency');
 }
 /** La date d'une confirmation dans ce qui est permis (confirmRange). @param {any} d @param {{ min: string|null, max: string }} range */
 function confirmDate(d, { min, max }) {
   if (!validDate(d)) fail('Choisis la date.', 'date');
   if (d > max) fail('Une échéance se confirme au plus tard aujourd’hui.', 'date');
-  if (min && d < min) fail(`Pas avant le ${shortDate(min)} : les fois de l’échéance restent dans l’ordre.`, 'date');
+  if (min && d < min) fail(`Choisis une date à partir du ${shortDate(min)} : les dates de l’échéance se règlent dans l’ordre.`, 'date');
 }
 /** @param {string} d @param {{ min: string|null, max: string }} range */
 const clampDate = (d, { min, max }) => (d > max ? max : min && d < min ? min : d);
@@ -998,39 +1052,39 @@ function rhythmOf(every, interval) {
  */
 function scheduleFields(s, c, ctx, cur, { anchored = false } = {}) {
   const kind = c.kind;
-  if (!['expense', 'income', 'transfer'].includes(kind)) fail('Type d’opération inconnu.');
-  if (Number.isSafeInteger(c.amount) && c.amount > MAX_AMOUNT) fail('Ce montant est trop grand.', 'amount');
-  if (!isPositiveAmount(c.amount)) fail('Indique un montant.', 'amount');
+  if (!['expense', 'income', 'transfer'].includes(kind)) fail(M.badKind);
+  if (Number.isSafeInteger(c.amount) && c.amount > MAX_AMOUNT) fail(M.tooBig, 'amount');
+  if (!isPositiveAmount(c.amount)) fail(M.amount, 'amount');
   const w = wallet(s, c.accountId);
-  if (w.archived_at && w.id !== cur?.wallet) fail(`${w.name} est archivé.`, 'archived');
+  if (w.archived_at && w.id !== cur?.wallet) fail(archivedWallet(w.name), 'archived');
   let to = null, cat = null, reserve = null;
   if (kind === 'transfer') {
-    if (!c.toAccountId) fail('Choisis le portefeuille de destination.', 'to');
-    if (c.toAccountId === c.accountId) fail('Choisis deux portefeuilles différents.', 'same_wallet');
+    if (!c.toAccountId) fail(M.to, 'to');
+    if (c.toAccountId === c.accountId) fail(M.sameWallet, 'same_wallet');
     const t = wallet(s, c.toAccountId);
-    if (t.archived_at && t.id !== cur?.to) fail(`${t.name} est archivé.`, 'archived');
-    if (t.currency !== w.currency) fail('Les deux portefeuilles doivent avoir la même devise.', 'currency');
+    if (t.archived_at && t.id !== cur?.to) fail(archivedWallet(t.name), 'archived');
+    if (t.currency !== w.currency) fail(M.currency, 'currency');
     to = t.id;
   } else {
-    if (!c.categoryId) fail('Choisis une catégorie.', 'category');
+    if (!c.categoryId) fail(M.pickCategory, 'category');
     const k = category(s, c.categoryId);
-    if (k.kind !== kind) fail('Cette catégorie ne correspond pas au type d’opération.', 'category');
-    if (k.archived_at && k.id !== cur?.category) fail(`La catégorie ${k.name} est archivée.`, 'archived');
+    if (k.kind !== kind) fail(catOfKind(kind), 'category');
+    if (k.archived_at && k.id !== cur?.category) fail(archivedCat(k.name), 'archived');
     cat = k.id;
   }
   if (c.reserve) {
     // la réserve qui paie une dépense (depuis son épargne), ou que remplit un virement (vers son épargne) ; jamais une rentrée
-    const r = reservesOf(s).find(x => x.id === c.reserve) || fail('Cette réserve n’existe pas.', 'not_found');
-    if (r.closed && r.id !== cur?.reserve) fail('Cette réserve est close.', 'closed');
-    if (kind === 'income') fail('Une rentrée ne passe pas par une réserve.', 'reserve');
-    if (kind === 'expense' && r.wallet !== w.id) fail('Une réserve paie depuis son portefeuille d’épargne.', 'reserve');
-    if (kind === 'transfer' && r.wallet !== to) fail('Une réserve se remplit par un virement vers son portefeuille d’épargne.', 'reserve');
+    const r = reservesOf(s).find(x => x.id === c.reserve) || fail(M.noReserve, 'not_found');
+    if (r.closed && r.id !== cur?.reserve) fail(M.closed, 'closed');
+    if (kind === 'income') fail('Un revenu ne passe pas par une réserve.', 'reserve');
+    if (kind === 'expense' && r.wallet !== w.id) fail('Une réserve paie depuis son épargne : choisis ce portefeuille.', 'reserve');
+    if (kind === 'transfer' && r.wallet !== to) fail('Une réserve se remplit par un virement vers son épargne.', 'reserve');
     reserve = r.id;
   } else if (kind === 'expense' && w.savings && !w.spend_ok && !w.emergency) {
-    fail(`${w.name} est une épargne : les dépenses n’y sont pas permises (une réserve, ou « Permettre les dépenses »).`, 'savings');
+    fail(savingsNoSpend(w.name), 'savings');
   }
   if (!validDate(c.start)) fail('Choisis la première date.', 'start');
-  if (c.start < ctx.today && c.start !== cur?.start && !anchored) fail('La première date est aujourd’hui ou plus tard.', 'start');
+  if (c.start < ctx.today && c.start !== cur?.start && !anchored) fail(notPast('La première date'), 'start');
   // rythme : une unité et tous les combien ; un ancien rythme (« quarter », « half ») devient des mois
   const old = /** @type {Record<string, number>} */ ({ quarter: 3, half: 6 })[c.every] || 0;
   const every = old ? 'month' : c.every ?? null;
@@ -1044,11 +1098,11 @@ function scheduleFields(s, c, ctx, cur, { anchored = false } = {}) {
   if (!Array.isArray(raw) || raw.some((/** @type {any} */ x) => !Number.isSafeInteger(x) || x < 1 || x > 3660)) fail('Les jours choisis sont illisibles.', 'days');
   const days = [...new Set(/** @type {number[]} */ (raw))].sort((a, b) => a - b);
   if (days.length > 62) fail('Choisis au plus 63 jours.', 'days');
-  if (every && days.length && addDays(c.start, days[days.length - 1]) >= /** @type {string} */ (nthDate({ start: c.start, every, interval }, 1))) fail('Les jours qui se répètent tiennent dans une même période (une semaine, un mois…).', 'days');
+  if (every && days.length && addDays(c.start, days[days.length - 1]) >= /** @type {string} */ (nthDate({ start: c.start, every, interval }, 1))) fail('Choisis des jours dans une même période (une semaine, un mois…).', 'days');
   const end = c.end ?? null, times = c.times ?? null;
   if (end !== null && times !== null) fail('Une fin : une date ou un nombre de fois, pas les deux.', 'end');
-  if (end !== null && (!validDate(end) || end < c.start)) fail('La fin vient après la première date.', 'end');
-  if (times !== null && (!Number.isSafeInteger(times) || times < 1 || (times > 999 && !anchored))) fail('Indique un nombre de fois.', 'times');
+  if (end !== null && (!validDate(end) || end < c.start)) fail('La fin ne peut pas venir avant la première date.', 'end');
+  if (times !== null && (!Number.isSafeInteger(times) || times < 1 || (times > 999 && !anchored))) fail(M.times, 'times');
   return { kind, amount: c.amount, currency: w.currency, wallet: w.id, to, category: cat, note: clean(c.note, 120), start: c.start,
     every, interval: every && interval > 1 ? interval : null, end: every ? end : null, times: every ? times : null, reserve,
     ...(days.length ? { days } : {}) };
@@ -1056,8 +1110,8 @@ function scheduleFields(s, c, ctx, cur, { anchored = false } = {}) {
 
 /** @param {State} s @param {string} id */
 function openReserve(s, id) {
-  const r = reservesOf(s).find(x => x.id === id) || fail('Cette réserve n’existe pas.', 'not_found');
-  if (r.closed) fail('Cette réserve est close.', 'closed');
+  const r = reservesOf(s).find(x => x.id === id) || fail(M.noReserve, 'not_found');
+  if (r.closed) fail(M.closed, 'closed');
   return r;
 }
 /**
@@ -1066,13 +1120,13 @@ function openReserve(s, id) {
  */
 function reserveFields(c, ctx, cur, s) {
   const name = clean(c.name, 28);
-  if (!name) fail('Donne-lui un nom.', 'name');
-  if (Number.isSafeInteger(c.amount) && c.amount > MAX_AMOUNT) fail('Ce montant est trop grand.', 'amount');
+  if (!name) fail(M.name, 'name');
+  if (Number.isSafeInteger(c.amount) && c.amount > MAX_AMOUNT) fail(M.tooBig, 'amount');
   if (!isPositiveAmount(c.amount)) fail('Indique le montant visé.', 'amount');
   if (cur && c.amount <= cur.used) fail('Le montant visé doit dépasser ce qui a déjà été utilisé.', 'amount');
-  if (!validDate(c.due)) fail('Choisis une échéance.', 'due');
-  if (c.due !== cur?.due && c.due < ctx.today) fail('L’échéance est aujourd’hui ou plus tard.', 'due');
-  if (c.due < (cur?.start ?? ctx.today)) fail('L’échéance vient après le début.', 'due');
+  if (!validDate(c.due)) fail('Choisis la date d’échéance.', 'due');
+  if (c.due !== cur?.due && c.due < ctx.today) fail(notPast('L’échéance'), 'due');
+  if (c.due < (cur?.start ?? ctx.today)) fail('L’échéance ne peut pas venir avant le début.', 'due');
   const mode = c.mode === 'gradual' ? 'gradual' : c.mode === 'once' || c.mode == null ? 'once' : fail('Mode inconnu.');
   let cat = c.category || null;
   // la catégorie de la dépense est obligatoire (revu le 2026-11-10 : sans elle, chaque utilisation la redemandait)
@@ -1080,8 +1134,8 @@ function reserveFields(c, ctx, cur, s) {
   if (!cat && (!cur || 'category' in c && cur.category)) fail('Choisis la catégorie de la dépense.', 'category');
   if (cat) {
     const k = category(s, cat);
-    if (k.kind !== 'expense') fail('Choisis une catégorie de dépenses.', 'category');
-    if (k.archived_at && cat !== cur?.category) fail(`La catégorie ${k.name} est archivée.`, 'archived');
+    if (k.kind !== 'expense') fail(M.pickExpenseCat, 'category');
+    if (k.archived_at && cat !== cur?.category) fail(archivedCat(k.name), 'archived');
   }
   return { name, amount: c.amount, due: c.due, mode, category: cat };
 }
@@ -1094,15 +1148,15 @@ function reserveFields(c, ctx, cur, s) {
  * @param {import('./budgets.js').Budget|null} cur budget modifié (sa catégorie archivée depuis reste permise)
  */
 function budgetForm(s, b, ctx, cur) {
-  if (!b.category) fail('Choisis une catégorie.', 'category');
+  if (!b.category) fail(M.pickCategory, 'category');
   const c = category(s, b.category);
-  if (c.kind !== 'expense') fail('Un budget se fixe sur une catégorie de dépenses.', 'category');
-  if (c.archived_at && (!cur || cur.category !== c.id)) fail(`La catégorie ${c.name} est archivée.`, 'archived');
-  if (Number.isSafeInteger(b.amount) && b.amount > MAX_AMOUNT) fail('Ce montant est trop grand.', 'amount');
-  if (!isPositiveAmount(b.amount)) fail('Indique un montant.', 'amount');
-  if (!validDate(b.start) || !validDate(b.end)) fail('Date illisible.', 'date');
-  if (b.end < ctx.today) fail('La fin doit être aujourd’hui ou plus tard.', 'end');
-  if (b.start > b.end) fail('La fin doit venir après le début.', 'date');
+  if (c.kind !== 'expense') fail(M.pickExpenseCat, 'category');
+  if (c.archived_at && (!cur || cur.category !== c.id)) fail(archivedCat(c.name), 'archived');
+  if (Number.isSafeInteger(b.amount) && b.amount > MAX_AMOUNT) fail(M.tooBig, 'amount');
+  if (!isPositiveAmount(b.amount)) fail(M.amount, 'amount');
+  if (!validDate(b.start) || !validDate(b.end)) fail(M.badDate, 'date');
+  if (b.end < ctx.today) fail(notPast('La fin'), 'end');
+  if (b.start > b.end) fail('La fin ne peut pas venir avant le début.', 'date');
   const other = budgetsOf(s).find(x => x.category === c.id && x.id !== cur?.id && overlaps(x, b, ctx.today));
   if (other) fail(`${c.name} a déjà un budget de même durée sur ces dates.`, 'overlap', { id: other.id });
   // deux budgets qui se chevauchent : le plus court ne dépasse pas le plus long (égal permis ; même devise seulement)
@@ -1110,12 +1164,12 @@ function budgetForm(s, b, ctx, cur) {
   for (const x of budgetsOf(s)) {
     if (x.category !== c.id || x.id === cur?.id || x.currency !== code || !meet(x, b, ctx.today)) continue;
     const xl = lengthOf(x);
-    const what = `${c.name} a ${money(x.amount, { cur: x.currency, hide: false })} du ${shortDate(x.start)} au ${shortDate(x.end)}`;
+    const what = `${c.name} a ${money(x.amount, { cur: x.currency })} du ${shortDate(x.start)} au ${shortDate(x.end)}`;
     // à cheval (2026-11-13, avec l'utilisateur) : un nouveau budget qui commence pendant un autre et va plus loin n'est pas
     // « dedans » — c'est presque toujours remplacer l'actuel ou le faire suivre ; la feuille propose les deux (code partial)
     const astride = !cur && !x.repeat && x.start <= b.start && b.end > x.end;
     if (astride && ((len < xl && b.amount > x.amount) || (len > xl && b.amount < x.amount))) {
-      fail(`${c.name} a déjà ${money(x.amount, { cur: x.currency, hide: false })} jusqu’au ${shortDate(x.end)}.`, 'partial', { id: x.id, end: x.end });
+      fail(`${c.name} a déjà ${money(x.amount, { cur: x.currency })} jusqu’au ${shortDate(x.end)}.`, 'partial', { id: x.id, end: x.end });
     }
     if (len < xl && b.amount > x.amount) fail(`Un budget plus court ne peut pas dépasser le plus long : ${what}.`, 'amount', { id: x.id });
     if (len > xl && b.amount < x.amount) fail(`Un budget plus long ne peut pas être plus petit que le plus court : ${what}.`, 'amount', { id: x.id });

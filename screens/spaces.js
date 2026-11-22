@@ -1,13 +1,15 @@
 // Espaces (D19, 2026-11-17 ; revu le 2026-11-19, avec l'utilisateur) : la tête de l'espace en haut de Moi ouvre leur
 // feuille — chacun avec sa tête (blobatar), l'ouvert coché ; un toucher en ouvre un autre, sans confirmation (rien ne se
-// perd) ; « Nouvel espace » demande un nom puis l'ouvre ; « Gérer les espaces » mène à leur page (renommer, supprimer).
-// Ouvrir un espace rouvre l'app (la session s'ouvre au démarrage). Supprimer demande de taper le nom ; le premier et
-// l'ouvert ne se suppriment pas.
-import { spaces, currentSpace, addSpace, renameSpace, chooseSpace, removeSpace, reopen, MAIN, DEMO } from '../core/spaces.js';
-import { esc } from '../core/format.js';
-import { renameFolderSpace } from '../core/folder.js';
+// perd) ; « Nouvel espace » demande un nom puis l'ouvre ; « Gérer les espaces » mène à leur page (renommer, archiver).
+// Ouvrir un espace rouvre l'app (la session s'ouvre au démarrage). Archiver (2026-11-21, avec l'utilisateur) redemande
+// le code ; l'espace passe dans « Archivés », en bas de la page, d'où « Rouvrir » le ramène et l'ouvre. L'espace ouvert
+// ne s'archive que par « Repartir de zéro » (aussi dans Données et sauvegarde) : le code, le nom du nouvel espace, puis
+// l'app se rouvre sur lui, vide, et l'ancien est archivé.
+import { spaces, openSpaces, archivedSpaces, currentSpace, addSpace, renameSpace, chooseSpace, archiveSpace, reopenSpace, startOver, nextSpaceName, reopen, MAIN, DEMO } from '../core/spaces.js';
+import { esc, shortDate, iso } from '../core/format.js';
 import { icon } from '../core/icons.js';
-import { buzz, menuSheet, promptSheet, typedConfirmSheet, toast, openSheet, $, $$ } from '../core/ui.js';
+import { buzz, menuSheet, promptSheet, toast, openSheet, $, $$ } from '../core/ui.js';
+import { askIdentity } from './lock.js';
 import { spaceAvatar } from '../core/avatar.js';
 
 /** @param {string} v @param {string|null} [except] */
@@ -22,9 +24,26 @@ function openSpace(s) {
 
 /** Nouvel espace : un nom, puis il s'ouvre. */
 async function newSpace() {
-  const name = await promptSheet({ title: 'Nouvel espace', text: 'Un espace vide, avec ses propres données. Tu pourras revenir ici à tout moment.', placeholder: 'Ex. Tests, Famille', yes: 'Créer et ouvrir', check: v => nameProblem(v) });
+  const name = await promptSheet({ title: 'Nouvel espace', text: `Un espace vide, avec ses propres données. Tu reviens à « ${esc(currentSpace().name)} » quand tu veux.`, placeholder: 'Ex. Tests, Famille', yes: 'Créer et ouvrir', check: v => nameProblem(v) });
   if (name === null) return;
   try { const s = addSpace(name); chooseSpace(s.id); reopen(); } catch (e) { toast(/** @type {Error} */ (e).message); }
+}
+
+/**
+ * Repartir de zéro : le code, le nom du nouvel espace (proposé), puis l'app se rouvre sur lui, vide (accueil guidé) ;
+ * l'espace ouvert est archivé, rien n'est effacé.
+ */
+export async function startOverFlow() {
+  buzz(6);
+  const cur = currentSpace();
+  if (!(await askIdentity('Repartir de zéro'))) return;
+  const name = await promptSheet({
+    title: 'Repartir de zéro',
+    text: `Un nouvel espace vide s’ouvre. « ${esc(cur.name)} » est archivé : rien n’est effacé. Tu le rouvres depuis Gérer les espaces.`,
+    value: nextSpaceName(), yes: 'Créer et ouvrir', check: v => nameProblem(v),
+  });
+  if (name === null) return;
+  try { startOver(name); reopen(); } catch (e) { toast(/** @type {Error} */ (e).message); }
 }
 
 /** Le petit texte d'un espace dans une liste. @param {{ id: string }} s @param {{ id: string }} cur */
@@ -36,13 +55,13 @@ const subOf = (s, cur) => (s.id === cur.id ? 'Ouvert' : s.id === DEMO ? 'Donnée
  */
 export function openSpacesSheet({ go }) {
   const cur = currentSpace();
-  const list = spaces();
+  const list = openSpaces();
   const s = openSheet(`<h2 class="sheet-title">Espaces</h2>
-    <div class="group plain">
+    <div class="group list-pick">
       ${list.map(x => `<button type="button" class="row" data-sp="${esc(x.id)}"><span class="sp-ava" aria-hidden="true">${spaceAvatar(x)}</span>
         <div class="main"><div class="t">${esc(x.name)}</div><div class="s">${subOf(x, cur)}</div></div>${x.id === cur.id ? `<span class="end">${icon('check')}</span>` : ''}</button>`).join('')}
       <button type="button" class="row" data-sp-new><span class="pill acc">${icon('plus')}</span><div class="main"><div class="t">Nouvel espace</div></div></button>
-      <button type="button" class="row" data-sp-manage><span class="pill acc">${icon('pencil-simple')}</span><div class="main"><div class="t">Gérer les espaces</div><div class="s">Renommer, supprimer</div></div></button>
+      <button type="button" class="row" data-sp-manage><span class="pill acc">${icon('pencil-simple')}</span><div class="main"><div class="t">Gérer les espaces</div><div class="s">Renommer, archiver</div></div></button>
     </div>`, { label: 'Espaces' });
   $$('[data-sp]', s.el).forEach(b => (b.onclick = () => {
     const x = list.find(y => y.id === b.dataset.sp);
@@ -56,20 +75,34 @@ export function openSpacesSheet({ go }) {
 
 export function render(app, { back }) {
   const cur = currentSpace();
-  const list = spaces();
+  const list = openSpaces();
+  const old = archivedSpaces();
   app.innerHTML = `<div class="screen spaces-screen no-tabs">
     <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
       <h1 class="title sm">Espaces</h1></div></div>
-    <p class="screen-help">Chaque espace a ses propres données, ses copies et ses réglages. Ils ne se mélangent jamais : ce que tu essaies dans un espace ne touche pas les autres.</p>
+    <p class="screen-help">Chaque espace a ses propres données. Un espace archivé garde tout et se rouvre quand tu veux.</p>
     <section class="section"><div class="group">
       ${list.map(s => `<button class="row" data-space="${esc(s.id)}"><span class="sp-ava" aria-hidden="true">${spaceAvatar(s)}</span>
         <div class="main"><div class="t">${esc(s.name)}</div><div class="s">${subOf(s, cur)}</div></div>${s.id === cur.id ? `<span class="end">${icon('check')}</span>` : ''}</button>`).join('')}
       <button class="row" data-new><span class="pill acc">${icon('plus')}</span><div class="main"><div class="t">Nouvel espace</div></div></button>
+      <button class="row" data-fresh><span class="pill acc">${icon('arrow-counter-clockwise')}</span><div class="main"><div class="t">Repartir de zéro</div><div class="s wrap">Un nouvel espace vide. L’espace ouvert est archivé, rien n’est effacé.</div></div></button>
     </div></section>
+    ${old.length ? `<section class="section" data-archived><div class="section-h"><span class="eyebrow">Archivés</span></div><div class="group">
+      ${old.map(s => `<button class="row" data-old="${esc(s.id)}"><span class="sp-ava" aria-hidden="true">${spaceAvatar(s)}</span>
+        <div class="main"><div class="t">${esc(s.name)}</div><div class="s">Archivé le ${esc(shortDate(iso(new Date(String(s.archived)))))}</div></div><span class="end act">Rouvrir</span></button>`).join('')}
+    </div></section>` : ''}
   </div>`;
 
   $('[data-back]', app).onclick = back;
   $('[data-new]', app).onclick = () => { buzz(6); newSpace(); };
+  $('[data-fresh]', app).onclick = () => startOverFlow();
+  // Rouvrir : l'espace revient dans la liste et l'app se rouvre dessus
+  $$('[data-old]', app).forEach(b => (b.onclick = () => {
+    const s = old.find(x => x.id === b.dataset.old);
+    if (!s) return;
+    buzz(8);
+    try { reopenSpace(s.id); reopen(); } catch (e) { toast(/** @type {Error} */ (e).message); }
+  }));
   $$('[data-space]', app).forEach(b => (b.onclick = async () => {
     const s = list.find(x => x.id === b.dataset.space);
     if (!s) return;
@@ -77,20 +110,19 @@ export function render(app, { back }) {
     const items = [
       ...(s.id !== cur.id ? [{ key: 'open', icon: 'arrows-left-right', label: 'Ouvrir cet espace' }] : []),
       { key: 'rename', icon: 'pencil-simple', label: 'Renommer' },
-      ...(s.id !== MAIN && s.id !== cur.id ? [{ key: 'remove', icon: 'trash', label: 'Supprimer', danger: true }] : []),
+      ...(s.id !== cur.id ? [{ key: 'archive', icon: 'archive', label: 'Archiver', note: 'Il passe dans Archivés, plus bas. Rien n’est effacé.' }] : []),
     ];
     const k = await menuSheet({ title: esc(s.name), items });
     if (k === 'open') return openSpace(s);
     if (k === 'rename') {
+      if (!(await askIdentity('Renommer l’espace'))) return;
       const name = await promptSheet({ title: 'Renommer l’espace', value: s.name, yes: 'Renommer', check: v => nameProblem(v, s.id) });
       if (name === null) return;
-      // son dossier de sauvegarde suit (2026-11-18) : les copies de l'espace restent ensemble
-      try { renameSpace(s.id, name); renameFolderSpace(s.name, name); render(app, { back }); } catch (e) { toast(/** @type {Error} */ (e).message); }
+      try { renameSpace(s.id, name); render(app, { back }); } catch (e) { toast(/** @type {Error} */ (e).message); }
     }
-    if (k === 'remove') {
-      const ok = await typedConfirmSheet({ title: `Supprimer « ${esc(s.name)} » ?`, text: 'L’espace disparaît de la liste. Ses fichiers restent sur ce téléphone.', name: s.name, yes: 'Supprimer' });
-      if (!ok) return;
-      try { removeSpace(s.id); toast('Espace supprimé'); render(app, { back }); } catch (e) { toast(/** @type {Error} */ (e).message); }
+    if (k === 'archive') {
+      if (!(await askIdentity('Archiver l’espace'))) return;
+      try { archiveSpace(s.id); toast('Espace archivé'); render(app, { back }); } catch (e) { toast(/** @type {Error} */ (e).message); }
     }
   }));
 }

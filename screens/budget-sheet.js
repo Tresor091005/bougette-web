@@ -158,7 +158,7 @@ export function openBudgetSheet({ id = null, category: catIn = null, amount: amo
     s.close();
     // famille (2026-11-11) : des budgets de sous-catégories plus gros que celui de leur principale, on le dit (sans refuser)
     const big = subsOver(f.category);
-    toast(big ? `Les budgets de ses sous-catégories (${money(big.subs, { cur: big.main.currency })}) dépassent celui de ${category(big.main.category)?.name || ''} (${money(big.main.amount, { cur: big.main.currency })})`
+    toast(big ? `Les budgets des sous-catégories de ${category(big.main.category)?.name || ''} (${money(big.subs, { cur: big.main.currency })}) dépassent le sien (${money(big.main.amount, { cur: big.main.currency })})`
       : b ? 'Budget enregistré' : prev ? 'Budget reconduit' : 'Budget créé');
   };
   const del = $('[data-del]', el);

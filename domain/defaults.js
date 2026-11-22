@@ -86,7 +86,7 @@ export const DEFAULT_SETTINGS = {
   blockNegative: true, // refuser les soldes négatifs (exception possible par portefeuille)
   balancesSet: false, // l'utilisateur a indiqué au moins un solde
   monthStart: 1,
-  discreet: false,
+  discreet: false, // mode discret retiré (2026-11-21) : encore écrit pour que la démo de référence ne change pas (ROADMAP, « Réglages du journal, plus légers »)
   haptics: true,
   onboarded: false,
   showVoided: false, // Journal : montrer les opérations annulées (barrées), pour un audit ponctuel

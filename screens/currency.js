@@ -34,14 +34,14 @@ export function render(app, { back, refresh }) {
         <button class="row" data-cur><span class="pill acc cur-pill">${esc(c.sym)}</span>
           <div class="main"><div class="t">${esc(c.name)}</div><div class="s">${c.code}</div></div><span class="end">${icon('caret-right')}</span></button>
       </div>
-      <p class="hint left">Celle de Disponible, des budgets et des totaux, et celle proposée pour un nouveau portefeuille. Chaque portefeuille garde sa propre devise.</p>
+      <p class="hint left">Elle sert pour Disponible, les budgets et les totaux. Elle est proposée pour un nouveau portefeuille. Chaque portefeuille garde sa devise.</p>
     </section>
 
     <section class="section"><div class="section-h"><span class="eyebrow">Estimations</span></div>
       <div class="group plain">
-        <div class="row stack"><div class="t">Arrondir à</div>${seg(stepChoices(c.code).map(n => [String(n), money(n, { cur: c.code, hide: false })]), String(stepOf(c.code)), 's-seg')}</div>
+        <div class="row stack"><div class="t">Arrondir à</div>${seg(stepChoices(c.code).map(n => [String(n), money(n, { cur: c.code })]), String(stepOf(c.code)), 's-seg')}</div>
       </div>
-      <p class="hint left">Ce que Bougette estime (tes habitudes, la Marge) s’arrondit à ce pas ; ce qu’elle te propose (ce qui manque à une épargne) va au-dessus. Tes opérations et tes soldes restent exacts.</p>
+      <p class="hint left">Ce que Bougette estime (tes habitudes, la Marge) est arrondi à ce pas. Ce qu’elle te propose (un budget, ce qu’il faut mettre de côté) est arrondi au-dessus, à un pas plus grand. Tes opérations et tes soldes restent exacts.</p>
     </section>
 
     <section class="section"><div class="section-h"><span class="eyebrow">Format</span></div>
@@ -69,7 +69,7 @@ export function render(app, { back, refresh }) {
     setSettings({ fmt: { ...settings().fmt, group: DEFAULT_FMT.group, pos: DEFAULT_FMT.pos } });
     buzz(10);
     refresh();
-    toast('Format par défaut');
+    toast('Format par défaut remis');
   };
 }
 
@@ -79,9 +79,9 @@ function paint(app) {
   const st = settings();
   const c = currencyOf(st.currency);
   const other = c.code === 'EUR' ? 'USD' : 'EUR';
-  $('[data-pv1]', app).textContent = money(1234567 * 10 ** c.dec, { hide: false });
-  $('[data-pv2]', app).textContent = `${money(-3500 * 10 ** c.dec, { hide: false })} · ${money(123450, { cur: other, hide: false, sign: true })}`;
-  $('[data-pv3]', app).textContent = `Habitudes : ${money(approx(39217 * 10 ** c.dec), { hide: false })} estimés`;
+  $('[data-pv1]', app).textContent = money(1234567 * 10 ** c.dec);
+  $('[data-pv2]', app).textContent = `${money(-3500 * 10 ** c.dec)} · ${money(123450, { cur: other, sign: true })}`;
+  $('[data-pv3]', app).textContent = `Habitudes : ${money(approx(39217 * 10 ** c.dec))} estimés`;
   fitText(app);
 }
 

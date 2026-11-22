@@ -6,7 +6,7 @@ import { linesToMove } from '../domain/ledger.js';
 /** @typedef {{ id: string, type: string, payload: string, at: string, reason: string, savedAt: string }} ReviewItem */
 /** @typedef {import('../domain/projection.js').State} State */
 
-const KIND = { expense: 'Dépense', income: 'Entrée', transfer: 'Virement' };
+const KIND = { expense: 'Dépense', income: 'Revenu', transfer: 'Virement' };
 const MONTHS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
 /** @param {string} iso */
 const day = iso => { const [y, m, d] = String(iso || '').slice(0, 10).split('-').map(Number); return y ? `${d} ${MONTHS[m - 1]}${y !== new Date().getFullYear() ? ' ' + y : ''}` : ''; };
@@ -44,7 +44,7 @@ export function describeReview(item, s, money) {
     }
   }
   const what = {
-    'entry.amended': 'Une opération modifiée', 'entry.voided': 'Une opération supprimée', 'entry.restored': 'Une opération rétablie',
+    'entry.amended': 'Une opération modifiée', 'entry.voided': 'Une opération annulée', 'entry.restored': 'Une opération rétablie',
     'wallet.created': 'Un portefeuille créé', 'wallet.updated': 'Un portefeuille modifié', 'wallet.deleted': 'Un portefeuille supprimé',
     'wallet.archived': 'Un portefeuille archivé', 'category.created': 'Une catégorie créée', 'category.updated': 'Une catégorie modifiée',
     'category.deleted': 'Une catégorie supprimée', 'budget.created': 'Un budget créé', 'budget.updated': 'Un budget modifié',
@@ -54,7 +54,7 @@ export function describeReview(item, s, money) {
   const name = typeof p.name === 'string' ? ` · ${p.name}` : typeof p.note === 'string' && p.note ? ` · ${p.note}` : '';
   const ids = [p.id, p.wallet, p.account_id, p.category, p.entry].filter(x => typeof x === 'string');
   const why = item.type.startsWith('wallet.') || item.type.startsWith('category.') || item.type.startsWith('entry.')
-    ? (ids.some(id => !accounts.has(id) && !(/** @type {any} */ (s).entries?.has?.(id))) ? 'Il a été supprimé sur un autre appareil.' : 'Un autre appareil avait déjà changé la même chose.')
+    ? (ids.some(id => !accounts.has(id) && !(/** @type {any} */ (s).entries?.has?.(id))) ? 'Un autre appareil avait déjà supprimé ce qui était concerné.' : 'Un autre appareil avait déjà changé la même chose.')
     : 'Un autre appareil avait déjà changé la même chose.';
-  return { title: what + name, sub: `Fait ici ${day(item.at)}`, why, redo: null };
+  return { title: what + name, sub: `Fait sur ce téléphone le ${day(item.at)}`, why, redo: null };
 }

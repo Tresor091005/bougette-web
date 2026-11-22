@@ -124,16 +124,3 @@ export async function merged(local, remote, plan) {
   const r = await rebase(remote, local.slice(plan.k));
   return { events: r.events, state: r.state, skipped: r.skipped };
 }
-
-/** Ce qu'un événement mis de côté voulait faire, en mots simples. @param {StoredEvent} e */
-export function describeEvent(e) {
-  /** @type {any} */
-  let p = {};
-  try { p = JSON.parse(e.payload); } catch (err) { /* contenu illisible */ }
-  const what = {
-    entry: 'une opération', wallet: 'un portefeuille', category: 'une catégorie', budget: 'un budget', reserve: 'une réserve',
-    schedule: 'une échéance', settings: 'un réglage', app: 'un réglage',
-  }[e.type.split('.')[0]] || 'un changement';
-  const name = typeof p.name === 'string' ? ` « ${p.name} »` : typeof p.note === 'string' && p.note ? ` « ${p.note} »` : '';
-  return what + name;
-}

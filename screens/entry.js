@@ -25,7 +25,7 @@ import {
   addTx, updateTx, confirmDue, account, category, accounts, categories, subcategories, categoryLabel, transactions, pref, accCur, balances,
   checkBalance, plannedWarning, checkWallet, available, settings, openReserves, savingsReport, reserveById,
   spendImpact, dueRange, scheduleById } from '../core/store.js';
-import { openSheet, keypad, exprHTML, exprCharsHTML, buzz, seg, wireSeg, fitText, shake, cueMotion, reducedMotion, setSeg, afterSheets, confirmSheet, chip, toast, $, $$ } from '../core/ui.js';
+import { openSheet, keypad, exprHTML, exprCharsHTML, buzz, seg, wireSeg, fitText, shake, reducedMotion, setSeg, afterSheets, confirmSheet, chip, toast, $, $$ } from '../core/ui.js';
 import { icon, catIcon } from '../core/icons.js';
 import { today, dayLabel, shortDate, esc, money, currencyOf, parse, addDays } from '../core/format.js';
 import { MAX_AMOUNT, dividesByZero } from '../domain/money.js';
@@ -52,7 +52,7 @@ function dateLabel(d) {
   const y = d.slice(0, 4) !== today().slice(0, 4) ? ` ${d.slice(0, 4)}` : '';
   return s.charAt(0).toUpperCase() + s.slice(1) + y;
 }
-const m = (v, cur) => money(v, { cur, hide: false });
+const m = (v, cur) => money(v, { cur });
 
 // Effet d'une opération (payée) sur le solde d'un portefeuille.
 function effect(t, accId) {
@@ -118,7 +118,7 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
     <div class="e-from" data-from></div>
     <div class="e-stage">
       <div class="e-q" data-q hidden>
-        <p class="e-help">Compte l’argent que tu as vraiment : Bougette corrige son solde.</p>
+        <p class="e-help">Compte ton argent : Bougette corrige son solde.</p>
         <p class="e-qt">Combien as-tu vraiment dessus ?</p>
       </div>
       <div class="e-expr" data-expr aria-live="polite"></div>
@@ -190,7 +190,7 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
     if (st.type === 'transfer' && st.toAccountId) {
       const b = account(st.toAccountId);
       if (st.toAccountId === st.accountId) return { block: true, text: 'Choisis deux portefeuilles différents.' };
-      if (b && b.currency !== a.currency) return { block: true, text: `Pas de virement entre ${esc(currencyOf(a.currency).long)} et ${esc(currencyOf(b.currency).long)} pour l’instant.` };
+      if (b && b.currency !== a.currency) return { block: true, text: 'Pas de virement entre deux devises.' };
     }
     if (!st.planned && st.date > today()) {
       return canPlan
@@ -288,7 +288,7 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
     // dépense depuis une épargne (D17) : il faut une réserve (ou « Autre dépense » si le portefeuille le permet)
     const needRes = savingsSpend() && !st.reserveId && !(st.other && st.categoryId);
     if (needRes) {
-      goLbl.textContent = account(st.accountId)?.spendOk ? 'Choisis d’abord une réserve ou une autre dépense' : 'Choisis d’abord une réserve';
+      goLbl.textContent = account(st.accountId)?.spendOk ? 'Réserve ou autre dépense ?' : 'Choisis une réserve';
       goBtn.disabled = true;
       goBtn.classList.remove('need');
       return;
@@ -299,7 +299,6 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
     const c = st.type === 'transfer' || noCat ? null : category(st.categoryId); // un virement n'a pas de catégorie
     if (short) goLbl.textContent = 'Solde insuffisant';
     else if (problem && problem.label) goLbl.textContent = problem.label;
-    else if (st.amount && needRes) goLbl.textContent = due ? 'Choisis un autre portefeuille' : account(st.accountId)?.spendOk ? 'Choisis une réserve ou une autre dépense' : 'Choisis une réserve';
     else if (st.amount && noCat) goLbl.textContent = 'Choisis une catégorie';
     else goLbl.innerHTML = `${icon('check')}<span class="go-t">${st.amount ? `${verb} <small>${m(st.amount, cur())}</small>` : verb}</span>${st.amount && c ? `<span class="go-c">· ${esc(c.name)}</span>` : ''}`;
     goBtn.disabled = !st.amount || noCat || !!(problem && problem.block);
@@ -311,7 +310,7 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
     // virement (2026-11-10) : logo et nom seulement — ni « De / À » (la flèche et l'ordre disent le sens, le lecteur
     // d'écran les lit), ni chevron (toute la pastille se touche) : le nom a presque deux fois plus de place
     const one = (acc, lbl, attr) => lbl
-      ? `<button type="button" class="e-wallet tw" ${attr} aria-label="${lbl} ${esc(acc?.name || 'choisir')}">${acc ? accountPill(acc, 'sm') : `<span class="pill acc sm">${icon('wallet')}</span>`}<b>${esc(acc?.name || 'Choisir')}</b></button>`
+      ? `<button type="button" class="e-wallet tw" ${attr} aria-label="${lbl} : ${acc ? esc(acc.name) : 'à choisir'}">${acc ? accountPill(acc, 'sm') : `<span class="pill acc sm">${icon('wallet')}</span>`}<b>${esc(acc?.name || 'Choisir')}</b></button>`
       : `<button type="button" class="e-wallet" ${attr}>${acc ? accountPill(acc, 'sm') : `<span class="pill acc sm">${icon('wallet')}</span>`}
       <b>${esc(acc?.name || 'Choisir')}</b>${acc ? `<span class="bal${(bal[acc.id] || 0) < 0 ? ' loss' : ''}">${m(bal[acc.id] || 0, acc.currency)}</span>` : ''}${icon('caret-down')}</button>`;
     $('[data-from]', el).innerHTML = st.type === 'transfer'
@@ -544,7 +543,7 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
     // réserve choisie sans catégorie : on la demande d'un toucher (rien ne s'ouvre tout seul)
     const needCat = v && !st.categoryId ? `<button type="button" class="sc need" data-needcat>${icon('squares-four')}<span>Catégorie ?</span></button>` : '';
     const other = w.spendOk ? `<button type="button" class="sc${oc ? ' on' : ' more'}" data-other${oc ? ` style="--c:var(--${oc.color || 'c0'})"` : ''}>${icon('squares-four')}<span>${oc ? `Autre · ${esc(oc.name)}` : 'Autre dépense'}</span></button>` : '';
-    host.innerHTML = pick + needCat + other || `<p class="rs-none">Rien n’est mis de côté dans une réserve de ${esc(w.name)}, et ce portefeuille ne permet pas les dépenses (réglage dans sa fiche).</p>`;
+    host.innerHTML = pick + needCat + other || `<p class="rs-none">Aucune réserve dans ${esc(w.name)}, et les autres dépenses n’y sont pas permises (voir sa fiche).</p>`;
     host.onclick = async e => {
       const t2 = /** @type {HTMLElement} */ (e.target);
       if (t2.closest('[data-needcat]')) {
@@ -625,7 +624,7 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
             <div class="s">${v.full ? `${m(v.saved, cur)} prêts` : `${m(v.saved, cur)} sur ${m(v.target, cur)}`}${c ? ` · ${esc(c.name)}` : ''}</div></div>${on ? icon('check') : ''}</button>`;
         }).join('')}
         ${st.reserveId ? `<button type="button" class="row" data-r=""><span class="pill">${icon('x')}</span><div class="main"><div class="t">Aucune</div></div></button>` : ''}</div>
-        <p class="muted rs-say">En une fois : tout ce qu’elle vise est payé, puis elle se ferme. En plusieurs fois : elle baisse de ce montant et reste ouverte.</p>`,
+        <p class="muted rs-say">En une fois : payée en entier, puis fermée. En plusieurs fois : elle baisse et reste ouverte.</p>`,
         { label: 'Utiliser une réserve', onClose: () => resolve(picked) });
       $$('[data-r]', sh.el).forEach(x => (x.onclick = () => { picked = /** @type {HTMLElement} */ (x).dataset.r || null; buzz(6); sh.close(); }));
     });
@@ -767,7 +766,7 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
     // (une opération déjà notée : seulement si on change son montant)
     if (planned && planned.amount > 0 && cur() === planned.currency && (!editing || st.amount !== tx.amount) && Math.abs(st.amount - planned.amount) > planned.amount / 2) {
       const said = money(st.amount, { cur: cur() });
-      const yes = await confirmSheet({ title: `${said} au lieu de ${money(planned.amount, { cur: planned.currency })} ?`, text: 'C’est loin du montant prévu : peut-être une faute de frappe.', yes: `Oui, ${said}`, cancel: 'Corriger' });
+      const yes = await confirmSheet({ title: `${said} au lieu de ${money(planned.amount, { cur: planned.currency })} ?`, text: 'Loin du montant prévu : faute de frappe ?', yes: `Oui, ${said}`, cancel: 'Corriger' });
       if (!yes) return;
       await new Promise(done => afterSheets(done));
     }
@@ -778,11 +777,9 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
       ...(st.type === 'transfer' ? { toAccountId: st.toAccountId } : { categoryId: st.categoryId }),
     };
     pref('lastAccount', st.accountId);
-    // D5 : bouton tassé, coche dessinée (260 ms), vibration 12 ms, puis la feuille descend (460 ms) ;
-    // l'accueil répond ensuite (compteur, barre du jour, bocal).
+    // D5 : bouton tassé, coche dessinée (260 ms), vibration 12 ms, puis la feuille descend (460 ms)
     buzz(12);
     goBtn.classList.add('done');
-    cueMotion({ type: st.type, categoryId: data.categoryId || null, amount: st.amount });
     // la confirmation, c'est ce mouvement (pas de bandeau) ; un refus d'écriture s'affiche par le message d'erreur du magasin
     if (savingsSpend() && st.reserveId && usableReserves().some(v => v.reserve.id === st.reserveId)) data.reserve = st.reserveId;
     const write = editing ? updateTx(tx.id, data) : due ? confirmDue(due, data) : addTx(data);
@@ -814,7 +811,7 @@ function pickEntryCategory({ type, current }) {
     const s = openSheet(`<h2 class="sheet-title">${type === 'income' ? 'Catégorie du revenu' : 'Catégorie'}</h2>
       ${catSearchHTML()}
       <div class="cl" data-tree>${catTreeHTML({ type, current })}</div>
-      <div class="cl-none" data-none hidden>${NONE_ILLU}<p class="cl-none-t">Aucune catégorie ne correspond à ta recherche.</p><p class="cl-none-s">Crée-la : elle sera là la prochaine fois.</p>
+      <div class="cl-none" data-none hidden>${NONE_ILLU}<p class="cl-none-t">Pas de catégorie à ce nom.</p><p class="cl-none-s">Crée-la, elle restera.</p>
         <button type="button" class="btn primary sm" data-create>${icon('plus')}<span class="cl-c">Créer «&nbsp;<span class="cl-n" data-create-l></span>&nbsp;»</span></button></div>`, { cls: 'pick-sheet', label: 'Catégorie', onClose: () => resolve(picked) });
     const tree = $('[data-tree]', s.el), q = $('input[data-q]', s.el);
     paintTree(tree);
@@ -848,7 +845,7 @@ function editNote(current, { type, categoryId }) {
     const s = openSheet(`<div class="note-sheet"><h2 class="sheet-title">Note</h2>
       <label class="field"><span class="sr">Note</span><input data-in maxlength="80" value="${esc(current)}" placeholder="Ex. Marché Dantokpa" enterkeyhint="done" autocomplete="off"></label>
       <div class="note-sugg" data-sugg></div>
-      <button type="button" class="btn primary" data-ok>${icon('check')}OK</button></div>`, { cls: 'compact', label: 'Note', onClose: () => resolve(out) });
+      <button type="button" class="btn primary" data-ok>${icon('check')}OK</button></div>`, { label: 'Note', onClose: () => resolve(out) });
     const input = $('[data-in]', s.el), sugg = $('[data-sugg]', s.el);
     const moves = transactions().filter(t => t.type === type && !UNTRACKED_IDS.has(t.categoryId));
     let list = [];

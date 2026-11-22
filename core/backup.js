@@ -1,20 +1,21 @@
-// Sauvegarde (ROADMAP 1b, 2026-11-09) : copies automatiques vérifiées sur le téléphone (src/data/copies.js), sauvegarde
-// hors du téléphone (partage du fichier du journal), restauration depuis une copie ou un fichier, et les messages de la
-// cloche quand l'intégrité est atteinte ou que la dernière sauvegarde hors du téléphone date.
-import { session, pref, transactions } from './store.js';
-import { today } from './format.js';
-import { autoCopy, safetyCopy, safetyCopyText, openCopyStore, checkJournalText } from '../data/copies.js';
+// Sauvegarde (ROADMAP 1b, 2026-11-09) : copies automatiques vérifiées sur le téléphone (src/data/copies.js), copies de
+// sécurité, restauration depuis une copie, le message de la cloche quand l'intégrité est atteinte ; « Vérifier mes
+// données ». Hors du téléphone, c'est la synchro Google Drive (D21) qui garde le journal.
+import { session, migrateIcons, refuseNegatives } from './store.js';
+import { today, iso } from './format.js';
+import { autoCopy, safetyCopy, safetyCopyText, openCopyStore, checkJournalText, pickHeal, keepUntil, isSafety, safetyReason } from '../data/copies.js';
 import { currentStorage, currentSpace, spaces, storageOf } from './spaces.js';
 import { openDb } from '../data/db.js';
 import { openSession } from '../data/session.js';
-import { folderName, folderCopies, writeToFolder } from './folder.js';
-import { seal, unseal } from '../data/seal.js';
-import { exportText, importText } from './devtools.js';
 import { notify, resolve } from './inbox.js';
 
-const DAY = 86400e3;
-/** rappel « hors du téléphone » : au-delà de 14 jours sans, et pas plus d'une fois par semaine */
-const EXTERNAL_DAYS = 14;
+// Remplace toutes les données par celles du journal, après vérification de la chaîne et de l'empreinte d'état.
+// Les icônes d'un journal ancien sont ensuite migrées (D7) par une commande, visible dans le journal.
+/** @param {string} text */
+async function importText(text) { const { hash } = await session.importJournal(text); await migrateIcons(); await refuseNegatives(); return hash; }
+
+/** « Vérifier mes données » (2026-11-21) : chaîne d'empreintes, partie double, devises, soldes, projections = rejeu. */
+export const verifyData = () => session.verify();
 
 /** @type {Promise<import('../data/copies.js').CopyStore>|null} */
 let storeP = null;
@@ -23,36 +24,28 @@ const store = () => (storeP ||= openCopyStore(currentStorage())); // les copies 
 /** Les copies sur ce téléphone, la plus récente d'abord. */
 export const listCopies = async () => (await store()).list();
 
-/** Date de la dernière sauvegarde hors du téléphone (ISO), ou null. */
-export const lastExternal = () => /** @type {string|null} */ (pref('lastExternal'));
-
 /**
- * Copie du jour si elle est due, puis messages : problème d'intégrité (ou sa disparition), rappel hors du téléphone.
- * @param {{ force?: boolean }} [o] force : copie tout de suite (bouton « Copier maintenant »)
+ * Copie du jour si elle est due, puis le message d'intégrité (ou sa disparition).
+ * @param {{ force?: boolean }} [o] force : copie tout de suite (avant une mise à jour)
  */
 export async function dailyCopy({ force = false } = {}) {
   let r;
   try { r = await autoCopy({ session, store: await store(), force }); } catch (e) { console.error('Copie automatique impossible', e); return { status: 'error' }; }
   if (r.status === 'broken') {
-    const p = r.problems[0];
     notify({
-      key: 'integrity', kind: 'error', title: 'Problème d’intégrité',
-      body: `${p.name} : ${p.detail}. ${r.last ? 'Tes copies saines restent disponibles.' : 'Aucune copie saine encore.'}`,
-      action: r.last ? { label: 'Restaurer', id: 'backup' } : undefined,
+      key: 'integrity', kind: 'error', title: 'Tes données ont un souci', body: 'Répare-les : on te dit avant ce qui serait perdu.',
+      action: { label: 'Réparer', id: 'heal' },
     });
-  } else {
-    resolve('integrity');
-    await toFolder(r.status === 'done' ? r.copy.text : null);
-  }
-  remindExternal();
+  } else resolve('integrity');
+  resolve('external'); // l'ancien rappel « Sauvegarde hors du téléphone » (retiré le 2026-11-21) quitte la cloche
+  resolve('folder'); // le dossier de sauvegarde (retiré le 2026-11-21) aussi
   return r;
 }
 
 /**
  * Les autres espaces aussi (2026-11-19, avec l'utilisateur) : une fois par jour, après la copie de l'espace ouvert, chaque
  * autre espace est ouvert en arrière-plan, vérifié et copié comme lui (rien de nouveau : rien n'est écrit), puis
- * refermé ; s'il n'a encore aucune copie dans le dossier choisi, la sienne y part. Un espace fermé dont la base
- * s'abîme se voit ainsi tout de suite (la cloche le nomme), et aucun n'est absent du dossier. Ne bloque rien.
+ * refermé. Un espace fermé dont la base s'abîme se voit ainsi tout de suite (la cloche le nomme). Ne bloque rien.
  */
 export async function copyOtherSpaces() {
   const KEY = 'bougette:spacesCopiedAt';
@@ -68,15 +61,11 @@ export async function copyOtherSpaces() {
       const ses = await openSession({ db, today });
       const r = await autoCopy({ session: ses, store: await openCopyStore(st) });
       if (r.status === 'broken') {
-        const p = r.problems[0];
-        notify({ key: `integrity:${sp.id}`, kind: 'error', title: `Problème d’intégrité · ${sp.name}`,
-          body: `${p.name} : ${p.detail}. ${r.last ? 'Ses copies saines restent disponibles : ouvre cet espace pour restaurer.' : 'Aucune copie saine encore.'}` });
+        notify({ key: `integrity:${sp.id}`, kind: 'error', title: `Problème dans « ${sp.name} »`,
+          body: 'Ouvre-le pour le réparer.', action: { label: 'Ouvrir', id: `space:${sp.id}` } });
         continue;
       }
       resolve(`integrity:${sp.id}`);
-      if (folderName() && (r.status === 'done' || !folderCopies(sp.name).length)) {
-        writeToFolder(await seal(r.status === 'done' ? r.copy.text : await ses.exportJournal()), new Date(), sp.name);
-      }
     } catch (e) {
       console.error(`Copie de l’espace ${sp.name} impossible`, e);
     } finally {
@@ -86,64 +75,81 @@ export async function copyOtherSpaces() {
   try { localStorage.setItem(KEY, new Date().toISOString()); } catch (e) { /* rien */ }
 }
 
-/**
- * Copie hors de l'app (D15, 2026-11-17) : une nouvelle copie va aussi, chiffrée, dans le dossier choisi ; s'il n'y en a
- * encore aucune pour cet espace (dossier tout juste choisi), l'état présent y part tout de suite. Un échec le dit dans la cloche.
- * @param {string|null} text le journal de la nouvelle copie, ou null (rien de nouveau)
- */
-async function toFolder(text) {
-  if (!folderName()) return;
-  if (text === null && folderCopies().length) return;
-  try {
-    if (!writeToFolder(await seal(text ?? await exportText()))) throw new Error('écriture');
-    resolve('folder');
-  } catch (e) {
-    console.error('Copie dans le dossier impossible', e);
-    notify({ key: 'folder', kind: 'warn', title: 'Dossier de sauvegarde', body: 'La copie n’a pas pu être écrite dans le dossier. Rechoisis-le dans Données et sauvegarde.', action: { label: 'Ouvrir', id: 'backup' } });
-  }
-}
-/** Écrit tout de suite l'état présent dans le dossier (après l'avoir choisi). */
-export const copyToFolderNow = () => toFolder(null);
-
-/** Rappel de sauvegarde hors du téléphone (une fois par semaine au plus, seulement s'il y a des opérations). */
-function remindExternal() {
-  if (!transactions().length) return;
-  const last = lastExternal();
-  const days = last ? Math.floor((Date.now() - Date.parse(last)) / DAY) : null;
-  if (days !== null && days < EXTERNAL_DAYS) { resolve('external'); return; }
-  notify({
-    key: 'external', kind: 'warn', title: 'Sauvegarde hors du téléphone',
-    body: days === null ? 'Aucune encore : si le téléphone disparaît, ton journal disparaît avec lui.' : `La dernière date de ${days} jours.`,
-    action: { label: 'Sauvegarder', id: 'share' },
-  }, { every: 7 * DAY });
-}
-
-/** Le fichier à partager : le journal complet, chiffré (lisible seulement par Bougette), et son nom. */
-export async function journalFile() {
-  return { name: `bougette-${today()}.bougette`, text: await seal(await exportText()) };
-}
-/** À appeler une fois le fichier partagé (ou téléchargé). */
-export function markExternal() {
-  pref('lastExternal', new Date().toISOString());
-  resolve('external');
-}
-
-/** Relit un fichier avant de restaurer (chiffré ou en clair) : ce qu'il contient, ou une erreur lisible. @param {string} text */
-export const inspect = async text => checkJournalText(await unseal(text));
+/** Relit une copie avant de la restaurer : ce qu'elle contient, ou une erreur lisible. @param {string} text */
+export const inspect = async text => checkJournalText(text);
 
 /**
  * Copie de sécurité de l'état présent avant une action qui remplace tout (D15, 2026-11-17) ; rejette si elle est impossible.
- * @param {'reset'|'restore'|'sync'} reason sync : avant de refaire les changements du téléphone par-dessus ceux d'un autre appareil (D21)
+ * @param {'restore'|'sync'} reason sync : avant de refaire les changements du téléphone par-dessus ceux d'un autre appareil (D21)
  */
-export const keepSafety = async reason => safetyCopy({ session, store: await store(), reason });
+const keepSafety = async reason => safetyCopy({ session, store: await store(), reason });
 /** Copie de sécurité d'un journal donné (la synchro, juste avant de réécrire celui du téléphone, D21). @param {string} text */
 export const keepSafetyText = async text => safetyCopyText({ store: await store(), reason: 'sync', text });
 
-/** Restaure exactement l'état d'un journal (copie ou fichier, chiffré ou en clair), après vérification, et après une copie de sécurité de l'état présent. @param {string} text */
+/**
+ * Restaure exactement l'état d'un journal (une copie), après vérification, et après une
+ * copie de sécurité de l'état présent. Dans un espace synchronisé, le journal restauré remplace celui du Drive à la
+ * synchro suivante (D21 : session.importJournal le marque), au lieu d'être rejoint avec lui.
+ * @param {string} text
+ */
 export async function restore(text) {
-  const plain = await unseal(text);
-  await keepSafety('restore');
-  const hash = await importText(plain);
+  // l'état présent d'abord ; abîmé, il ne se recopie pas (une copie fausse ne se restaurerait pas) : on passe
+  await keepSafety('restore').catch(async e => { if ((await session.verify()).every((/** @type {{ ok: boolean }} */ c) => c.ok)) throw e; });
+  const hash = await importText(text);
   resolve('integrity');
   return hash;
+}
+
+/**
+ * Réparer (2026-11-21, avec l'utilisateur) : ce qui est sain et garde le plus (data/copies.js pickHeal), parmi le journal
+ * du téléphone, ses copies et le journal du Drive. Null si rien n'est sain.
+ * @param {string|null} [driveText] le journal du Drive en clair (D21), s'il y en a un
+ */
+export async function healPlan(driveText = null) {
+  return pickHeal({ events: await session.events(), journalText: session.journalText, copies: await listCopies(), driveText });
+}
+
+/**
+ * Répare d'après healPlan. Journal intact : les tables sont refaites depuis lui, rien d'autre ne bouge. Le journal du
+ * Drive repris tel quel ne le réécrit pas ; sinon, comme Restaurer, l'état repris remplace celui du Drive (gardé à côté, D21).
+ * @param {import('../data/copies.js').Heal} plan
+ */
+export async function heal(plan) {
+  if (plan.from === 'journal' && !plan.lost) await session.rebuild();
+  else {
+    await importText(plan.text);
+    if (plan.from === 'drive') await session.clearForce();
+  }
+  resolve('integrity');
+}
+
+const dayOf = (/** @type {string} */ at) => iso(new Date(at));
+/** Le premier jour du journal (rien avant), ou null s'il est vide. */
+export async function firstDay() {
+  const events = await session.events();
+  return events.length ? dayOf(events[0].at) : null;
+}
+
+/**
+ * L'état à la fin d'un jour passé (data/copies.js keepUntil), relu et rejoué : son journal, ses opérations ; null si
+ * rien n'a changé depuis (c'est l'état présent). Rejette si le journal est abîmé là (Réparer s'en occupe).
+ * @param {string} day AAAA-MM-JJ
+ * @returns {Promise<{ text: string, ops: number }|null>}
+ */
+export async function stateAt(day) {
+  const events = await session.events();
+  const n = keepUntil(events, day, dayOf);
+  if (n === events.length) return null;
+  const text = await session.journalText(events.slice(0, n));
+  return { text, ops: (await checkJournalText(text)).ops };
+}
+
+/**
+ * Annuler le dernier retour (2026-11-21, avec l'utilisateur) : la copie de sécurité faite juste avant la dernière
+ * restauration ou le dernier retour en arrière, si elle a moins de 7 jours ; sinon null.
+ * @param {Date} [now]
+ */
+export async function lastReturn(now = new Date()) {
+  const c = (await listCopies()).find(x => isSafety(x) && safetyReason(x) === 'restore');
+  return c && now.getTime() - Date.parse(c.at) < 7 * 86400e3 ? c : null;
 }

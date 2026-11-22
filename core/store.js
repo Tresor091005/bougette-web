@@ -21,8 +21,9 @@ export { KINDS, KIND_LABEL } from '../domain/defaults.js';
 // Les réglages et petites préférences sont ceux de l'espace ouvert (D19) ; le premier espace garde « cauri: ».
 const SPACE = currentStorage();
 const PREFIX = SPACE.prefix;
-// Le verrouillage (D16) protège l'app entière : ses préférences sont communes à tous les espaces.
-const GLOBAL_PREFS = new Set(['lock', 'lockFails', 'style', 'autoUpdate', 'updateCheckedAt']);
+// Le verrouillage (D16) protège l'app entière : ses préférences sont communes à tous les espaces, comme le style, les mises
+// à jour et la page Développeur ouverte (« dev », 2026-11-21).
+const GLOBAL_PREFS = new Set(['lock', 'lockOpen', 'lockFails', 'style', 'autoUpdate', 'updateCheckedAt', 'dev']);
 function read(key, fallback, prefix = PREFIX) {
   try {
     const v = localStorage.getItem(prefix + key);
@@ -54,7 +55,7 @@ async function start() {
     return await openSession({ db: await openDb({ url: SPACE.db, idbName: SPACE.idb }), ...opts });
   } catch (e) {
     console.error('Base de données indisponible', e);
-    storageWarning = 'Stockage indisponible : les données de cette session ne seront pas gardées.';
+    storageWarning = 'Bougette ne peut pas enregistrer sur cet appareil. Ce que tu notes sera perdu en fermant l’app.';
     // en mémoire : les anciennes données sont montrées mais pas marquées converties (elles le seront quand la base marchera)
     return openSession({ db: await openWasmDb({ persist: false }), ...opts, onLegacyDone: null });
   }
@@ -95,7 +96,7 @@ const S = () => session.state;
 // Format des montants.
 function syncFormat() {
   const st = settings();
-  configureFormat({ currency: st.currency, fmt: st.fmt, discreet: st.discreet, steps: st.steps || {} });
+  configureFormat({ currency: st.currency, fmt: st.fmt, steps: st.steps || {} });
 }
 
 export const subscribe = fn => session.subscribe(fn);
@@ -108,7 +109,7 @@ async function run(cmds) {
     return await session.dispatch(cmds);
   } catch (e) {
     if (e instanceof DomainError) onError(e.message);
-    else { console.error(e); onError('Enregistrement impossible. Réessaie.'); }
+    else { console.error(e); onError('Ça n’a pas marché, rien n’a changé. Réessaie.'); }
     return null;
   }
 }
@@ -120,7 +121,7 @@ async function runOwn(cmds, own) {
     return await session.dispatch(cmds);
   } catch (e) {
     if (e instanceof DomainError) own(e.message, e.code, e.detail);
-    else { console.error(e); onError('Enregistrement impossible. Réessaie.'); }
+    else { console.error(e); onError('Ça n’a pas marché, rien n’a changé. Réessaie.'); }
     return null;
   }
 }
@@ -262,10 +263,6 @@ export async function deleteTx(id) {
 export const restoreTx = t => run([{ type: 'entry.restore', id: typeof t === 'string' ? t : t.id }]);
 // Chronologie d'une opération.
 export const entryHistory = id => Q.historyOf(S(), id);
-// Opérations supprimées (annulées), la plus récemment supprimée d'abord : elles restent consultables et rétablissables.
-export const deletedTransactions = () => lazy('deletedTx', s => [...s.entries.values()]
-  .filter(e => e.status === 'void').sort((a, b) => (a.voided_at < b.voided_at ? 1 : a.voided_at > b.voided_at ? -1 : 0))
-  .map(e => Q.txById(s, e.id)).filter(Boolean));
 // Toutes les opérations, annulées comprises, avec la marque « corrigée » (D6).
 export const moves = () => lazy('moves', Q.moveList);
 export const txById = id => Q.txById(S(), id);
@@ -363,7 +360,7 @@ export function previewDueUpdate(id, changes) {
   } catch (e) {
     if (e instanceof DomainError) return { list: null, error: e.message };
     console.error(e);
-    return { list: null, error: 'Aperçu impossible.' };
+    return { list: null, error: 'Impossible de calculer les prochaines dates.' };
   }
 }
 /** Échéances à régler jusqu'à une date (Journal « À venir »), retards compris. @param {string} until */
@@ -484,11 +481,6 @@ export const updateReserve = (id, changes, { onError: own = null } = {}) => runO
 export const reduceReserve = (id, to) => run([{ type: 'reserve.reduce', id, to }]);
 export const closeReserve = id => run([{ type: 'reserve.close', id }]);
 export const setSettings = patch => run([{ type: 'settings.change', changes: patch }]);
-
-// Efface tout et revient au premier lancement (journal neuf).
-export async function resetAll() {
-  try { await session.reset(); } catch (e) { console.error(e); onError('Effacement impossible.'); }
-}
 
 // Export CSV (séparateur « ; », virgule décimale, lisible par un tableur en français).
 // Le montant est dans l'unité de la devise de son portefeuille (colonne « devise »).

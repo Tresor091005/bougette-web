@@ -18,6 +18,7 @@
   --accent: #4F63C9; --accent-text: #8EA0E6; --accent-soft: #232A45; --on-accent: #FFFFFF;
   --gain: #74B893; --loss: #E2806B;
   --brand: #2B3F86; --brand-ink: #F5F5F2; /* indigo et ivoire de marque (logo, icône) */
+  --stone: #D9DBE3; --on-stone: #121317; /* tuile claire et barres de l'accueil (D3) */
   --scrim: rgba(0, 0, 0, .55); --shadow: none;
   /* D9 : dock un ton au-dessus du papier (la teinte des feuilles), cerclé d'un filet */
   --dock: #1B1D23; --dock-ink: #FFFFFF; --dock-ring: #2A2D35;
@@ -25,7 +26,6 @@
   --c1: #7C8B4E; --c2: #B39A2E; --c3: #C0832E; --c4: #9A6F52; --c5: #B5677F;
   --c6: #8D5E94; --c7: #4C88AD; --c8: #3B8A84; --c9: #A8916A; --c10: #6E7682; --c0: #6E7682;
   --mix: 24%;  /* D8 : teinte mêlée à la surface (pastilles) */
-  --wash: 34%; /* teinte mêlée au papier (eau des bocaux) */
   --lift: 30%; /* D8 : icône dans la teinte éclaircie de 30 % de blanc */
   --surface: var(--paper); /* fond sous les pastilles : le papier, ou la feuille du bas */
   --sans: 'Geist', -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -48,7 +48,7 @@ body {
   min-height: 100dvh; overflow-x: hidden;
   overscroll-behavior-y: none;
   /* une app, pas une page (2026-11-13) : un appui long ne sélectionne pas le texte et n'ouvre pas le menu du système ;
-     les champs restent sélectionnables (copier, coller, corriger) ; le Développeur copie par son bouton */
+     les champs restent sélectionnables (copier, coller, corriger) */
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
 input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
@@ -89,7 +89,7 @@ html.has-sheet body { overflow: hidden; }
 .iconbtn.round { box-shadow: inset 0 0 0 1px var(--line); }
 .iconbtn.soft { background: var(--field); color: var(--ink-2); }
 .title { font: 600 28px/1.15 var(--sans); letter-spacing: -.03em; margin: 6px 0 18px; }
-.title.sm { font-size: 24px; margin: 0; }
+.title.sm { font-size: 24px; margin: 0; } /* le titre de tous les écrans, à côté de la flèche retour : à 28 px, « Données et sauvegarde » ne tient plus sur 360 px */
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand .d { font-size: 13px; color: var(--ink-2); line-height: 1.3; }
 .brand .d b { display: block; font-size: 15px; font-weight: 500; color: var(--ink); }
@@ -193,7 +193,7 @@ button.row:active, .row.tap:active { background: var(--press); box-shadow: -20px
 .btn.ghost[disabled], .btn.danger[disabled] { opacity: .4; }
 .btn .ic { width: 20px; height: 20px; }
 
-/* contrôle segmenté (gélule) */
+/* contrôle segmenté (gélule) ; avec les autres gélules (.sc, .mp, .tpl, .e-wallet, .fchip), un contrôle compact : 13 px, pas 15 comme .btn */
 .seg { display: flex; background: var(--field); border-radius: 99px; padding: 3px; position: relative; }
 .seg button {
   flex: 1; height: 44px; border-radius: 99px; font-size: 13px; font-weight: 500; color: var(--ink-2); position: relative; z-index: 1;
@@ -276,11 +276,16 @@ html.has-sheet .dock { pointer-events: none; }
 .grip span { width: 36px; height: 4px; border-radius: 2px; background: var(--rule); }
 .sheet-body { position: relative; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 0 20px 16px; flex: 1; min-height: 0; }
 .sheet-title { font: 600 22px/1.2 var(--sans); margin: 4px 0 6px; letter-spacing: -.02em; }
-.sheet-head { display: flex; align-items: center; justify-content: space-between; min-height: 44px; margin: 0 -8px 6px; }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; min-height: 44px; margin: 0 -8px 12px; } /* le premier libellé plus loin de l'en-tête que de son champ */
 .sheet-head .sheet-title { margin: 0 8px; }
-.sheet.compact .sheet-body { padding-top: 6px; }
-.confirm { display: grid; gap: 10px; padding: 4px 0 8px; }
-.confirm p { margin-bottom: 12px; }
+/* confirmer, demander un nom, Mises à jour : la phrase sous le titre comme dans les autres feuilles ; 16 px avant les boutons */
+.confirm { padding-bottom: 8px; }
+.confirm p { margin-bottom: 16px; }
+.confirm p:has(+ p) { margin-bottom: 6px; } /* deux phrases qui se suivent restent ensemble */
+.confirm .btn + .btn { margin-top: 10px; }
+.confirm .upd-note { font-size: 13px; } /* l'aide sous la version (Mises à jour) */
+/* une ligne à interrupteur (Mises à jour) : son espace d'appui tient lieu de marge, ses lettres à 22 px de la phrase et du bouton */
+.confirm > .row { margin: -16px 0 6px; }
 
 
 .list-pick .row .ic.check { color: var(--accent-text); width: 20px; height: 20px; }
@@ -344,10 +349,10 @@ html.has-sheet #toast { bottom: calc(var(--sab) + 24px); }
 
 .about { text-align: center; padding: 28px 0 8px; color: var(--ink-2); font-size: 13px; }
 .about .logo { width: 40px; height: 40px; margin: 0 auto 8px; }
-.about b { display: block; font: 600 17px var(--sans); color: var(--ink); margin-bottom: 2px; }
+.about b { display: block; font: 600 15px var(--sans); color: var(--ink); margin-bottom: 4px; } /* au moins l'interligne des lignes dessous */
 
 .daynum-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; padding: 6px 0 10px; }
-.daynum-grid button { height: 44px; border-radius: 99px; font: 500 15px var(--sans); background: var(--field); font-variant-numeric: tabular-nums; }
+.daynum-grid button { height: 44px; border-radius: 99px; font: 400 15px var(--sans); background: var(--field); font-variant-numeric: tabular-nums; }
 .daynum-grid button.on { background: var(--accent); color: var(--on-accent); }
 
 .hint { font-size: 13px; color: var(--ink-2); text-align: center; margin-top: 10px; }
@@ -362,7 +367,7 @@ html.shot-full .dock-wrap { display: none; }
 
 /* ---------- pavé (D4, D5) : opérateurs sur une rangée légère, chiffres en gélules ---------- */
 .keypad { display: grid; gap: 7px; }
-.keypad .ops { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0 0 1px; }
+.keypad .ops { display: grid; grid-template-columns: repeat(4, 1fr); margin: -2px 0 3px; } /* ses signes à mi-chemin entre la rangée du dessus et les touches */
 .keypad .op {
   height: 44px; border-radius: 12px; font: 300 24px/1 var(--sans); color: var(--ink-2); transition: color .15s var(--ease-out);
   display: grid; place-items: center;
@@ -370,6 +375,8 @@ html.shot-full .dock-wrap { display: none; }
 .keypad .op.act { color: var(--accent-text); font-weight: 400; }
 .keypad .op:active { background: var(--field); }
 .keypad .digits { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+/* le bouton sous le pavé, une rangée de plus : le même écart que ses touches (dans une pile espacée de 10 px) */
+.keypad + .btn { margin-top: -3px; }
 .key {
   height: 48px; border-radius: 99px; background: var(--field); font: 500 22px/1 var(--sans); font-variant-numeric: tabular-nums;
   display: grid; place-items: center; user-select: none; -webkit-user-select: none;
@@ -396,8 +403,7 @@ html.shot-full .dock-wrap { display: none; }
 .lk-more { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 26px; }
 .lk-more .btn .ic { width: 18px; height: 18px; margin-right: 6px; }
 .lk-sheet { display: flex; flex-direction: column; align-items: center; text-align: center; padding-bottom: 6px; }
-.lk-sheet .sheet-title { margin-bottom: 2px; }
-.lk-sheet .muted { margin: 0 0 6px; }
+.lk-sheet .muted { margin: 0 0 6px; font-size: 13px; }
 @media (max-height: 640px) { .lk-in { padding-top: calc(var(--sat) + 20px); } .lk-pad .key { height: 52px; } .lk-dots { margin-bottom: 16px; } }
 
 /* gélule éteinte d'un sélecteur (ex. Dépense depuis une épargne, D17) */

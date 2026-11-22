@@ -63,7 +63,7 @@ export async function openSession({ db, clock = () => Date.now(), random = Math.
   const listeners = new Set();
 
   // Horodatage : jamais avant le dernier événement (le journal reste rangé dans le temps). Pendant la préparation
-  // d'un journal neuf (démo, import d'un export v2, « Tout effacer »), le plancher est celui de ce journal neuf.
+  // d'un journal neuf (démo, import d'un export v2), le plancher est celui de ce journal neuf.
   /** @type {State|null} */
   let building = null;
   const lastAt = () => Date.parse((building || state).head.at || '') || 0;
@@ -154,7 +154,7 @@ export async function openSession({ db, clock = () => Date.now(), random = Math.
       // la base ne redonne pas l'état préparé : on remet l'ancien journal (même mécanisme, tout ou rien)
       try { await commit(tx => replaceAll(tx, old, replayStored(old), meta)); } catch (e) { console.error(e); }
       await resync();
-      throw new ImportError('Empreinte d’état différente après écriture en base : rien n’a été changé.');
+      throw new ImportError('L’enregistrement a échoué : rien n’a été changé.');
     }
     state = await loadState(db);
     return want;
@@ -190,7 +190,7 @@ export async function openSession({ db, clock = () => Date.now(), random = Math.
 
   /** Journal en JSON Lines pour des événements donnés (copie, envoi au Drive). @param {StoredEvent[]} events */
   const journalText = async events => toJsonl({ app: 'cauri', kind: 'journal', version: APP_VERSION, schema, events: events.length, head: events.length ? events[events.length - 1].hash : '', state: await stateHash(replayStored(events)) }, events);
-  // Restaurer, Tout effacer (D21) : ce journal remplace voulu ; à la prochaine synchro il remplacera aussi celui du Drive
+  // Restaurer (D21) : ce journal remplace voulu ; à la prochaine synchro il remplacera aussi celui du Drive
   // (au lieu d'être rejoint avec lui, ce qui annulerait le geste).
   // Rangé à part du repère de synchro (une synchro déjà en cours ne peut pas l'effacer en écrivant son repère), avec sa
   // date : un geste fait pendant qu'aucun compte n'était lié ne remplace rien après une nouvelle liaison.
@@ -246,7 +246,7 @@ export async function openSession({ db, clock = () => Date.now(), random = Math.
       if (legacyDoc && legacyDoc.app === 'cauri' && legacyDoc.data) {
         const conv = convertLegacy(legacyDoc.data, { today: today(), currency: detectCurrency() });
         let prepared;
-        try { prepared = await prepare({ news: conv.events }); } catch (e) { throw new ImportError('Conversion impossible : ' + /** @type {Error} */ (e).message); }
+        try { prepared = await prepare({ news: conv.events }); } catch (e) { throw new ImportError('Cette ancienne copie ne se convertit pas : ' + /** @type {Error} */ (e).message); }
         const hash = await replace(prepared.events, prepared.next);
         await markForce();
         notify(ALL_KEYS);
@@ -254,9 +254,9 @@ export async function openSession({ db, clock = () => Date.now(), random = Math.
       }
       const { header, events } = await parseJsonl(text, { schema });
       let s;
-      try { s = replayStored(events); } catch (e) { throw new ImportError('Rejeu impossible : ' + /** @type {Error} */ (e).message); }
+      try { s = replayStored(events); } catch (e) { throw new ImportError('Copie abîmée : ' + /** @type {Error} */ (e).message); }
       const h = await stateHash(s);
-      if (header.state !== h) throw new ImportError('Empreinte d’état différente après rejeu : le fichier ne redonne pas les mêmes données.');
+      if (header.state !== h) throw new ImportError('Cette copie est abîmée.');
       await replace(events, s);
       await markForce();
       notify(ALL_KEYS);
@@ -267,7 +267,7 @@ export async function openSession({ db, clock = () => Date.now(), random = Math.
      * Synchronisation (D21) : le journal du Drive (déjà vérifié) rejoint celui du téléphone, dans la file des commandes
      * (rien ne s'écrit entre la lecture et l'écriture). Prendre ou adopter le journal du Drive, ou refaire les changements
      * du téléphone par-dessus. Jamais de mélange sans début commun : fork (l'appelant garde les deux à part).
-     * since : le dernier point synchronisé, quand le journal du Drive a été remplacé ailleurs (restauration, Tout effacer)
+     * since : le dernier point synchronisé, quand le journal du Drive a été remplacé ailleurs (restauration)
      * — seuls les changements faits ici depuis ce point sont refaits par-dessus le nouveau journal.
      * safety(texte) : appelé avec le journal du téléphone juste avant de le réécrire en refaisant ses changements (copie
      * de sécurité, prise dans la même file : aucun changement ne peut se glisser entre la copie et la réécriture).
@@ -275,7 +275,7 @@ export async function openSession({ db, clock = () => Date.now(), random = Math.
      * @param {{ since?: { seq: number, hash: string }|null, safety?: ((text: string) => Promise<any>)|null }} [opts]
      */
     merge: (remote, { since = null, safety = null } = {}) => serial(async () => {
-      // Restaurer ou Tout effacer vient d'être fait ici pendant la synchro : on ne rejoint rien, l'appelant recommence
+      // Restaurer vient d'être fait ici pendant la synchro : on ne rejoint rien, l'appelant recommence
       if (await getMeta(db, 'sync_force')) return { plan: { kind: 'same', k: 0 }, forced: true, fork: false, events: [], skipped: [], push: false };
       const local = await readEvents(db);
       /** @type {{ kind: string, k: number }} */
@@ -318,7 +318,7 @@ export async function openSession({ db, clock = () => Date.now(), random = Math.
       const force = (await getMeta(db, 'sync_force')) || '';
       try { return v ? { ...JSON.parse(v), force: force || undefined } : null; } catch (e) { return null; }
     },
-    /** Le geste Restaurer / Tout effacer a été envoyé (ou ne compte pas) : on l'oublie. */
+    /** Le geste Restaurer a été envoyé (ou ne compte pas) : on l'oublie. */
     clearForce: () => serial(() => commit(tx => setMeta(tx, 'sync_force', ''))),
     /** @param {Record<string, any>|null} v */
     setSync: v => serial(() => commit(tx => { const { force, ...rest } = v || {}; setMeta(tx, 'sync', v ? JSON.stringify(rest) : ''); })),
@@ -363,24 +363,16 @@ export async function openSession({ db, clock = () => Date.now(), random = Math.
       return r ? { seq: Number(r.seq), at: String(r.at), type: String(r.type), device: String(r.device) } : null;
     },
     /**
-     * Démo déterministe produite par les commandes, dans un journal neuf ; garde l'affichage choisi (format, mode discret…).
+     * Démo déterministe produite par les commandes, dans un journal neuf ; garde l'affichage choisi (format, vibrations).
      * @param {string} day « aujourd'hui » de la démo
      */
     loadDemo: day => serial(async () => {
       const st = settingsOf(state);
-      const keep = { fmt: st.fmt, discreet: st.discreet, haptics: st.haptics };
+      const keep = { fmt: st.fmt, haptics: st.haptics };
       const { events, next } = await prepare({ cmds: [...demoCommands(day), { type: 'settings.change', changes: keep }] });
       await replace(events, next);
       notify(ALL_KEYS);
       return state.head.seq;
-    }),
-
-    /** Tout effacer : journal neuf, premier lancement. */
-    reset: () => serial(async () => {
-      const { events, next } = await prepare({ cmds: [{ type: 'setup', currency: detectCurrency() }] });
-      await replace(events, next);
-      await markForce();
-      notify(ALL_KEYS);
     }),
   };
 }

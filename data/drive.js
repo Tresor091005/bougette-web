@@ -36,7 +36,7 @@ export function makeDrive(token, fetchImpl = (...a) => fetch(...a)) {
         let msg = '';
         try { msg = (await res.json())?.error?.message || ''; } catch (e) { /* sans détail */ }
         // 403 : souvent l'API Drive pas activée dans le projet Google Cloud, ou un quota ; le détail de Google est gardé
-        throw new DriveError(res.status === 401 ? 'Google refuse l’accès : relie ton compte.' : `Google Drive répond ${res.status}${msg ? ' : ' + msg : ''}.`, res.status);
+        throw new DriveError(res.status === 401 ? 'Google refuse l’accès. Reconnecte ton compte.' : `Google Drive a un souci (${res.status}${msg ? ' : ' + msg : ''}). Réessaie plus tard.`, res.status);
       }
       return res;
     }

@@ -104,7 +104,7 @@ export function whenOf(ds, rep, n) {
   if (every) {
     const next = every === 'week' ? addDays(start, 7 * n) : every === 'day' ? addDays(start, n) : addMonthsClamped(start, (every === 'year' ? 12 : 1) * n);
     if (days.length && addDays(start, days[days.length - 1]) >= next) {
-      return { error: every === 'week' ? 'Pour chaque semaine, touche des jours d’une même semaine.' : every === 'month' ? 'Pour chaque mois, touche des jours d’un même mois.' : 'Ces jours ne tiennent pas dans une même période.' };
+      return { error: every === 'week' ? 'Pour chaque semaine, touche des jours d’une même semaine.' : every === 'month' ? 'Pour chaque mois, touche des jours d’un même mois.' : 'Ces jours sont trop loin les uns des autres pour cette répétition.' };
     }
   }
   return { when: { start, days, every, interval: every ? n : 1 } };

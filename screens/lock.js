@@ -1,9 +1,12 @@
-// Écran de verrouillage et saisie d'un code (ROADMAP étape 2, sécurité, 2026-11-09). Plein écran, au-dessus de l'app
-// (sous les feuilles). Deux façons d'ouvrir : le code de Bougette, ou « Utiliser le téléphone » (empreinte s'il en a une,
-// sinon son code ou son schéma), proposé d'emblée ; sur un téléphone sans verrouillage, seul le code reste.
+// Écran de verrouillage, code redemandé avant une action sensible, choix d'un code (ROADMAP étape 2, sécurité, 2026-11-09 ;
+// « code exigé, app libre », 2026-11-21, avec l'utilisateur). L'écran de verrouillage, plein écran au-dessus de l'app (sous
+// les feuilles), seulement si « Verrouiller à l'ouverture » est choisi. Deux façons d'ouvrir : le code de Bougette, ou
+// « Utiliser le téléphone » (empreinte s'il en a une, sinon son code ou son schéma), proposé d'emblée ; sur un téléphone
+// sans verrouillage, seul le code reste.
 import { icon } from '../core/icons.js';
 import { buzz, openSheet, confirmSheet, closeAllSheets, shake, toast, $, $$ } from '../core/ui.js';
-import { lockEnabled, checkCode, waitMs, phoneUnlock, canAskPhone, validCode, setCode, codeLength } from '../core/lock.js';
+import { esc } from '../core/format.js';
+import { hasCode, lockAtOpen, checkCode, waitMs, phoneUnlock, canAskPhone, validCode, setCode, codeLength } from '../core/lock.js';
 
 /**
  * Pavé de code : points, chiffres, effacer. onCode(code) est appelé quand `length` chiffres sont tapés (ou au bouton
@@ -42,9 +45,9 @@ let el = null;
 let after = null;
 export const isLocked = () => !!el;
 
-/** Montre l'écran de verrouillage (rien si le verrouillage n'est pas activé). then : à faire une fois déverrouillé. */
+/** Montre l'écran de verrouillage (rien sans « Verrouiller à l'ouverture »). then : à faire une fois déverrouillé. */
 export function showLock(then = null) {
-  if (!lockEnabled()) { then?.(); return; }
+  if (!lockAtOpen()) { then?.(); return; }
   if (then) after = then;
   if (el) return;
   closeAllSheets({ silent: true });
@@ -111,24 +114,74 @@ export function showLock(then = null) {
     }
     await confirmSheet({
       title: 'Code oublié ?',
-      text: 'Le verrouillage de ton téléphone (empreinte, code ou schéma) ouvre Bougette sans rien perdre. Sans verrouillage du téléphone, la seule issue est d’effacer les données de l’app dans les réglages d’Android, puis de restaurer ta sauvegarde.',
+      text: 'Seul le verrouillage du téléphone peut remplacer le code. Sinon, efface les données de Bougette dans les réglages du téléphone, puis relie ton compte Google pour les retrouver. Sans compte Google, elles sont perdues.',
       yes: 'Compris', cancel: false,
     });
   };
 }
 
-/** Choisir un nouveau code (deux fois). Renvoie true si le code est enregistré. */
-export function askNewCode() {
+/**
+ * Redemander qui tu es avant une action sensible (2026-11-20, avec l'utilisateur : quelqu'un qui trouve l'app ouverte ne
+ * doit rien pouvoir faire sortir ni casser) : lier ou délier un compte Google, exporter, restaurer, choisir le dossier de
+ * sauvegarde, repartir de zéro, renommer ou archiver un espace, changer le code, ne plus verrouiller à l'ouverture… Le
+ * code de Bougette, ou le téléphone (empreinte, code ou schéma du téléphone : proposé d'emblée sur le téléphone, 2026-11-21,
+ * avec l'utilisateur : les gens oublient un code de plus). Sans code de Bougette (le code est exigé, 2026-11-21) : le
+ * téléphone suffit s'il confirme ; sinon (navigateur, téléphone sans verrouillage) on choisit un code d'abord, et l'action
+ * continue seulement s'il est enregistré (sans le retaper). Renvoie true si c'est confirmé.
+ * @param {string} what ce qu'on s'apprête à faire (« Lier un compte Google »)
+ * @returns {Promise<boolean>}
+ */
+export async function askIdentity(what) {
+  if (!hasCode()) {
+    if (canAskPhone() && await phoneUnlock(what)) { buzz(10); return true; }
+    return askNewCode({ title: what, intro: `Pour ${what.charAt(0).toLowerCase()}${what.slice(1)}, choisis d’abord un code` });
+  }
+  return new Promise(resolve => {
+    let done = false;
+    const s = openSheet(`<div class="lk-sheet"><h2 class="sheet-title">${esc(what)}</h2>
+      <p class="muted" data-s>Entre ton code pour continuer</p><div data-pad></div>
+      ${canAskPhone() ? `<button type="button" class="btn secondary sm" data-phone>${icon('fingerprint')}Utiliser le téléphone</button>` : ''}</div>`,
+      { label: 'Confirmer avec ton code', onClose: () => { if (!done) resolve(false); } });
+    const sub = $('[data-s]', s.el);
+    const ok = () => { done = true; buzz(10); s.close(); resolve(true); };
+    const pad = codePad($('[data-pad]', s.el), {
+      length: codeLength(),
+      onCode: async code => {
+        const w = waitMs();
+        if (w) { sub.textContent = `Trop d’essais : réessaie dans ${Math.ceil(w / 1000)} s.`; pad.clear(); return; }
+        if (await checkCode(code)) { ok(); return; }
+        buzz([10, 40, 10]);
+        shake($('.lk-dots', s.el));
+        pad.clear();
+        sub.textContent = waitMs() ? 'Trop d’essais : patiente un peu.' : 'Code incorrect.';
+      },
+    });
+    const phone = $('[data-phone]', s.el);
+    if (phone) {
+      const ask = async () => { if (await phoneUnlock(what)) ok(); else sub.textContent = 'Le téléphone n’a pas confirmé : utilise le code.'; };
+      phone.onclick = () => { buzz(6); ask(); };
+      setTimeout(ask, 300); // le téléphone d'abord, comme à l'ouverture : le code de Bougette reste en secours
+    }
+  });
+}
+
+/**
+ * Choisir un nouveau code (deux fois). Renvoie true si le code est enregistré. title / intro : ce que la feuille dit
+ * d'abord (askIdentity sans code : l'action demandée, et pourquoi un code).
+ * @param {{ title?: string, intro?: string }} [o]
+ * @returns {Promise<boolean>}
+ */
+export function askNewCode({ title = 'Choisis un code', intro = '4 à 6 chiffres' } = {}) {
   return new Promise(resolve => {
     let first = null, done = false;
-    const s = openSheet(`<div class="lk-sheet"><h2 class="sheet-title" data-t>Choisis un code</h2>
-      <p class="muted" data-s>4 à 6 chiffres</p><div data-pad></div></div>`, { label: 'Code de verrouillage', onClose: () => { if (!done) resolve(false); } });
+    const s = openSheet(`<div class="lk-sheet lk-new"><h2 class="sheet-title" data-t>${esc(title)}</h2>
+      <p class="muted" data-s>${esc(intro)}</p><div data-pad></div></div>`, { label: 'Choisir un code', onClose: () => { if (!done) resolve(false); } });
     const t = $('[data-t]', s.el), sub = $('[data-s]', s.el);
     codePad($('[data-pad]', s.el), {
       length: null,
       onCode: async code => {
-        if (first === null) { first = code; t.textContent = 'Confirme le code'; sub.textContent = 'Tape-le une seconde fois'; return; }
-        if (code !== first) { first = null; t.textContent = 'Choisis un code'; sub.textContent = 'Les deux codes diffèrent : recommence.'; buzz([10, 40, 10]); return; }
+        if (first === null) { first = code; t.textContent = 'Confirme le code'; sub.textContent = 'Tape-le encore une fois'; return; }
+        if (code !== first) { first = null; t.textContent = title; sub.textContent = 'Les deux codes ne sont pas pareils : recommence.'; buzz([10, 40, 10]); return; }
         await setCode(code);
         done = true;
         buzz(12);

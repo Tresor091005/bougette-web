@@ -65,7 +65,7 @@ export function pickCategory({ type = 'expense', current = null, title = 'Catég
     const s = openSheet(`<h2 class="sheet-title">${title}</h2>
       ${catSearchHTML()}
       <div class="cl" data-tree>${allRow}${types.map(([t, label]) => `${label ? `<div class="section-h cl-h"><span class="eyebrow">${label}</span></div>` : ''}<div data-part>${catTreeHTML({ type: t, current })}</div>`).join('')}</div>
-      <div class="cl-none" data-none hidden>${NONE_ILLU}<p class="cl-none-t">Aucune catégorie ne correspond à ta recherche.</p></div>`, {
+      <div class="cl-none" data-none hidden>${NONE_ILLU}<p class="cl-none-t">Aucune catégorie trouvée.</p></div>`, {
       cls: 'pick-sheet', label: title, onClose: () => resolve(picked),
     });
     const tree = $('[data-tree]', s.el);
@@ -108,7 +108,7 @@ export function pickAccount({ current = null, exclude = null, currency = null, t
       }));
     const none = currency ? `Aucun autre portefeuille en ${esc(currencyOf(currency).long)}.` : 'Pas encore de portefeuille.';
     const s = openSheet(`<h2 class="sheet-title">${title}</h2>${rows.length
-      ? `<div class="group list-pick" style="margin:8px 0 6px">${rows.join('')}</div>`
+      ? `<div class="group list-pick" style="margin-bottom:6px">${rows.join('')}</div>`
       : `<p class="muted pick-none">${none}</p>`}`, {
       label: title, onClose: () => resolve(picked),
     });
@@ -129,7 +129,7 @@ export function pickCurrency({ current, title = 'Devise' } = {}) {
         <span class="pill acc cur-pill">${esc(c.sym)}</span>
         <div class="main"><div class="t">${esc(c.name)}</div><div class="s">${c.code}${c.sym !== c.code ? ` · ${esc(c.sym)}` : ''}</div></div>${c.code === current ? icon('check', 'check') : ''}</button>`;
     const s = openSheet(`<h2 class="sheet-title">${title}</h2>
-      <label class="field cur-search"><span class="sr">Rechercher une devise</span><input data-q type="search" placeholder="Nom ou code (ex. euro, KES)" autocomplete="off" enterkeyhint="search"></label>
+      <label class="search cat-find">${icon('magnifying-glass')}<span class="sr">Rechercher une devise</span><input data-q type="search" placeholder="Nom ou code (ex. euro, KES)" autocomplete="off" enterkeyhint="search"></label>
       <div class="eyebrow cur-h" data-h>Courantes</div>
       <div class="group list-pick" data-common>${common.map(row).join('')}</div>
       <div class="eyebrow cur-h" data-h>Toutes les devises</div>
@@ -249,7 +249,7 @@ export function pickMonthStart(current) {
     let mode = typeof current === 'number' ? 'day' : current === 'last' || current === 'work' ? 'end' : 'week';
     let rank = wk[1], day = wk[2];
     const s = openSheet(`<h2 class="sheet-title">Début du mois</h2>
-      <p class="muted" style="margin-bottom:12px">Le jour où ton mois commence, par exemple le jour de la paie.</p>
+      <p class="screen-help">Le jour où ton mois commence, par exemple le jour de la paie.</p>
       ${seg([['day', 'Un jour'], ['week', 'Jour de semaine'], ['end', 'Fin de mois']], mode, 'ms-mode')}
       <div data-p="day" class="ms-p"><div class="daynum-grid">${Array.from({ length: 28 }, (_, i) => i + 1).map(d => `<button type="button" data-d="${d}" class="${d === current ? 'on' : ''}">${d}</button>`).join('')}</div></div>
       <div data-p="week" class="ms-p">

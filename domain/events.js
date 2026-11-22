@@ -119,7 +119,7 @@ export function eventProblem(ev) {
   if (typeof ev.at !== 'string' || !AT.test(ev.at) || Number.isNaN(Date.parse(ev.at))) return 'horodatage illisible';
   if (typeof ev.device !== 'string' || !DEVICE.test(ev.device)) return 'appareil illisible';
   if (typeof ev.payload !== 'string') return 'contenu illisible';
-  try { if (canonical(JSON.parse(ev.payload)) !== ev.payload) return 'contenu non canonique'; } catch (e) { return 'contenu illisible'; }
+  try { if (canonical(JSON.parse(ev.payload)) !== ev.payload) return 'contenu mal formé'; } catch (e) { return 'contenu illisible'; }
   return null;
 }
 
@@ -140,7 +140,7 @@ export async function verifyChain(events) {
     if (ev.prev_hash !== prev) return { ok: false, count: seq - 1, head: prev, problem: `lien rompu à ${seq}` };
     const bad = eventProblem(ev);
     if (bad) return { ok: false, count: seq - 1, head: prev, problem: `${bad} à ${seq}` };
-    if (await eventHash(prev, ev) !== ev.hash) return { ok: false, count: seq - 1, head: prev, problem: `empreinte fausse à ${seq}` };
+    if (await eventHash(prev, ev) !== ev.hash) return { ok: false, count: seq - 1, head: prev, problem: `événement modifié à ${seq}` };
     prev = ev.hash;
   }
   return { ok: true, count: seq, head: prev };

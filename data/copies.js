@@ -1,13 +1,14 @@
 // Copies automatiques du journal (ROADMAP 1b, 2026-11-09) : chaque jour au plus, à l'ouverture de l'app, une copie
 // vérifiée du journal est gardée sur le téléphone, dans un stockage À PART de la base (une base abîmée n'emporte pas
 // ses copies), un par espace (D19). Les 5 plus récentes sont gardées (3 jusqu'au 2026-11-17) ; une 6e remplace la plus
-// vieille. Copies de sécurité (D15, 2026-11-17) : juste avant « Tout effacer » et « Restaurer », 5 au plus, à part. Avant chaque copie, l'intégrité de la
+// vieille. Copies de sécurité (D15, 2026-11-17) : juste avant « Restaurer » et avant de refaire ses changements par-dessus ceux d'un autre appareil (D21), 5 au plus, à part. Avant chaque copie, l'intégrité de la
 // base est contrôlée (chaîne d'empreintes, partie double, soldes, projections = rejeu) ; si elle est atteinte, on ne
 // copie pas (les copies saines restent) et l'appelant prévient l'utilisateur. Chaque copie est relue et rejouée : elle
 // doit redonner exactement l'état de l'app (même empreinte d'état).
-// Ces copies protègent d'une base abîmée ou d'une fausse manœuvre, pas de la perte du téléphone : pour ça, la sauvegarde
-// hors du téléphone (partage du même fichier).
+// Ces copies protègent d'une base abîmée ou d'une fausse manœuvre, pas de la perte du téléphone : pour ça, la synchro
+// Google Drive (D21).
 import { parseJsonl } from './exchange.js';
+import { verifyChain } from '../domain/events.js';
 import { replayStored } from '../domain/engine.js';
 import { stateHash } from '../domain/projection.js';
 
@@ -15,11 +16,11 @@ import { stateHash } from '../domain/projection.js';
 /** @typedef {{ list: () => Promise<Copy[]>, put: (c: Copy) => Promise<void>, remove: (id: string) => Promise<void> }} CopyStore */
 
 export const KEEP = 5;
-/** Copies de sécurité gardées (avant « Tout effacer », « Restaurer »). */
+/** Copies de sécurité gardées (avant « Restaurer », avant une synchronisation). */
 export const KEEP_SAFETY = 5;
 /** Une copie de sécurité : son id commence par « safe- », suivi de ce qui l'a déclenchée. @param {{ id: string }} c */
 export const isSafety = c => c.id.startsWith('safe-');
-/** Ce qui a déclenché une copie de sécurité (« reset », « restore »), ou null. @param {{ id: string }} c */
+/** Ce qui a déclenché une copie de sécurité (« restore », « sync » ; « reset » dans les copies d'avant le 2026-11-21), ou null. @param {{ id: string }} c */
 export const safetyReason = c => (isSafety(c) ? c.id.split('-')[1] || null : null);
 export const MIN_HOURS = 24;
 
@@ -34,7 +35,7 @@ export async function checkJournalText(text, opts = {}) {
   const { header, events } = await parseJsonl(text, opts);
   const s = replayStored(events);
   const h = await stateHash(s);
-  if (h !== header.state) throw new Error('Le fichier ne redonne pas les données annoncées (empreinte d’état différente).');
+  if (h !== header.state) throw new Error('Cette copie est abîmée.');
   let ops = 0;
   for (const e of s.entries.values()) if (e.status !== 'void' && ['expense', 'income', 'transfer'].includes(e.kind)) ops++;
   return { events: events.length, ops, state: h, last: events.length ? events[events.length - 1].at : null };
@@ -68,8 +69,8 @@ export async function autoCopy({ session, store, now = new Date(), force = false
 }
 
 /**
- * Copie de sécurité de l'état présent (D15, 2026-11-17), juste avant une action qui remplace tout (reason : « reset »,
- * « restore »). Vérifiée comme une copie du jour ; rien si l'état est celui de la dernière copie de sécurité ; les
+ * Copie de sécurité de l'état présent (D15, 2026-11-17), juste avant une action qui remplace tout (reason : « restore »,
+ * « sync »). Vérifiée comme une copie du jour ; rien si l'état est celui de la dernière copie de sécurité ; les
  * KEEP_SAFETY plus récentes restent, sans jamais toucher aux copies du jour. Rejette si la copie est impossible ou fausse
  * (l'appelant n'agit alors pas).
  * @param {{ session: any, store: CopyStore, reason: string, now?: Date }} o
@@ -80,7 +81,7 @@ export async function safetyCopy({ session, store, reason, now = new Date() }) {
   if (list[0] && list[0].state === current) return { status: 'same', copy: list[0] };
   const text = await session.exportJournal();
   const info = await checkJournalText(text);
-  if (info.state !== current) throw new Error('La copie de sécurité ne redonne pas l’état de l’app.');
+  if (info.state !== current) throw new Error('La copie de sécurité a échoué : rien n’est changé.');
   /** @type {Copy} */
   const copy = { id: `safe-${reason}-${now.toISOString()}`, at: now.toISOString(), events: info.events, ops: info.ops, state: info.state, bytes: text.length, text };
   await store.put(copy);
@@ -102,6 +103,62 @@ export async function safetyCopyText({ store, reason, text, now = new Date() }) 
   await store.put(copy);
   for (const old of [copy, ...list].slice(KEEP_SAFETY)) await store.remove(old.id);
   return { status: 'done', copy };
+}
+
+/**
+ * @typedef {{ from: 'journal'|'copy'|'drive', at: string|null, text: string, lost: number, since: string|null }} Heal
+ * from : ce qu'on reprend (journal : celui du téléphone jusqu'au premier événement abîmé, entier s'il est intact) ;
+ * lost : les changements notés ici qui n'y sont pas (à refaire), since : la date du premier d'entre eux
+ */
+/**
+ * Réparer (2026-11-21, avec l'utilisateur) : parmi ce qui est sain — le journal du téléphone jusqu'à sa première cassure,
+ * les copies, le journal du Drive — ce qui garde le plus de ce qui a été noté ici (événement par événement, par
+ * identifiant : un événement abîmé n'est plus le même), à égalité le plus complet (le Drive peut avoir ceux d'un autre
+ * appareil). Journal intact (seules les tables calculées divergent) : rien n'est perdu. Null si rien n'est sain.
+ * @param {{ events: import('../domain/events.js').StoredEvent[], journalText: (e: any[]) => Promise<string>, copies: Copy[], driveText?: string|null }} o
+ * @returns {Promise<Heal|null>}
+ */
+export async function pickHeal({ events, journalText, copies, driveText = null }) {
+  const chain = await verifyChain(events);
+  /** @type {Array<{ from: Heal['from'], at: string|null, text: () => Promise<string> }>} */
+  const sources = [
+    { from: 'journal', at: events[chain.count - 1]?.at || null, text: () => journalText(events.slice(0, chain.count)) },
+    ...copies.map(c => ({ from: /** @type {const} */ ('copy'), at: c.at, text: async () => c.text })),
+    ...(driveText ? [{ from: /** @type {const} */ ('drive'), at: null, text: async () => driveText }] : []),
+  ];
+  /** @type {(Heal & { n: number })|null} */
+  let best = null;
+  for (const s of sources) {
+    try {
+      const text = await s.text();
+      const info = await checkJournalText(text);
+      const kept = new Set((await parseJsonl(text)).events.map(e => e.id));
+      const lost = events.filter(e => !kept.has(e.id));
+      const h = { from: s.from, at: s.at, text, lost: lost.length, since: lost[0]?.at || null, n: info.events };
+      if (!best || h.lost < best.lost || (h.lost === best.lost && h.n > best.n)) best = h;
+    } catch (e) { /* pas saine : on passe */ }
+  }
+  if (!best) return null;
+  const { n, ...plan } = best;
+  return plan;
+}
+
+/**
+ * Revenir en arrière par le journal (2026-11-21, avec l'utilisateur) : l'état à la fin d'un jour passé, c'est le journal
+ * jusqu'au premier événement d'un jour plus récent (le jour local de l'instant noté ; un événement d'un autre appareil
+ * arrivé en retard ne fait pas reculer le jour). Le journal est le même sur tous les appareils liés (D21) : on y revient
+ * de partout. Renvoie combien d'événements garder (events.length : rien après ce jour, c'est l'état présent).
+ * @param {import('../domain/events.js').StoredEvent[]} events @param {string} day AAAA-MM-JJ
+ * @param {(at: string) => string} dayOf le jour local d'un instant
+ */
+export function keepUntil(events, day, dayOf) {
+  let max = '';
+  for (let i = 0; i < events.length; i++) {
+    const d = dayOf(events[i].at);
+    if (d > max) max = d;
+    if (max > day) return i;
+  }
+  return events.length;
 }
 
 /** Copies en mémoire (tests, ou stockage indisponible). @returns {CopyStore} */

@@ -127,7 +127,7 @@ export async function confirmNow(d, openEntry) {
   if (!ok) return false;
   buzz(12);
   const name = dueTitle(d);
-  toast(d.kind === 'income' ? `${name} : reçu` : counted ? `${name} : noté · Disponible ne bouge pas, c’était prévu` : `${name} : noté`);
+  toast(d.kind === 'income' ? `${name} : reçu` : counted ? `${name} : noté · Disponible ne change pas, c’était prévu` : `${name} : noté`);
   if (d.kind === 'transfer' && account(d.to || '')?.savings) assigned();
   const w = account(d.wallet);
   if (d.kind === 'income' && w && !w.excluded && !w.savings && w.currency === settings().currency) {
@@ -278,8 +278,9 @@ function dueContent({ r, preset = null, at = null, openEntry, ended = null, rene
   const started = !!r && r.start < t0;
   const amt0 = f.amount ? String(f.amount / 10 ** currencyOf(cur()).dec) : '';
   const say = !r ? ''
-    : ended ? `${endedLabel(ended)} : plus rien à régler ni à venir.${canRenew ? '' : ' Pour recommencer, une nouvelle échéance.'}`
-      : !editable ? `${schedules().some(x => x.from === r.id) ? 'Modifiée depuis' : 'Arrêtée'} : ses retards se règlent un par un, ci-dessus ou dans l’onglet Plan (Confirmer ou Passer).` : '';
+    : ended ? `${endedLabel(ended)} : plus rien à régler.${canRenew ? '' : ' Pour recommencer, crée une nouvelle échéance.'}`
+      // r est toujours la tête : non modifiable sans être terminée, elle est arrêtée avec des retards
+      : !editable ? 'Arrêtée : règle ses retards un par un, ci-dessus ou dans Plan.' : '';
 
   // la réserve qu'elle remplit : la sienne, ou sa reconduite (une réserve close n'a plus de lien)
   const fill = r?.reserve ? openFillOf(r.reserve) : null;
@@ -301,16 +302,16 @@ function dueContent({ r, preset = null, at = null, openEntry, ended = null, rene
           <div class="s wrap">Les mêmes jours : une seule échéance de ${money(merge.amount, { cur: merge.keep.currency })}</div></div></button>
       </div>` : ''}
       ${canRenew ? `<div class="group plain rs-more">
-        <button type="button" class="row" data-again><span class="pill acc">${icon('arrows-clockwise')}</span><div class="main"><div class="t">Reconduire</div><div class="s">Une nouvelle échéance, la même, à sa prochaine date</div></div></button>
+        <button type="button" class="row" data-again><span class="pill acc">${icon('arrows-clockwise')}</span><div class="main"><div class="t">Reconduire</div><div class="s">Une nouvelle, pareille, dès sa prochaine date</div></div></button>
       </div>` : ''}
     </div>` : ''}
     ${editable ? `<div class="dv-edit" data-edit tabindex="-1"${editing ? '' : ' hidden'}>
-      ${again ? '<p class="muted rs-say">Une nouvelle échéance, la même : son type et sa catégorie restent. L’ancienne reste dans les terminées.</p>'
+      ${again ? '<p class="muted rs-say">Son type et sa catégorie ne changent pas. L’ancienne reste dans les terminées.</p>'
         : preset?.say ? `<p class="muted rs-say">${esc(preset.say)}</p>`
-        : !r ? '<p class="muted rs-say">Ce qui revient : un loyer, un abonnement, un salaire. Rien ne s’écrit tout seul : le jour venu, tu confirmes.</p>'
-        : started ? '<p class="muted rs-say">Les changements valent à partir d’aujourd’hui ; les fois réglées et les retards gardent leurs valeurs.</p>' : ''}
+        : !r ? '<p class="muted rs-say">Ce qui revient : un loyer, un abonnement, un salaire. Rien n’est noté tout seul : le jour venu, tu confirmes.</p>'
+        : started ? '<p class="muted rs-say">Les changements valent à partir d’aujourd’hui. Les fois réglées et les retards ne changent pas.</p>' : ''}
       <fieldset class="due-fields">
-      <div class="field"><span>Type</span>${seg(TYPES, f.kind, `due-kind${settled || again ? ' locked' : ''}`)}<small class="field-note" data-kindnote${settled ? '' : ' hidden'}>Une fois est déjà réglée : son type ne change plus.</small></div>
+      <div class="field"><span>Type</span>${seg(TYPES, f.kind, `due-kind${settled || again ? ' locked' : ''}`)}<small class="field-note" data-kindnote${settled ? '' : ' hidden'}>Une fois est déjà réglée : le type ne change plus.</small></div>
       <label class="field"><span>Nom</span><input data-note maxlength="40" value="${esc(f.note)}" placeholder="Ex. Loyer, Canal Box, Salaire" autocomplete="off"></label>
       <label class="field"><span data-amtl>Montant</span><input data-amt inputmode="decimal" placeholder="0" autocomplete="off" value="${amt0}"></label>
       <div class="field" data-catf><span>Catégorie</span><button type="button" class="field-btn" data-cat${again ? ' aria-disabled="true"' : ''}><b data-catl></b>${icon(again ? 'lock-simple' : 'caret-right')}</button></div>
@@ -402,7 +403,7 @@ function dueContent({ r, preset = null, at = null, openEntry, ended = null, rene
         if (!amount || amount <= 0) return { error: 'Indique un montant.' };
         if (f.kind !== 'transfer' && !f.category) return { error: 'Choisis une catégorie.' };
         if (f.kind === 'transfer' && !f.to) return { error: 'Choisis le portefeuille d’arrivée.' };
-        if (!picked && !chosen0) return { error: 'Dis quand : touche ses jours.' };
+        if (!picked && !chosen0) return { error: 'Choisis les jours dans « Quand ? ».' };
         const times = endMode === 'times' ? Number(timesIn.value) : null;
         if (f.every && endMode === 'times' && !(Number.isInteger(times) && /** @type {number} */ (times) >= 1)) return { error: 'Indique un nombre de fois.' };
         if (f.every && endMode === 'date' && !f.end) return { error: 'Choisis la dernière date.' };
@@ -598,7 +599,7 @@ function dueContent({ r, preset = null, at = null, openEntry, ended = null, rene
       const late = occ ? occ.current().filter(o => o.state === 'late').length : 0;
       const erase = dueStopErases(r.id);
       const text = erase ? 'Rien n’y est encore réglé : elle disparaît.'
-        : `Plus de dates à partir d’aujourd’hui. Ce qui est réglé reste ; elle rejoindra les échéances terminées.${late ? ` ${late > 1 ? `Ses ${late} retards restent` : 'Son retard reste'} à régler.` : ''}`;
+        : `Plus de dates à partir d’aujourd’hui. Ce qui est réglé reste.${late ? ` ${late > 1 ? `Ses ${late} retards restent` : 'Son retard reste'} à régler.` : ''} Elle ira ensuite dans les échéances terminées.`;
       const yes = await confirmSheet({ title: 'Arrêter cette échéance ?', text, yes: 'Arrêter' });
       if (yes && await stopDue(r.id)) { toast(erase ? 'Échéance retirée' : 'Échéance arrêtée'); done(erase ? 'deleted' : 'stopped'); }
     });
@@ -710,20 +711,20 @@ function occurrences(tabsHost, cardHost, id, { at, openEntry, ro, onSelect }) {
 /**
  * Une fois : sa date, son montant, son état et ce qu'on peut en faire (terminée : seulement regarder ;
  * d'avance, seulement la prochaine ; pendant qu'on modifie : ce qui changera).
- * before : la fois à régler juste avant celle-ci (« elle se confirme après celle du … »).
+ * before : la fois à régler juste avant celle-ci (« Confirme d’abord celle du … »).
  * @param {DueView} o @param {{ ro: boolean, next: DueView|null, before?: DueView|null, editing: boolean, preview?: boolean, locked: boolean }} c
  */
 function cardHTML(o, { ro, next, before = null, editing, preview = false, locked }) {
   const verb = o.kind === 'income' ? 'Reçue' : o.kind === 'transfer' ? 'Faite' : 'Payée';
   const days = Math.round((Date.parse(o.date) - Date.parse(today())) / 864e5);
   const open = o.state !== 'done' && o.state !== 'skipped';
-  const when = o.state === 'late' ? 'En retard' : o.state === 'today' ? 'À régler aujourd’hui' : days <= 1 ? 'À venir' : `À venir, dans ${days} jours`;
+  const when = o.state === 'late' ? 'En retard' : o.state === 'today' ? 'À régler' : days <= 1 ? 'À venir' : `Dans ${days} jours`;
   const state = o.state === 'done' ? `${verb} le ${dayShort(o.paidOn || o.date)}`
     : o.state === 'skipped' ? 'Passée : elle n’a pas compté'
       : o.paused ? `${when} · en pause : son portefeuille ou sa catégorie est archivé` : when;
   let acts = '';
   if (editing) {
-    const note = !locked ? (preview ? 'Avec les changements (aperçu).' : '') : o.state === 'late' ? 'En retard : elle garde son montant.' : 'Déjà réglée : elle ne change pas.';
+    const note = !locked ? (preview ? 'Aperçu avec tes changements.' : '') : o.state === 'late' ? 'En retard : elle garde son montant.' : 'Déjà réglée : elle ne change pas.';
     acts = note ? `<p class="muted dv-note">${note}</p>` : '';
   }
   else if (o.state === 'done') acts = `<button type="button" class="btn sm due-pass" data-op>${icon('arrow-right')}Voir l’opération</button>`;
@@ -737,7 +738,7 @@ function cardHTML(o, { ro, next, before = null, editing, preview = false, locked
     const ok = o.paused || !may ? '' : `<button type="button" class="btn sm due-ok" ${o.needsWallet ? 'data-other' : 'data-ok'}>${icon('check')}${now ? 'Confirmer' : 'Confirmer maintenant'}</button>`;
     acts = `${ok}<button type="button" class="btn sm due-pass" data-skip>${now ? 'Passer' : 'Passer cette fois'}</button>
       ${o.paused || o.needsWallet || !may ? '' : '<button type="button" class="link dv-other" data-other>Autres valeurs</button>'}
-      ${!may && (before || next) ? `<p class="muted dv-note">Elle se confirme après celle du ${dayShort((before || next).date)}.</p>` : ''}`;
+      ${!may && (before || next) ? `<p class="muted dv-note">Confirme d’abord celle du ${dayShort((before || next).date)}.</p>` : ''}`;
   }
   return `<div class="dv-l1"><span>${esc(dayLabel(o.date))}</span>${o.rank && o.times ? `<span>${o.rank} sur ${o.times}</span>` : ''}</div>
     <div class="dv-amt${o.kind === 'income' && open ? ' in' : ''}">${dueMoney(o)}${o.state === 'done' && o.currency === o.plannedCur && o.amount !== o.planned ? `<small class="dv-plan">· prévu ${money(o.planned, { cur: o.plannedCur })}</small>` : ''}</div>

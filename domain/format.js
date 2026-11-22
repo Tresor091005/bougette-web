@@ -43,8 +43,8 @@ export const GROUPS = { space: THIN, dot: '.', comma: ',', apos: '’' };
 // les décimales sont celles de la devise du montant, le symbole est celui de la devise (son code si elle n'en a pas).
 export const DEFAULT_FMT = { group: 'space', dec: 0, sym: 'short', pos: 'after' };
 
-/** @type {{ currency: string, fmt: typeof DEFAULT_FMT, discreet: boolean, steps: Record<string, number> }} */
-let cfg = { currency: 'XOF', fmt: { ...DEFAULT_FMT }, discreet: false, steps: {} };
+/** @type {{ currency: string, fmt: typeof DEFAULT_FMT, steps: Record<string, number> }} */
+let cfg = { currency: 'XOF', fmt: { ...DEFAULT_FMT }, steps: {} };
 export function configureFormat(c) { cfg = { ...cfg, ...c, fmt: { ...DEFAULT_FMT, ...(c.fmt || cfg.fmt) }, steps: c.steps || cfg.steps || {} }; }
 export const currencyOf = code => CURRENCIES.find(c => c.code === (code || cfg.currency)) || CURRENCIES[0];
 export const currency = () => currencyOf(cfg.currency);
@@ -101,10 +101,9 @@ export function withSym(n, cur, pre = '') {
   return symFirst() ? `${pre}${s}${NBSP}${n}` : `${pre}${n}${NBSP}${s}`;
 }
 
-// Montant complet. cur : devise (par défaut la monnaie principale) ; sign : forcer le « + » ; hide : suivre le mode discret.
-/** @param {number} amount @param {{ cur?: string, sign?: boolean, hide?: boolean, abs?: boolean }} [opts] */
-export function money(amount, { cur = undefined, sign = false, hide = true, abs = false } = {}) {
-  if (hide && cfg.discreet) return withSym('•••', cur);
+// Montant complet. cur : devise (par défaut la monnaie principale)  ; sign : forcer le « + ».
+/** @param {number} amount @param {{ cur?: string, sign?: boolean, abs?: boolean }} [opts] */
+export function money(amount, { cur = undefined, sign = false, abs = false } = {}) {
   const v = abs ? Math.abs(amount) : amount;
   const pre = v < 0 ? MINUS : sign && v > 0 ? '+' : '';
   return withSym(num(Math.abs(v), { cur }), cur, pre);
@@ -113,7 +112,6 @@ export function money(amount, { cur = undefined, sign = false, hide = true, abs 
 // Montant « compact » pour les petits espaces : 1,2 M F, 35 k F.
 /** @param {number} amount @param {{ cur?: string }} [opts] */
 export function moneyShort(amount, { cur = undefined } = {}) {
-  if (cfg.discreet) return withSym('•••', cur);
   const v = Math.abs(amount) / 10 ** unitDec(cur);
   const pre = amount < 0 ? MINUS : '';
   if (v >= 999500) return withSym(`${(v / 1e6).toFixed(1).replace(/\.0$/, '').replace('.', decSep())}${NBSP}M`, cur, pre);

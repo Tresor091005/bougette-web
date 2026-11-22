@@ -52,13 +52,13 @@ export function statusHTML(v) {
 /** La barre d'une réserve prend la couleur de ce qu'elle dit (rouge, orange). @param {any} v */
 export const barTone = v => (v.status === 'overdue' || v.status === 'none' ? ' over' : v.status === 'later' || v.status === 'short' ? ' warn' : '');
 
-/** « Prête à temps · jusqu'au 1 mars 2027 » ; ce qu'une réserve dit d'elle dans sa feuille. @param {any} v */
+/** « Prête à temps » (sa date est dans le champ Échéance, juste dessous) ; ce qu'une réserve dit d'elle dans sa feuille. @param {any} v */
 function reserveLine(v) {
   const r = v.reserve;
   if (v.status === 'overdue') return statusHTML(v);
-  // en retard : les deux dates, « Prête le 2 févr 2028, 6 mois après sa date (2 août 2027) »
-  if (v.status === 'later') return `<span class="rs-warn">Prête le ${yearDate(v.ready)}, ${lateBy(r.due, v.ready)} après sa date (${yearDate(r.due)})</span>`;
-  return `${v.status === 'ok' ? 'Prête à temps' : statusHTML(v)} · ${v.overdue ? `échue le ${yearDate(r.due)}` : `jusqu’au ${yearDate(r.due)}`}`;
+  // en retard : « Prête le 2 févr 2028, 6 mois trop tard » (son échéance est dans le champ dessous)
+  if (v.status === 'later') return `<span class="rs-warn">Prête le ${yearDate(v.ready)}, ${lateBy(r.due, v.ready)} trop tard</span>`;
+  return `${v.status === 'ok' ? 'Prête à temps' : statusHTML(v)}${v.overdue ? ` · échue le ${yearDate(r.due)}` : ''}`;
 }
 
 /** Ligne d'une réserve terminée : la toucher ouvre son petit menu (ses opérations, Reconduire, son portefeuille). @param {any} x */
@@ -71,13 +71,13 @@ function closedLine(r) {
   const used = r.mode === 'once' ? r.uses.length || r.used ? `Utilisée le ${yearDate(r.closed)}` : `Close le ${yearDate(r.closed)}`
     : r.used ? `${money(r.used, { cur })} utilisés · terminée le ${yearDate(r.closed)}` : `Close le ${yearDate(r.closed)}`;
   const gone = reserveDeletedUses(r).length;
-  return `${used}${gone ? ` · <span class="loss">${gone > 1 ? 'des opérations qui l’ont utilisée ont été supprimées' : 'l’opération qui l’a utilisée a été supprimée'}</span>` : ''}`;
+  return `${used}${gone ? ` · <span class="loss">${gone > 1 ? `${gone} opérations supprimées depuis` : 'opération supprimée depuis'}</span>` : ''}`;
 }
 
 /** Ce que dit l'objectif d'un portefeuille. @param {any} g @param {string} cur */
 function goalLine(g, cur) {
-  if (g.reached) return g.over ? `Objectif atteint, ${money(g.over, { cur })} au-delà` : 'Objectif atteint';
-  if (g.passed) return `Date passée : ${g.pct} % atteints`;
+  if (g.reached) return g.over ? `Objectif atteint, ${money(g.over, { cur })} de plus` : 'Objectif atteint';
+  if (g.passed) return `Date passée, objectif atteint à ${g.pct} %`;
   // ce qu'il faut faire d'abord (le pourcentage est dans l'anneau autour de l'icône)
   return g.need ? `${money(approxUp(g.need, cur), { cur })} par mois jusqu’au ${yearDate(g.on)}` : `Objectif ${money(g.amount, { cur })}`;
 }
@@ -90,9 +90,9 @@ function goalLine(g, cur) {
 export function reservesRing(rep) {
   if (!rep.reserves.length) return null;
   const saved = rep.reserves.reduce((n, v) => n + v.saved, 0), target = rep.reserves.reduce((n, v) => n + v.target, 0);
-  return { pct: target ? Math.floor((saved * 100) / target) : 100, saved, target };
+  return { pct: target ? Math.floor((saved * 100) / target) : 100, saved, target, label: 'Mis de côté' };
 }
-export const goalRing = (pill, g) => (g ? `<span class="goal-ring${g.pct >= 100 ? ' done' : ''}" style="--p:${Math.min(100, g.pct)}" role="img" aria-label="Objectif : ${Math.min(100, g.pct)} %">${pill}</span>` : pill);
+export const goalRing = (pill, g) => (g ? `<span class="goal-ring${g.pct >= 100 ? ' done' : ''}" style="--p:${Math.min(100, g.pct)}" role="img" aria-label="${g.label || 'Objectif'} : ${Math.min(100, g.pct)} %">${pill}</span>` : pill);
 
 /**
  * Ligne d'une réserve ouverte : ce qu'elle dit (statusHTML) sur une ligne dessous, la barre de ce qui est de côté (sans repère, D17
@@ -120,7 +120,7 @@ export function reserveRowHTML(v, { wallet = '' } = {}) {
  * l'épargne a de quoi la payer entièrement ; sinon on dit ce qui manque.
  * @param {string} id @param {(o: any) => any} openEntry
  */
-export async function useReserve(id, openEntry) {
+async function useReserve(id, openEntry) {
   const r = reserveById(id);
   if (!r || r.closed) return;
   const v = savingsReport(r.wallet).reserves.find(x => x.reserve.id === id);
@@ -145,17 +145,17 @@ export async function askWhen(id, openEntry) {
   const v = savingsReport(r.wallet).reserves.find(x => x.reserve.id === id);
   const cur = r.currency;
   const k = await menuSheet({ title: `${esc(r.name)} est prête`, items: [
-    { key: 'now', icon: 'arrow-right', label: 'Maintenant', note: `La dépense de ${money(v ? v.target : r.amount - r.used, { cur })}, puis elle se ferme` },
-    { key: 'keep', icon: 'calendar-check', label: `Le ${dayShort(r.due)}`, note: 'On te le rappelle ce jour-là' },
-    { key: 'date', icon: 'calendar-blank', label: 'À une autre date', note: 'On te le rappelle ce jour-là' },
+    { key: 'now', icon: 'arrow-right', label: 'Maintenant', note: `Tu notes la dépense de ${money(v ? v.target : r.amount - r.used, { cur })}, puis la réserve se ferme` },
+    { key: 'keep', icon: 'calendar-check', label: `Le ${dayShort(r.due)}`, note: 'L’argent reste de côté jusque-là' },
+    { key: 'date', icon: 'calendar-blank', label: 'À une autre date' },
   ] });
   if (!k) return;
   resolve(`res-ready-${id}`);
   if (k === 'now') afterSheets(() => useReserve(id, openEntry));
-  else if (k === 'keep') toast(`On te le rappellera le ${dayShort(r.due)}`);
+  else if (k === 'keep') toast(`Gardée pour le ${dayShort(r.due)}`);
   else afterSheets(async () => {
     const d = await pickDate({ current: r.due, future: true, min: today(), title: 'Tu la dépenses quand ?' });
-    if (d && d !== r.due && (await updateReserve(r.id, { due: d }))) { buzz(12); toast(`On te le rappellera le ${dayShort(d)}`); }
+    if (d && d !== r.due && (await updateReserve(r.id, { due: d }))) { buzz(12); toast(`Gardée pour le ${dayShort(d)}`); }
   });
 }
 
@@ -173,7 +173,7 @@ export async function pushReserve(r) {
 export async function closeReserveAsk(r, onClosed = () => {}) {
   const yes = await confirmSheet({
     title: `Clore ${esc(r.name)} ?`,
-    text: 'Ce qui était mis de côté pour elle retourne aux autres réserves ou à l’épargne libre. Tu pourras la reconduire depuis « Réserves terminées ».',
+    text: 'Son argent va aux autres réserves ou à l’épargne libre. Tu pourras la reconduire depuis « Réserves terminées ».',
     yes: 'Clore',
   });
   if (!yes) return;
@@ -212,12 +212,12 @@ export async function openReserveMenu({ id, openEntry, go, atWallet = false }) {
     // Utiliser, seulement quand c'est possible : en une fois, quand l'épargne peut la payer entièrement ; en plusieurs fois, toujours
     const need = view ? view.target : r.amount - r.used;
     const use = r.mode !== 'once' || rep.balance >= need
-      ? { key: 'use', icon: 'arrow-right', label: 'Utiliser', note: r.mode === 'once' ? `La dépense de ${money(need, { cur })}, puis elle se ferme` : 'Une partie maintenant, le reste plus tard' } : null;
+      ? { key: 'use', icon: 'arrow-right', label: 'Utiliser', note: r.mode === 'once' ? `Tu notes la dépense de ${money(need, { cur })}, puis la réserve se ferme` : 'Une partie maintenant, le reste plus tard' } : null;
     if (view?.overdue) {
       if (use) items.push(use);
-      items.push({ key: 'push', icon: 'calendar-blank', label: 'Repousser', note: 'Une nouvelle échéance' });
-      if (!view.full && view.saved > 0) items.push({ key: 'reduce', icon: 'arrow-down', label: `Réduire à ${money(view.saved, { cur })}`, note: 'Le montant visé devient ce qui est là' });
-      items.push({ key: 'close', icon: 'x-circle', label: 'Clore', note: 'Ce qui est dessus retourne aux autres' });
+      items.push({ key: 'push', icon: 'calendar-blank', label: 'Repousser', note: 'Choisir une nouvelle date' });
+      if (!view.full && view.saved > 0) items.push({ key: 'reduce', icon: 'arrow-down', label: `Réduire à ${money(view.saved, { cur })}`, note: 'Elle vise ce qui est déjà de côté' });
+      items.push({ key: 'close', icon: 'x-circle', label: 'Clore', note: 'Son argent retourne à l’épargne' });
     } else {
       const useFirst = !!use && (!!view?.full || (r.mode !== 'once' && uses.length > 0));
       if (use && useFirst) items.push(use);
@@ -258,7 +258,7 @@ const versementFrom = a => (countedAccounts().find(x => !x.savings && x.currency
  * le versement confirmé se répartit, la plus proche d'abord.
  * @param {string} walletId @param {(o: any) => any} openEntry
  */
-export function scheduleVersement(walletId, openEntry) {
+function scheduleVersement(walletId, openEntry) {
   const a = account(walletId);
   if (!a) return;
   const v = savingsReport(walletId).versement;
@@ -266,7 +266,7 @@ export function scheduleVersement(walletId, openEntry) {
     preset: {
       kind: 'transfer', amount: v.gap || 0, accountId: versementFrom(a), toAccountId: a.id, note: `Versement ${a.name}`.slice(0, 40),
       start: v.next, every: 'month', interval: 1,
-      say: `Chaque mois, de ton portefeuille courant vers ${a.name} : tes réserves s’en servent, la plus proche d’abord. Tu choisis le montant ; le jour venu, tu confirmes.`,
+      say: `Un virement vers ${a.name} chaque mois. Il remplit tes réserves, la plus proche d’abord. Le jour venu, tu le confirmes.`,
     },
     openEntry,
   });
@@ -284,7 +284,7 @@ async function openVersement(walletId, go) {
   const cur = a.currency;
   const k = await menuSheet({ title: 'Tes versements', items: list.map(x => {
     const r = scheduleById(x.head);
-    return { key: x.head, icon: 'arrows-clockwise', label: esc(r?.note || `Depuis ${account(x.from)?.name || '…'}`), note: `${money(x.amount, { cur })} · prochaine le ${dayShort(x.date)}` };
+    return { key: x.head, icon: 'arrows-clockwise', label: esc(r?.note || `Depuis ${account(x.from)?.name || '…'}`), note: `${money(x.amount, { cur })} · prochain le ${dayShort(x.date)}` };
   }) });
   if (k) go(dueHref(k));
 }
@@ -294,8 +294,8 @@ const inflowLine = (f, cur) => (f ? `${f.kind === 'income' ? 'Revenu' : 'Verseme
 
 /**
  * Le verdict en tête de la page d'une épargne (D17 revu le 2026-11-20, avec l'utilisateur : « une échéance est une
- * échéance ») : tout ce qui est prévu sur l'épargne tient-il ses réserves datées ? Oui : « Tes échéances tiennent tes
- * réserves » (« tes autres réserves » quand l'une, trop proche ou échue, n'est pas prête : sa ligne le dit), et la
+ * échéance ») : tout ce qui est prévu sur l'épargne tient-il ses réserves datées ? Oui : « Tes échéances suffisent pour
+ * tes réserves » (« tes autres réserves » quand l'une, trop proche ou échue, n'est pas prête : sa ligne le dit), et la
  * prochaine entrée prévue ; non : « Tes échéances ne suffisent pas : X de plus par mois » (orange), une flèche. Le toucher ouvre
  * le versement pour l'augmenter (un petit menu s'il y en a plusieurs) ; sans versement, « Programmer le versement »,
  * prérempli au manque, sauf quand rien ne manque. Sans réserve datée, pas de verdict (la ligne Programmer reste).
@@ -320,7 +320,7 @@ function verdictHTML(a, rep) {
   const behind = rep.reserves.some((/** @type {any} */ x) => ['later', 'short', 'none', 'overdue'].includes(x.status));
   const sub = inflowLine(v.inflow, cur);
   const inner = `<span class="pill">${icon('check')}</span>
-      <div class="main"><div class="t wrap">Tes échéances tiennent tes ${behind ? 'autres ' : ''}réserves</div>${sub ? `<div class="s wrap">${esc(sub)}</div>` : ''}</div>`;
+      <div class="main"><div class="t wrap">Tes échéances suffisent pour tes ${behind ? 'autres ' : ''}réserves</div>${sub ? `<div class="s wrap">${esc(sub)}</div>` : ''}</div>`;
   // une flèche quand elle se touche (2026-11-20, avec l'utilisateur : comme la ligne du manque)
   return `<div class="group rs-vers">${v.list.length ? `<button type="button" class="row rs-verdict" data-vers="${a.id}">${inner}<span class="end">${icon('caret-right')}</span></button>` : `<div class="row rs-verdict" data-verdict>${inner}</div>`}${program}</div>`;
 }
@@ -360,7 +360,7 @@ export function render(app, ctx) {
       </div>`}
       <div class="group plain rs-acts">${a.emergency ? '' : `<button type="button" class="row add-row" data-new="${a.id}"><span class="pill">${icon('plus')}</span><div class="main"><div class="t">Nouvelle réserve</div></div></button>`}
         <button type="button" class="row add-row" data-aside="${a.id}"><span class="pill">${icon('hand-coins')}</span><div class="main"><div class="t">Mettre de côté</div></div></button></div>
-      ${a.emergency ? '<p class="muted b-note">Pour les coups durs : hors du total, sans réserve. 3 mois de dépenses suffisent, ce n’est pas fait pour grossir sans fin.</p>' : ''}
+      ${a.emergency ? '<p class="muted b-note">Pour les coups durs. Il ne compte pas dans ton total et n’a pas de réserves. 3 mois de dépenses suffisent.</p>' : ''}
       ${(() => {
         const done = closedReserves(a.id).slice(0, 12);
         return done.length ? `<details class="rs-done"><summary>Réserves terminées <span class="muted">${done.length}</span></summary>
@@ -406,7 +406,7 @@ export function coveredMonths(a) {
   return spend > 0 ? Math.floor((savingsReport(a.id).balance * 10) / spend) / 10 : null;
 }
 /** L'anneau des mois couverts autour de la pastille. @param {string} pill @param {number|null} m */
-export const monthsRing = (pill, m) => goalRing(pill, { pct: m === null ? 0 : Math.max(0, Math.min(100, Math.round((m * 100) / 3))) });
+export const monthsRing = (pill, m) => goalRing(pill, { pct: m === null ? 0 : Math.max(0, Math.min(100, Math.round((m * 100) / 3))), label: '3 mois de dépenses' });
 /** @param {number|null} m */
 export const monthsLabel = m => (m === null ? 'Pas encore de dépenses à couvrir' : `${String(Math.max(0, m)).replace('.', ',')} mois de dépenses couverts`);
 
@@ -420,8 +420,7 @@ export function openGoalSheet(walletId) {
   const dec = currencyOf(cur).dec;
   const s = openSheet(`<div class="acc-sheet">
     <h2 class="sheet-title">Objectif · ${esc(a.name)}</h2>
-    <p class="muted rs-say">Purement indicatif : il ne bloque rien, Bougette te dit seulement où tu en es.</p>
-    ${(() => { const rr = savingsReport(walletId); return rr.goal && rr.targets > rr.goal.amount ? noticeHTML(`Tes réserves visent ${money(rr.targets, { cur })}, plus que cet objectif (${money(rr.goal.amount, { cur })}).`, { tone: 'info' }) : ''; })()}
+    <p class="muted rs-say">Il ne bloque rien : il te montre où tu en es.</p>
     <label class="field"><span>Montant visé (${symbol(cur)})</span><input data-amt inputmode="decimal" placeholder="0" autocomplete="off" value="${f.amount ? f.amount / 10 ** dec : ''}"></label>
     <div class="field"><span>Date (facultative)</span><button type="button" class="field-btn" data-on><b data-onl></b>${icon('calendar-blank')}</button></div>
     <div data-err></div>
@@ -493,7 +492,7 @@ export function openReserveSheet({ id = null, wallet = null, from = null, openEn
   let walletId = r ? r.wallet : prev ? prev.wallet : wallet || choices[0]?.id;
   const a = walletId ? account(walletId) : null;
   if (!a) {
-    toast(savingsAccounts().some(x => !x.archived) ? 'Ton seul portefeuille d’épargne est le fonds d’urgence : crée une autre épargne pour tes réserves.' : 'Crée d’abord un portefeuille d’épargne.');
+    toast(savingsAccounts().some(x => !x.archived) ? 'Le fonds d’urgence n’a pas de réserves. Crée une autre épargne pour elles.' : 'Crée d’abord un portefeuille d’épargne.');
     return;
   }
   const canMove = !r && !prev && !wallet && choices.length > 1;
@@ -505,7 +504,7 @@ export function openReserveSheet({ id = null, wallet = null, from = null, openEn
   const f = { name: src?.name || '', amount: src?.amount || 0, due: r?.due || prevDue || addMonths(today(), 3), mode: src?.mode || 'once', category: src?.category || null };
   const s = openSheet(`<div class="acc-sheet rs-sheet">
     <h2 class="sheet-title">${r ? esc(r.name) : prev ? 'Reconduire la réserve' : 'Nouvelle réserve'}</h2>
-    ${view ? `<p class="rs-say"><b>${money(view.saved, { cur })}</b> sur ${money(view.target, { cur })}${r.used ? ` · ${money(r.used, { cur })} déjà utilisés` : ''}<br><span class="muted">${reserveLine(view)}</span>${reserveDeletedUses(r).length ? `<br><span class="muted">${reserveDeletedUses(r).length > 1 ? 'Des paiements ont été supprimés' : 'Un paiement a été supprimé'} : son argent est revenu dans la réserve.</span>` : ''}</p>` : '<p class="muted rs-say">Une dépense à venir, obligatoire ou souhaitée, que tu prépares à l’avance.</p>'}
+    ${view ? `<p class="rs-say"><b>${money(view.saved, { cur })}</b> sur ${money(view.target, { cur })}${r.used ? ` · ${money(r.used, { cur })} déjà utilisés` : ''}<br><span class="muted">${reserveLine(view)}</span>${reserveDeletedUses(r).length ? `<br><span class="muted">${reserveDeletedUses(r).length > 1 ? 'Des opérations faites avec elle ont été supprimées' : 'Une opération faite avec elle a été supprimée'} : son argent est revenu dans la réserve.</span>` : ''}</p>` : '<p class="muted rs-say">De l’argent mis de côté pour une dépense à venir.</p>'}
     <div class="field"><span>Portefeuille d’épargne</span><button type="button" class="field-btn" data-wal${canMove ? '' : ' aria-disabled="true"'}><b data-wall></b>${canMove ? icon('caret-down') : ''}</button></div>
     <label class="field"><span>Nom</span><input data-name maxlength="28" value="${esc(f.name)}" placeholder="Ex. Assurance, Rentrée, Téléphone" autocomplete="off"></label>
     <label class="field"><span>Montant visé (${symbol(cur)})</span><input data-amt inputmode="decimal" placeholder="0" autocomplete="off" value="${f.amount ? f.amount / 10 ** dec : ''}"></label>
@@ -561,7 +560,7 @@ export function openReserveSheet({ id = null, wallet = null, from = null, openEn
       const w = account(walletId);
       let dropGoal = false;
       if (w?.goal && !openReserves(walletId).length) {
-        const yes = await confirmSheet({ title: `${esc(w.name)} a un objectif`, text: `Un objectif de ${money(w.goal.amount, { cur: w.currency })}${w.goal.on ? ` pour le ${yearDate(w.goal.on)}` : ''}. En y créant une réserve, il est retiré : l’épargne suivra tes réserves.`, yes: 'Créer la réserve' });
+        const yes = await confirmSheet({ title: `${esc(w.name)} a un objectif`, text: `Son objectif de ${money(w.goal.amount, { cur: w.currency })}${w.goal.on ? ` pour le ${yearDate(w.goal.on)}` : ''} sera retiré : l’épargne suivra tes réserves.`, yes: 'Créer la réserve' });
         if (!yes) return;
         dropGoal = true;
       }

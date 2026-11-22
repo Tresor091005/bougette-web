@@ -1,10 +1,10 @@
 // Messages de l'app (cloche de l'accueil, ROADMAP 1b, 2026-11-09) : ce que Bougette a besoin de te dire — un problème
-// d'intégrité, une sauvegarde hors du téléphone qui date. Notifications DANS l'app seulement (pas de notification
+// d'intégrité, un changement de la synchro à revoir, de l'argent à répartir… Notifications DANS l'app seulement (pas de notification
 // Android, étape 5). Un message a une clé : un nouveau message de même clé remplace l'ancien ; « résoudre » une clé le
 // retire (le problème a disparu). Rangés dans les préférences d'interface du téléphone, pas dans le journal.
 import { pref } from './store.js';
 
-/** @typedef {{ key: string, kind: 'error'|'warn'|'info', title: string, body: string, action?: { label: string, id: string }, at: string, read: boolean }} Message */
+/** @typedef {{ key: string, kind: 'error'|'warn'|'info'|'ok', title: string, body: string, action?: { label: string, id: string }, at: string, read: boolean }} Message */
 
 const MAX = 20;
 /** @type {Set<() => void>} */
@@ -28,6 +28,8 @@ export function notify(m, { every = 0, now = new Date() } = {}) {
   pref('inbox', [{ ...m, at: now.toISOString(), read: false }, ...list.filter(x => x.key !== m.key)].slice(0, MAX));
   changed();
 }
+/** Remplace toute la cloche, sans limite (les exemples de la page Développeur, core/inbox-samples.js). @param {Message[]} list */
+export function putAll(list) { pref('inbox', list); changed(); }
 /** Retire le message d'une clé (le problème a disparu). @param {string} key */
 export function resolve(key) {
   const list = messages();

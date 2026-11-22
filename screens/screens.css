@@ -1,102 +1,22 @@
 /* Styles propres aux écrans : accueil (D3, D10), saisie (D4), mouvement (D5), Mois et Portefeuilles (D9), Journal et fiche d'une opération (D6), catégories (D7, D8),
    premier lancement, Moi et portefeuilles. Jetons dans core/theme.css. */
 
-/* ================= accueil (D3) ================= */
-.home .topbar { min-height: 64px; }
-.home .brand .logo { width: 36px; height: 36px; }
-/* le fil du mois (D3, 2026-11-17) : une phrase, un fil de la période, un point à aujourd'hui */
-.fil { padding: 26px 0 6px; }
-.fil-lead { font-size: 14px; color: var(--ink-2); }
-.fil-big { font-size: 34px; font-weight: 600; letter-spacing: -.02em; line-height: 1.15; margin-top: 4px; }
-.fil-track { position: relative; height: 3px; margin: 30px 6px 0; border-radius: 2px; background: var(--rule); }
-.fil-track i { position: absolute; top: 0; height: 3px; border-radius: 2px; }
-.fil-track .done { left: 0; background: var(--accent-text); }
-.fil-track .ahead { background: repeating-linear-gradient(90deg, var(--accent-text) 0 3px, transparent 3px 8px); opacity: .7; transition: width .9s var(--spring); }
-.fil-track .tick { width: 2px; height: 14px; top: -6px; margin-left: -1px; border-radius: 1px; background: var(--c2); transition: left .9s var(--spring); }
-.fil-track .now { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 4px var(--paper); }
-.fil-axis { position: relative; display: flex; justify-content: space-between; margin: 10px 0 0; font-size: 12px; color: var(--ink-3); }
-.fil-axis .until { position: absolute; transform: translateX(-50%); color: var(--c2); }
-.fil-sub { margin-top: 18px; font-size: 14px; color: var(--ink-2); }
-
-/* compteur à rouleaux (D5) : colonnes de chiffres, 900 ms, courbe unique */
-.odo { display: inline-flex; height: 1em; overflow: hidden; line-height: 1; vertical-align: baseline; }
-.odo .col { display: inline-flex; flex-direction: column; }
-.odo.rolling .col { transition: transform .9s var(--spring); }
-.odo .col span { height: 1em; display: block; text-align: center; }
-.odo .sp { width: .24em; }
-.wal .gs { width: .2em; }
-
-
-.wal {
-  display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; margin-top: 28px; padding: 0; min-height: 54px;
-  font-size: 13px; color: var(--ink-2); text-align: left; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
-}
-.wal:active { background: color-mix(in srgb, var(--ink) 5%, transparent); }
-.wal .v { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.wal .v b { font-weight: 500; color: var(--ink); font-size: 15px; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; }
-.wal .v b.loss { color: var(--loss); }
-.wal .ic { width: 16px; height: 16px; color: var(--ink-3); }
-.wal .l { display: grid; gap: 2px; }
-.wal .l small { font-size: 12px; color: var(--ink-3); }
-.wal .l b { font: 500 15px var(--sans); color: var(--ink); }
-/* « Mon argent » (D3.5) : le total en tête, puis 3 portefeuilles en lignes simples (D0), sans boîte */
-.money { margin-top: 28px; }
-.money .wal { margin-top: 0; border-bottom: 0; }
-.money .mw { min-height: 52px; padding: 6px 0; }
-.money .mw .t { font-size: 15px; }
-.money .mw .s { font-size: 12px; color: var(--ink-3); }
-.money .mw .amt { font-weight: 500; color: var(--ink); }
-.money .mw .amt.loss { color: var(--loss); }
-.mw-more { display: flex; align-items: center; gap: 4px; width: 100%; min-height: 44px; font-size: 13px; color: var(--ink-2); }
-.mw-more .ic { width: 14px; height: 14px; color: var(--ink-3); }
-.money > :last-child { border-bottom: 1px solid var(--rule); }
-.home .section-h { margin-top: 34px; }
+/* ================= accueil (D3 ; ses tuiles dans core/proto.css) ================= */
 /* cloche (ROADMAP 1b) : un point quand un message n'a pas été lu */
 .bell { position: relative; }
 .bell .dot { position: absolute; top: 9px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--loss); box-shadow: 0 0 0 2px var(--paper); }
-.inbox-m { align-items: flex-start; }
-.inbox-m .btn { align-self: center; flex: none; }
-.inbox-m.new .t { font-weight: 600; }
-
-/* bocaux 2×2 (D3, D8) */
-.jars { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.jar {
-  position: relative; height: 128px; border-radius: 20px; background: var(--card); box-shadow: var(--shadow); overflow: hidden;
-  padding: 12px 14px; text-align: left; display: block; width: 100%; transition: transform .3s var(--spring);
-}
-.jar.bump { transform: scale(.97); }
-.jar svg.w { position: absolute; left: 0; bottom: 0; width: 100%; height: 128px; }
-.jar svg.w path { fill: color-mix(in srgb, var(--c) var(--mix), var(--card)); }
-.jar .c { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; min-width: 0; }
-.jar .top { display: flex; justify-content: space-between; align-items: center; }
-/* pastille et textes plus petits (2026-11-17, avec l'utilisateur) */
-.jar .pill.disc { width: 30px; height: 30px; }
-.jar .pill.disc .ic { width: 16px; height: 16px; }
-.jar .n { font-size: 12px; color: var(--ink-2); margin-top: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.jar .a { font-size: 20px; font-weight: 600; letter-spacing: -.035em; line-height: 1.1; white-space: nowrap; overflow: hidden; }
-.jar .a small { font-size: 12px; font-weight: 500; color: var(--ink-3); letter-spacing: 0; margin-left: 2px; }
-.jar .s { font-size: 11px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* épuisé ou dépassé (2026-11-17, avec l'utilisateur) : plus d'eau, « Épuisé » ; un dépassement en plus porte une étiquette rouge,
-   comme une ardoise accrochée au bocal (pas de pourcentage : on ne gère pas son argent en pourcentage) */
-.jar.done .a { color: var(--ink-2); }
-.jar .slate { position: absolute; top: 14px; right: 12px; z-index: 2; padding: 4px 9px; border-radius: 7px; transform: rotate(6deg); background: var(--loss); color: #2a1510; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.jar.tile .top { margin-bottom: 0; }
-.jar.tile .n { margin-top: auto; }
-.jar:active { transform: scale(.98); }
-
-/* premier jour (D10) : bocal vide en pointillé */
-.jar-empty {
-  margin-top: 14px; border: 1.5px dashed var(--rule); border-radius: 20px; padding: 30px 20px 26px; text-align: center; color: var(--ink-3);
-}
-.jar-empty svg { width: 56px; height: 70px; margin: 0 auto 12px; display: block; }
-.jar-empty p { font-size: 15px; color: var(--ink-2); line-height: 1.45; }
-
-/* sans budget (D10) */
-.fix-budget { display: flex; align-items: center; gap: 14px; margin-top: 26px; padding: 14px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
-.fix-budget .pill { width: 44px; height: 44px; background: var(--accent-soft); color: var(--accent-text); }
-.fix-budget .main { flex: 1; min-width: 0; font-size: 13px; color: var(--ink-2); line-height: 1.35; }
-.fix-budget .main b { display: block; font-size: 15px; font-weight: 500; color: var(--ink); margin-bottom: 2px; }
-.fix-budget .btn { flex: none; }
+/* feuille de la cloche (D15, piste B) : « À faire » puis « Pour info », une ligne par message ; seul le lien agit */
+.im-h { font: 400 13px/1.3 var(--sans); color: var(--ink-2); margin: 14px 4px 5px; } /* comme les intertitres des devises */
+.im-list { display: grid; }
+.im-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 2px; border-top: 1px solid var(--line); }
+.im-row:first-child { border-top: 0; }
+.im-dot { flex: none; margin-top: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.im-main { flex: 1; min-width: 0; }
+.im-t { font-size: 15px; line-height: 1.3; }
+.im-row.new .im-t { font-weight: 600; }
+.im-s { margin-top: 2px; font-size: 13px; line-height: 1.3; color: var(--ink-2); }
+.im-go { display: flex; align-items: center; gap: 2px; margin: -4px -4px -8px auto; padding: 6px 4px 8px; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--accent-text); white-space: nowrap; cursor: pointer; }
+.im-go .ic { width: 14px; height: 14px; }
 
 /* ================= saisie (D4) ================= */
 .sheet.entry-sheet { height: min(calc(100dvh - var(--sat) - 28px), 820px); }
@@ -166,7 +86,7 @@
 
 /* gélules teintées (D14) : suggestions de catégorie, « Toutes », « Aujourd'hui » du calendrier */
 .sc { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 13px 0 10px; border-radius: 99px;
-  font-size: 13.5px; color: var(--ink-2); background: color-mix(in srgb, var(--c, var(--ink-3)) 13%, transparent); white-space: nowrap;
+  font-size: 13px; color: var(--ink-2); background: color-mix(in srgb, var(--c, var(--ink-3)) 13%, transparent); white-space: nowrap;
   transition: background .15s var(--ease-out), color .15s var(--ease-out), box-shadow .15s var(--ease-out), transform .15s var(--ease-out); }
 .sc .ic { width: 17px; height: 17px; color: color-mix(in srgb, var(--c, var(--ink-2)) 70%, white); }
 .sc.on { color: var(--ink); background: color-mix(in srgb, var(--c, var(--accent)) 30%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--c, var(--accent)) 80%, white); }
@@ -186,13 +106,12 @@
 .sc.on.gauge.over { background: color-mix(in srgb, var(--loss) 32%, transparent); box-shadow: inset 0 0 0 1.5px var(--loss); color: var(--loss); }
 .sc.on.gauge.over .ic { color: var(--loss); }
 .e-say .e-over { display: block; color: var(--loss); }
-.e-sugg { display: flex; gap: 6px; margin: 0 -20px; padding: 4px 16px; overflow-x: auto; scrollbar-width: none; }
+.e-sugg { display: flex; gap: 6px; margin: -4px -20px; padding: 4px 20px; overflow-x: auto; scrollbar-width: none; }
 .e-sugg::-webkit-scrollbar { display: none; }
 .e-sugg[hidden] { display: none; }
 /* sous le montant, une zone de hauteur fixe : « = résultat » et la phrase, ou, tant que rien n'est tapé, les modèles à
    leur place (rien ne bouge au premier chiffre) ; elle ne grandit que pour un message long (solde insuffisant et son lien) */
-.e-under { align-self: stretch; min-height: 68px; display: flex; flex-direction: column; align-items: center; }
-.e-under.tpl-on { justify-content: flex-end; }
+.e-under { align-self: stretch; min-height: 68px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
 .e-under.tpl-on > :not(.e-tpl) { display: none; }
 /* cette zone est posée en bas de la zone du montant, juste au-dessus des catégories (pas de vide dessous) ; le montant
    (et l'explication de la vérification) se centre dans la place qui reste au-dessus */
@@ -200,10 +119,10 @@
 .entry .e-stage > .e-q:not([hidden]), .entry .e-stage > .e-q[hidden] + .e-expr { margin-top: auto; }
 .entry .e-stage > .e-under { margin-top: auto; }
 /* modèles : une seule ligne qui défile (rien ne déborde sur les catégories) */
-.e-tpl { display: flex; gap: 6px; align-self: stretch; margin: 12px -20px 0; padding: 0 16px; overflow-x: auto; scrollbar-width: none; }
+.e-tpl { display: flex; gap: 6px; align-self: stretch; margin: 12px -20px 0; padding: 0 20px; overflow-x: auto; scrollbar-width: none; }
 .e-tpl::-webkit-scrollbar { display: none; }
 .e-tpl[hidden] { display: none; }
-.tpl { flex: none; display: flex; align-items: center; gap: 8px; height: 40px; max-width: 240px; padding: 0 14px 0 6px; border-radius: 99px; background: var(--field); font-size: 14px; color: var(--ink); text-align: left; }
+.tpl { flex: none; display: flex; align-items: center; gap: 8px; height: 40px; max-width: 240px; padding: 0 14px 0 6px; border-radius: 99px; background: var(--field); font-size: 13px; color: var(--ink); text-align: left; }
 .tpl span:not(.tpl-ic) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tpl b { font-weight: 500; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tpl-ic { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 99px; background: color-mix(in srgb, var(--c, var(--ink-3)) 22%, transparent); }
@@ -214,8 +133,9 @@
 /* feuille « Toutes » : liste façon Money Lover, simples lignes (D0), sous-catégories rattachées par un trait */
 /* hauteur fixe : en cherchant, la liste se vide mais la feuille (et le champ) ne bougent pas */
 .sheet.pick-sheet { height: min(calc(100dvh - var(--sat) - 28px), 820px); }
-.cat-find { position: sticky; top: 0; z-index: 1; background: var(--surface); padding: 4px 0 8px; margin: 0; }
-.cat-find .ic { top: 16px; } /* centrée dans le champ de 44 px (12 px + les 4 px du haut) */
+/* recherche en tête d'une feuille (catégorie, devise) : sous le titre, assez bas pour ne pas toucher le ✕ */
+.cat-find { position: sticky; top: 0; z-index: 1; display: block; background: var(--surface); padding: 8px 0; margin: 0; }
+.cat-find .ic { top: 20px; } /* centrée dans le champ de 44 px (12 px + les 8 px du haut) */
 .cl { margin-bottom: 8px; }
 .cl-g[hidden], .cl-row[hidden] { display: none; }
 .cl-row .t { font-weight: 500; }
@@ -232,8 +152,8 @@
 .cl-none { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 40px 12px 24px; }
 .cl-none[hidden] { display: none; }
 .cl-illu { width: 96px; height: 96px; color: var(--ink-3); margin-bottom: 14px; }
-.cl-none-t { font-size: 16px; font-weight: 500; color: var(--ink); margin: 0 0 4px; max-width: 280px; }
-.cl-none-s { font-size: 14px; color: var(--ink-2); margin: 0 0 18px; }
+.cl-none-t { font-size: 15px; font-weight: 500; color: var(--ink); margin: 0 0 4px; max-width: 280px; }
+.cl-none-s { font-size: 13px; color: var(--ink-2); margin: 0 0 18px; }
 .cl-none .btn { max-width: 100%; }
 .cl-c { display: inline-flex; min-width: 0; white-space: nowrap; }
 .cl-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -243,7 +163,7 @@
 .ns:first-child { border-top: 0; }
 .ns .ic { width: 16px; height: 16px; color: var(--ink-3); flex: none; }
 .ns span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ns small { color: var(--ink-3); font-size: 12.5px; }
+.ns small { color: var(--ink-3); font-size: 13px; }
 /* date : « Aujourd'hui » et calendrier maison */
 .dq { display: flex; gap: 6px; margin: 4px 0 14px; }
 .cal-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
@@ -270,7 +190,7 @@
 .cd.on { background: var(--accent); color: #fff; box-shadow: none; }
 .cd:active { transform: scale(.94); }
 /* « Quand ? » (D18 revu le 2026-11-18) : plusieurs jours touchés, aujourd'hui d'un point, les jours qui suivront teintés */
-.when-help { margin: -4px 0 10px; font-size: 13px; }
+.when-help { margin: 0 0 10px; font-size: 13px; }
 .when-g .cd { position: relative; height: 44px; }
 .when-g .cd.now { box-shadow: none; }
 .when-g .cd.now::after { content: ''; position: absolute; left: 50%; bottom: 5px; width: 4px; height: 4px; margin-left: -2px; border-radius: 99px; background: var(--accent); }
@@ -284,10 +204,11 @@
 .when-rep .sc { padding: 0 13px; }
 .when-rep .sc.sug { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent); }
 .when-rep .sc .ic { width: 14px; height: 14px; margin-left: -2px; }
-.when-say { min-height: 20px; margin: 0 0 8px; font-size: 14px; line-height: 1.4; }
+.when-say { min-height: 20px; margin: 0 0 8px; font-size: 15px; line-height: 1.4; }
+.when-say b { font-weight: 600; }
 .when-also p { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 6px; font-size: 13px; color: var(--ink-2); line-height: 1.35; }
 .when-also .ic { flex: none; width: 15px; height: 15px; margin-top: 1px; color: var(--ink-3); }
-.when-say small { display: block; color: var(--ink-3); font-size: 12.5px; margin-top: 2px; }
+.when-say small { display: block; color: var(--ink-3); font-size: 13px; margin-top: 2px; }
 .when-btn b { white-space: normal; text-align: left; }
 /* Confirmer la semaine (D18 revu le 2026-11-18) : une ligne par jour, cochée ; le montant se touche pour le changer */
 .wk-help { margin: -4px 0 12px; font-size: 13px; }
@@ -336,6 +257,7 @@
 .go.done .lbl { display: none; }
 .go.done .chk { display: block; animation: draw .26s var(--ease-out) forwards; }
 @keyframes draw { to { clip-path: inset(0 0 0 0); } }
+.note-sheet .field { margin-top: 14px; } /* aussi loin du titre que la recherche des catégories */
 .note-sheet .btn { margin-top: 4px; }
 /* Écran bas (ROADMAP étape 2, cassures d'interface) : la saisie se compacte pour que tout tienne sans défiler
    (320 × 568 compris) ; le bouton reste de toute façon collé en bas de la feuille, toujours atteignable. */
@@ -350,6 +272,7 @@
   .entry .keypad .op { height: 32px; }
   .entry .key { height: 38px; font-size: 20px; }
   .entry .go { height: 46px; }
+  .entry .keypad + .btn { margin-top: -1px; } /* le même écart que les touches (5 px) */
 }
 @media (max-height: 600px) {
   .entry .key { height: 34px; }
@@ -366,7 +289,7 @@
 .check-sheet .e-say b, .e-say.ck b { color: var(--ink); font-weight: 500; }
 /* vérifier un solde depuis la saisie : explication et question au-dessus du montant */
 .e-q { margin: 0 0 6px; text-align: center; }
-.e-q .e-help { margin: 0 auto 12px; max-width: 300px; font-size: 13px; line-height: 1.4; color: var(--ink-3); }
+.e-q .e-help { margin: 0 auto 4px; max-width: 300px; font-size: 13px; line-height: 1.4; color: var(--ink-3); }
 /* en vérification : pas de modèles, donc pas de place réservée sous le montant ; « = résultat » seulement pendant un calcul */
 .checking .e-under { min-height: 0; }
 .checking .e-result.hide { display: none; }
@@ -395,20 +318,27 @@
 .mrow { align-items: center; padding: 0; }
 .mrow-go { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 12px 0; text-align: left; }
 .mrow-go:active { background: var(--press); box-shadow: -20px 0 0 var(--press); transition: none; }
-.mrow .main { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.mrow .main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+/* le même écart, à l'œil, entre le nom, la barre, le niveau et l'état (2026-11-20 pour les réserves, étendu le
+   2026-11-22 aux budgets et à toutes les lignes de Plan, avec l'utilisateur) : mesuré sur les lettres dessinées, pas sur
+   leurs boîtes ; ~10,5 px */
+.mrow .main:not(.bp) > * { margin: 0; }
+.mrow .main > .l1 + .l2 { margin-top: 3px; }
+.mrow .main > .bar { margin-top: 7px; }
+.mrow .main > .bar + .l2 { margin-top: 7px; }
+.mrow .main > .l2 + .l3 { margin-top: 4px; }
 .mrow .l1, .mrow .l2 { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; min-width: 0; }
-.mrow .l1 .t { font-weight: 500; }
-.mrow .l1 .v { font-weight: 500; white-space: nowrap; letter-spacing: -.01em; }
+.mrow .l1 .t { font-weight: 500; line-height: 18px; }
+.mrow .l1 .v { font-weight: 500; white-space: nowrap; letter-spacing: -.01em; line-height: 1; }
 .mrow .l2 .s { margin: 0; white-space: normal; line-height: 1.3; }
-.mrow .bar { margin-top: 6px; }
 .bs-choice { display: grid; gap: 8px; margin: 8px 0 4px; }
 /* un budget dans sa page (2026-11-13) : lu de haut en bas, comme Disponible */
 .mrow .bp { gap: 0; }
 .bp-k { font-size: 13px; color: var(--ink-2); }
 .bp-big { font-size: 28px; font-weight: 500; letter-spacing: -.02em; line-height: 1.2; }
 .mrow .bp .bar { height: 6px; margin: 8px 0 10px; }
-.bp-l { display: flex; align-items: center; gap: 8px; font-size: 14px; line-height: 1.9; }
-.bp-l.muted { color: var(--ink-2); font-size: 13px; }
+.bp-l { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 1.9; }
+.bp-l.muted { color: var(--ink-2); }
 .bp-dot { width: 9px; height: 9px; border-radius: 2px; background: var(--ink); flex: none; }
 .bp-dot.rest { background: var(--rule); }
 .mrow .iconbtn { position: relative; width: 40px; height: 40px; flex: none; }
@@ -477,24 +407,26 @@
 
 /* ================= Moi, portefeuilles, catégories ================= */
 .cur.pre, .big .cur.pre { margin-left: 0; margin-right: .18em; }
-.screen-help { color: var(--ink-2); font-size: 13px; line-height: 1.45; margin: 2px 0 12px; }
+.screen-help { color: var(--ink-2); font-size: 13px; line-height: 1.4; margin: 2px 0 12px; }
 .screen-help .ic { width: 16px; height: 16px; display: inline-block; vertical-align: -3px; color: var(--ink-3); }
 .hint.left { text-align: left; margin: 10px 0 0; }
-.row .s.wrap { white-space: normal; line-height: 1.35; }
+.btn + .hint.left { margin-top: 14px; } /* sous un bouton : autant d'air que du texte au-dessus au bouton */
+.row .s.wrap { white-space: normal; }
 .row .t.wrap { white-space: normal; line-height: 1.35; overflow: visible; }
 .row.hist { align-items: flex-start; cursor: default; }
 .row.hist .pill { margin-top: 2px; }
 /* .stack est aussi la barre empilée de 8 px (overflow caché) : on annule ici sa hauteur, sa marge et son rognage,
    sinon le libellé tombe à 0 px et le bas du curseur est coupé */
-.row.stack { flex-direction: column; align-items: stretch; gap: 10px; padding: 14px 0; height: auto; overflow: visible; margin: 0; border-radius: 0; }
-.row.stack > .t { font-size: 15px; }
-.row.stack .seg { width: 100%; }
+.row.stack { flex-direction: column; align-items: stretch; gap: 6px; padding: 11px 0 15px; height: auto; overflow: visible; margin: 0; border-radius: 0; }
+.row.stack > .t { font-size: 13px; color: var(--ink-2); } /* un libellé au-dessus du sélecteur, aussi près que .field > span de son champ */
+/* le filet entre deux sélecteurs à mi-chemin, à l'œil ; l'aide sous le dernier, aussi près que d'un champ au libellé suivant */
+.group > .row.stack:last-child { padding-bottom: 2px; }
+/* une section sans titre (Affichage : les interrupteurs) : à la même distance que sous un titre de section */
+.section.tail { margin-top: 18px; }
 .row.stack .s { margin-top: -2px; }
 .row.dim .t, .row.dim .amt, .row.dim .pill { opacity: .55; }
 .row.off { opacity: .45; }
 .row.off .s { white-space: normal; }
-.row .seg { width: 156px; flex: none; }
-.settings .row .seg { width: 168px; }
 .settings .row .s { white-space: nowrap; }
 .row .amt.loss { color: var(--loss); }
 
@@ -536,7 +468,7 @@
 
 /* pastilles de couleur */
 .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; }
-.sw { height: 44px; border-radius: 50%; display: grid; place-items: center; position: relative; }
+.sw { aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; position: relative; }
 .sw::before { content: ''; width: 30px; height: 30px; border-radius: 50%; background: var(--c); transition: transform .22s var(--ease-out); }
 .sw.none::before { background: transparent; box-shadow: inset 0 0 0 1.75px var(--ink-3); }
 .sw.on::after { content: ''; position: absolute; width: 38px; height: 38px; border-radius: 50%; box-shadow: 0 0 0 2px var(--c, var(--ink-2)); }
@@ -550,12 +482,14 @@
 .field-btn b { font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .field-btn .ic { width: 18px; height: 18px; color: var(--ink-3); }
 .field-btn[aria-disabled="true"] { color: var(--ink-2); }
-.field-note { display: block; font-size: 12px; color: var(--ink-2); margin: 6px 4px 0; line-height: 1.35; }
+.field-note { display: block; font-size: 13px; color: var(--ink-2); margin: 6px 4px -5px; line-height: 1.4; } /* en bas : le bas de sa ligne rattrapé, le libellé suivant à 16 px comme après un champ */
+.field-note:empty { display: none; }
 .field.bad input { box-shadow: 0 0 0 2px var(--loss) inset; animation: shake .36s var(--ease-out); }
 .field[hidden] { display: none; }
 
+/* la barre du bas prend la place du bas de la feuille : 16 px sous le bouton, que la feuille défile ou non */
 .sheet-actions {
-  position: sticky; bottom: -16px; z-index: 3; margin: 10px -20px 0; padding: 12px 20px 16px; background: var(--card);
+  position: sticky; bottom: -16px; z-index: 3; margin: 10px -20px -16px; padding: 12px 20px 16px; background: var(--card);
   display: grid; gap: 6px; border-top: 1px solid var(--rule);
 }
 .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -565,7 +499,7 @@
 .acc-sheet .field, .cat-sheet .field { margin: 6px 0 12px; }
 .sheet-more { display: grid; gap: 6px; padding-top: 18px; }
 .sheet-more:empty { display: none; }
-.cur-pill { font: 500 13px var(--sans); }
+.cur-pill { font: 500 12px var(--sans); }
 
 /* éditeur de catégorie : aperçu, catalogue Phosphor (recherche, rubriques) */
 .cat-pv .pill { transition: background .2s var(--ease-out), color .2s var(--ease-out); animation: pop .32s var(--spring); }
@@ -583,10 +517,11 @@
 .icb.on { color: color-mix(in srgb, var(--c), #fff var(--lift)); background: color-mix(in srgb, var(--c) var(--mix), var(--card)); box-shadow: inset 0 0 0 2px var(--accent-text); }
 
 /* monnaie et format */
-.preview-card { text-align: center; padding: 18px 0 20px; margin-top: 6px; border-bottom: 1px solid var(--rule); }
-.preview-card .pv1 { font: 600 34px/1.15 var(--sans); letter-spacing: -.04em; margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.preview-card .pv2, .preview-card .pv3 { font: 500 15px var(--sans); color: var(--ink-2); margin-top: 4px; white-space: nowrap; }
-.g-seg button { font-size: 15px; }
+/* le même écart, à l'œil, entre ses quatre lignes ; autant d'air au-dessus qu'au-dessous */
+.preview-card { text-align: center; padding: 5px 0 20px; border-bottom: 1px solid var(--rule); }
+.preview-card .pv1 { font: 600 34px/1.15 var(--sans); letter-spacing: -.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.preview-card .pv2, .preview-card .pv3 { font: 500 15px var(--sans); color: var(--ink-2); white-space: nowrap; }
+.preview-card .pv3 { margin-top: 4px; }
 .reset-fmt { display: block; margin: 12px auto 0; padding: 0 12px; min-height: 44px; }
 
 .accounts [data-acc] .t { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.25; }
@@ -596,12 +531,11 @@
 /* ================= Budget (D11 revu) ================= */
 .b-hero { padding-top: 6px; }
 .b-hero .big { font-size: 44px; }
-.b-res { margin-top: 8px; font-size: 13px; color: var(--ink-2); }
+.b-res { margin-top: 4px; font-size: 13px; color: var(--ink-2); }
 .b-hero .status { margin-top: 10px; font-size: 13px; }
 .b-sugg { margin-top: 4px; }
 .b-sugg .end .ic { color: var(--accent-text); }
 .b-aside { color: var(--accent-text); }
-:is(.month, .ops-dues) .mrow .l2 .s { font-size: 12px; }
 :is(.month, .ops-dues) .mrow .l2 .nw { white-space: nowrap; }
 :is(.month, .ops-dues) .mrow .l1 .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 :is(.month, .ops-dues) .mrow .l1 .v small { font-size: 12px; font-weight: 400; color: var(--ink-2); }
@@ -613,13 +547,15 @@
 .bs-to .ic { width: 16px; height: 16px; color: var(--ink-3); display: block; }
 .bs-quick { display: flex; flex-wrap: wrap; gap: 6px; }
 .bs-quick .mp { flex: 1 1 auto; justify-content: center; padding: 0 8px; }
-.bs-rep { padding: 6px 2px; min-height: 44px; }
+.bs-rep { padding: 0; min-height: 44px; margin: -7px 0; } /* l'interrupteur à 10 px des dates, comme les autres rangées ; l'appui garde 44 px */
 /* après une rentrée */
-.income-sheet { display: flex; flex-direction: column; gap: 6px; padding-bottom: 4px; }
-.in-say { color: var(--ink-2); font-size: 15px; margin-bottom: 12px; }
+.income-sheet { padding-bottom: 4px; }
+.in-say { color: var(--ink-2); font-size: 15px; margin-bottom: 16px; }
 .in-say b { color: var(--ink); font-weight: 500; }
 .in-acts { display: flex; flex-direction: column; gap: 8px; }
-.acc-total { margin: 4px 0 10px; }
+.acc-total { margin: -12px 0 10px; } /* le titre de la ligne à 16 px du champ, comme un libellé */
+/* sans message d'erreur dessous : sa dernière ligne aussi près du filet des boutons que le dernier champ d'une autre feuille */
+.acc-total:has(+ [data-err]:empty) { margin-bottom: -12px; }
 :is(.month, .ops-dues) .mrow { gap: 8px; }
 :is(.month, .ops-dues) .mrow-go > .pill { width: 36px; height: 36px; }
 :is(.month, .ops-dues) .mrow-go > .pill .ic { width: 19px; height: 19px; }
@@ -649,7 +585,7 @@
 .ops-bal .big { font-size: 30px; display: flex; align-items: baseline; justify-content: center; max-width: 100%; margin: 2px 0 0; }
 .ops-bal .big .cur { font-size: 16px; }
 .ops-bal .sub { font-size: 13px; color: var(--ink-3); }
-.ops-wal { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; max-width: 100%; margin-top: 10px; padding: 0 14px; border-radius: 99px; background: var(--field); font-size: 14px; color: var(--ink); }
+.ops-wal { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; max-width: 100%; margin-top: 10px; padding: 0 14px; border-radius: 99px; background: var(--field); font-size: 13px; color: var(--ink); }
 .ops-wal span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ops-wal .ic { flex: none; width: 16px; height: 16px; color: var(--ink-2); }
 /* filtre d'une réserve (ouvert depuis son petit menu) : sous le portefeuille, le toucher le retire */
@@ -658,13 +594,13 @@
 .ops-res .ic { flex: none; }
 .ops-tabs { display: flex; gap: 2px; margin: 14px -20px 0; padding: 0 20px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--rule); scroll-behavior: auto; }
 .ops-tabs::-webkit-scrollbar { display: none; }
-.ops-tab { flex: none; position: relative; min-height: 44px; padding: 0 12px; font-size: 14px; color: var(--ink-3); white-space: nowrap; }
+.ops-tab { flex: none; position: relative; min-height: 44px; padding: 0 12px; font-size: 15px; color: var(--ink-3); white-space: nowrap; }
 .ops-tab.on { color: var(--ink); font-weight: 500; }
 .ops-tab.ops-gap { color: var(--ink-3); opacity: .75; }
 .ops-tab.on::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--ink); }
-.ops-further { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 12px 0 4px; font-size: 14px; color: var(--accent-text); white-space: nowrap; }
+.ops-further { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 12px 0 4px; font-size: 15px; color: var(--accent-text); white-space: nowrap; }
 .ops-further .ic { width: 15px; height: 15px; }
-.ops-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 10px 0 12px; border-bottom: 1px solid var(--rule); }
+.ops-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 11px 0 10px; border-bottom: 1px solid var(--rule); }
 .ops-sum.n1 { grid-template-columns: minmax(0, 1fr); }
 .ops-sum .c { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; min-height: 44px; justify-content: center; text-align: left; }
 .ops-sum .c.net { align-items: flex-end; text-align: right; }
@@ -682,9 +618,9 @@
 .ops .catgroup { margin-top: 18px; }
 .ops .cathead { display: flex; align-items: center; gap: 12px; padding: 4px 0 6px; }
 .ops .cathead .main { flex: 1; min-width: 0; }
-.ops .cathead .t { font: 600 16px/1.3 var(--sans); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ops .cathead .s { font-size: 12px; color: var(--ink-2); }
-.ops .cathead .tot { font: 600 16px var(--sans); color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ops .cathead .t { font: 600 15px/1.3 var(--sans); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ops .cathead .s { font-size: 13px; color: var(--ink-2); margin-top: 2px; } /* le même écart qu'entre les deux lignes d'une opération */
+.ops .cathead .tot { font: 600 15px var(--sans); color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .ops .cathead .tot.gain { color: var(--gain); }
 .ops .cathead .tot.loss { color: var(--loss); }
 .ops .cathead .tot.quiet { color: var(--ink-2); }
@@ -695,8 +631,7 @@
 .ops .catitems .pill { width: 28px; height: 28px; }
 .ops .catitems .row + .row::before { left: 40px; }
 .ops .catitems .pill .ic { width: 15px; height: 15px; }
-.ops .catitems .row .t { font-size: 14px; color: var(--ink-2); }
-.ops .catitems .row .amt { font-size: 14px; }
+.ops .catitems .row .t { color: var(--ink-2); }
 .ops .monthblock .catitems .row .t { color: var(--ink); }
 /* feuille « Période et filtres » */
 .flt { display: flex; flex-direction: column; gap: 4px; padding-bottom: 4px; }
@@ -752,7 +687,7 @@
 .tl-t { font-size: 15px; line-height: 1.4; }
 .tl-t s { color: var(--ink-3); }
 .tl-s { font-size: 13px; color: var(--ink-2); margin-top: 2px; }
-.op-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; padding-bottom: 4px; }
+.op-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; padding-bottom: 4px; } /* aussi loin de la carte que la carte de l'étiquette */
 .op-actions.one { grid-template-columns: 1fr; }
 .op-actions .btn { font-size: 15px; padding: 0 8px; }
 .btn.warn { color: var(--loss); }
@@ -819,7 +754,6 @@
 .pick-none { margin: 4px 0 14px; }
 
 /* choix de devise : recherche en tête, courantes puis toutes */
-.cur-search { margin: 6px 0 4px; }
 .cur-h { margin: 14px 4px 6px; }
 .list-pick [hidden], [data-common][hidden], [data-rest][hidden] { display: none; }
 
@@ -867,7 +801,7 @@
 .rs-head .s { font-size: 13px; color: var(--ink-2); }
 .rs-head .amt { font: 600 17px/1.2 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rs-head .iconbtn { width: 40px; height: 40px; flex: none; }
-.rs-tag { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); font: 500 11px/18px var(--sans); vertical-align: 2px; }
+.rs-tag { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); font: 500 12px/18px var(--sans); vertical-align: 2px; }
 .rs-mode { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 6px 12px; font-size: 13px; color: var(--ink-2); }
 .rs-mode small { grid-column: 2; font-size: 12px; color: var(--ink-3); }
 .rs-row { gap: 4px; }
@@ -875,31 +809,20 @@
 /* l'état d'une réserve, sur sa ligne sous le niveau (2026-11-20) */
 /* même taille, même graisse et même écart que la ligne du niveau au-dessus (2026-11-20, avec l'utilisateur : plus gros et
    irrégulier, il cassait le calme des budgets) : seule la couleur le distingue */
-.rs-row .l3 { display: block; font-size: 13px; font-weight: 400; }
-/* le même écart, à l'œil, entre le nom, la barre, le niveau et l'état (2026-11-20, avec l'utilisateur : laisser respirer) :
-   mesuré sur les lettres dessinées, pas sur leurs boîtes (le niveau a des jambages, l'état n'en a pas en tête) ; ~10,5 px */
-.rs-row .main { display: flex; flex-direction: column; gap: 0; }
-.rs-row .main > * { margin: 0 !important; }
-.rs-row .main > .bar { margin-top: 7px !important; }
-.rs-row .main > .l2 { margin-top: 8px !important; }
-.rs-row .main > .l3 { margin-top: 6px !important; }
-.rs-row .l1 .t { line-height: 18px; }
-.rs-row .l2 .s, .rs-row .l3 { line-height: 15px; }
-:is(.month, .ops-dues) .rs-row .l3 { font-size: 12px; }
+.rs-row .l3 { display: block; font-size: 13px; font-weight: 400; line-height: 1.3; }
 .rs-row .l1 .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .rs-row .l1 .v small { font-size: 12px; font-weight: 400; color: var(--ink-2); }
-.rs-row .l2 .s { font-size: 12px; }
 /* pas prête à temps (« Prête le … », « Il manquera … ») et le verdict « Il manque … par mois » : orange, entre rien et le rouge (D17 revu le 2026-11-20) */
 .rs-warn { color: var(--c3); }
 .bar.warn i { background: var(--c3); }
 .rs-free .t { font-weight: 500; }
-.rs-say { font-size: 14px; line-height: 1.45; margin: 0 0 12px; }
+.rs-say { font-size: 13px; line-height: 1.4; margin: 0 0 12px; }
 .rs-pin { display: flex; gap: 8px; align-items: center; }
 .rs-pin input { flex: 1; min-width: 0; }
 .rs-more { margin: 4px 0 8px; }
 /* « Budgets terminés », « Réserves terminées » : un titre de section comme les autres, qui s'ouvre */
-.rs-done summary, .b-done summary { cursor: pointer; list-style: none; padding: 6px 0; font: 500 17px/1.3 var(--sans); letter-spacing: -.01em; color: var(--ink); display: flex; gap: 8px; align-items: baseline; }
-.rs-done summary .muted, .b-done summary .muted { font-size: 13px; letter-spacing: 0; }
+.rs-done summary, .b-done summary { cursor: pointer; list-style: none; padding: 0 0 6px; font: 500 17px/1.3 var(--sans); letter-spacing: -.01em; color: var(--ink); display: flex; gap: 8px; align-items: baseline; }
+.rs-done summary .muted, .b-done summary .muted { font-size: 13px; font-weight: 400; letter-spacing: 0; }
 .rs-done summary::-webkit-details-marker, .b-done summary::-webkit-details-marker { display: none; }
 .rs-done summary::after, .b-done summary::after { content: '›'; margin-left: auto; color: var(--ink-3); transition: transform .2s; }
 .rs-done[open] summary::after, .b-done[open] summary::after { transform: rotate(90deg); }
@@ -913,9 +836,9 @@
 .pv-btn .brush { position: absolute; right: -4px; bottom: -4px; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 99px; background: var(--field); color: var(--ink); box-shadow: 0 0 0 2px var(--surface, var(--bg)); }
 .pv-btn .brush .ic { width: 12px; height: 12px; }
 .pv-btn:active { transform: scale(.96); }
-.b-note { font-size: 13px; line-height: 1.45; margin: 0 0 6px; }
+.b-note { font-size: 13px; line-height: 1.4; margin: 0 0 6px; }
 /* dépense depuis une épargne : la liste de ses réserves à la place des catégories (D17) */
-.e-sugg.list { flex-direction: column; gap: 4px; overflow-x: hidden; overflow-y: auto; max-height: 124px; padding: 2px 20px; }
+.e-sugg.list { flex-direction: column; gap: 4px; overflow-x: hidden; overflow-y: auto; max-height: 124px; }
 .rs-pick { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 6px 12px; border-radius: 14px; background: var(--field); text-align: left; flex: none; }
 .rs-pick > .ic { width: 18px; height: 18px; flex: none; color: var(--ink-2); }
 .rs-pick .m { flex: 1; min-width: 0; display: grid; gap: 1px; }
@@ -924,7 +847,7 @@
 .rs-pick.on { background: var(--accent-soft); }
 .rs-pick.on > .ic { color: var(--accent-text); }
 .rs-none { font-size: 13px; line-height: 1.4; color: var(--ink-2); margin: 4px 0; }
-.rs-mode-tag { display: inline-block; margin-left: 4px; padding: 0 7px; border-radius: 99px; background: var(--field); color: var(--ink-2); font: 500 11px/18px var(--sans); vertical-align: 1px; }
+.rs-mode-tag { display: inline-block; margin-left: 4px; padding: 0 7px; border-radius: 99px; background: var(--field); color: var(--ink-2); font: 500 12px/18px var(--sans); vertical-align: 1px; }
 .keypad.locked { opacity: .35; pointer-events: none; transition: opacity .2s var(--ease-out); }
 .section-h { align-items: center; }
 /* Plan : le titre d'une section ouvre sa page (2026-11-13) ; on y crée par le + flottant */
@@ -955,7 +878,7 @@
 .rs-ghost .after.minus { background: color-mix(in srgb, var(--loss) 55%, transparent); }
 .rs-split-row .main { display: grid; gap: 2px; }
 .rs-split-free { font: inherit; font-size: 12px; text-align: left; padding: 0; }
-.rs-pace { font-size: 11px; color: var(--ink-3); }
+.rs-pace { font-size: 12px; color: var(--ink-3); }
 .rs-split-row .main { flex: 1; min-width: 0; }
 .rs-split-row .main .s { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rs-split .rs-split-in { width: 92px; }
@@ -985,19 +908,19 @@
 .bc-title .chip, .bc-title .pill { flex: none; }
 
 /* écrans de revue (2026-11-11) */
-/* Développeur : lignes sans pastille, le trait part du bord (comme une liste simple), y compris après le bloc des contrôles */
+/* Développeur : lignes sans pastille, le trait part du bord (comme une liste simple) */
 .dev-screen .group > .row ~ .row::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: var(--rule); }
 /* une aide sous une liste (Verrouillage) : un peu d'air, comme une note */
 .section + .screen-help { margin-top: 10px; }
 /* une action écrite en bout de ligne (Restaurer) se lit comme un lien */
 .row .end.act { color: var(--accent-text); }
-.acc-intro { margin: 0 0 10px; }
+.acc-intro { margin: 0 0 15px; } /* à mi-chemin entre l'en-tête et le premier libellé */
 /* ✕ partout : celui posé par openSheet, dans l'axe du titre (ou de la pastille d'en-tête) ; le titre lui laisse la place.
    Il est posé dans le contenu et défile avec lui : il ne flotte pas au-dessus d'un formulaire qu'on fait défiler */
 .sheet-x { position: absolute; top: 0; right: 20px; z-index: 2; }
-.sheet.compact .sheet-x { top: 6px; }
-.sheet.has-x .sheet-title:not(.sheet-head .sheet-title) { margin-top: 9px; }
+.sheet.has-x .sheet-title:not(.sheet-head .sheet-title) { margin: 9px 0 12px; } /* ce qui suit passe sous la croix (44 px), pas contre */
 .sheet.has-x .sheet-title, .sheet.has-x .sheet-head { padding-right: 58px; }
+.sheet.has-x .lk-sheet .sheet-title { padding-left: 58px; } /* titre centré : la même marge des deux côtés */
 .sheet-head .head-id .pill.lg { width: 44px; height: 44px; }
 .sheet-head .head-id .pill.lg .ic { width: 22px; height: 22px; }
 .sheet.has-x .sheet-head .sheet-title { padding-right: 0; }
@@ -1010,8 +933,6 @@
 .rs-acts { margin-top: 6px; }
 .cats [data-findbox] .cat-find { position: relative; background: none; padding: 0; margin: 0 0 6px; }
 .cats [data-findbox] .cat-find .ic { top: 12px; }
-/* le titre d’une notification se lit en entier (plusieurs lignes au besoin) */
-.inbox-m .t { white-space: normal; overflow: visible; line-height: 1.3; }
 /* page d'une catégorie : un budget se touche (sa fiche), le chevron le dit, comme la ligne des opérations */
 .bc .mrow-go > svg { flex: none; width: 18px; height: 18px; color: var(--ink-3); }
 /* onglets de période : un fondu sur les 20 px des bords, jamais un bout de mot coupé dans la marge */
@@ -1025,22 +946,20 @@
 .b-keys { display: grid; gap: 2px; }
 .b-key { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
 .b-key i { flex: none; width: 8px; height: 8px; border-radius: 2px; }
-/* habitudes (2026-11-13, visuel A) : une soustraction sous la légende, Disponible − habitudes = Marge ; la ligne ouvre leur détail */
-.b-calc { display: flex; align-items: baseline; gap: 8px; width: 100%; margin-top: 6px; padding: 6px 0 0; border: 0; border-top: 1px solid var(--rule); background: none; font: inherit; font-size: 13px; color: var(--ink-2); text-align: left; cursor: pointer; }
+/* habitudes (2026-11-13, visuel A) : une soustraction sous la légende, Disponible − habitudes = Marge ; la ligne ouvre leur détail,
+   ses lettres à égale distance des deux filets */
+.b-calc { display: flex; align-items: baseline; gap: 8px; width: 100%; margin-top: 6px; padding: 7px 0 0; border: 0; border-top: 1px solid var(--rule); background: none; font: inherit; font-size: 13px; color: var(--ink-2); text-align: left; cursor: pointer; }
 .b-calc span { display: flex; align-items: center; gap: 4px; }
 .b-calc .ph, .b-calc svg { width: 12px; height: 12px; opacity: .6; }
 .b-calc b { margin-left: auto; color: var(--ink); font-weight: 600; font-size: 13px; }
-.b-marge { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--ink-2); }
+.b-marge { display: flex; align-items: baseline; gap: 8px; margin-top: 5px; padding-top: 6px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--ink-2); }
 .b-marge b { color: var(--ink); font-weight: 600; font-size: 15px; }
 .b-marge b.loss { color: var(--loss); }
 .b-marge b.gain { color: var(--gain); }
 .b-marge .of { margin-left: auto; }
-/* Échéances (D18) : Confirmer et Passer sous une échéance du jour ou en retard ; les réglées du mois, pâles */
-.due-row { flex-wrap: wrap; }
-.due-acts { display: flex; gap: 8px; width: 100%; padding: 0 0 12px 50px; margin-top: -4px; }
-.due-acts .btn { flex: none; padding: 0 14px; height: 34px; border-radius: 99px; font-size: 14px; }
-:is(.due-acts, .dv-acts) .due-ok { background: var(--accent-soft); color: var(--accent-text); }
-:is(.due-acts, .dv-acts) .due-pass { background: var(--field); color: var(--ink-2); }
+/* Échéances (D18) : les réglées du mois, pâles ; Confirmer teinté dans la page d'une échéance */
+.dv-acts .due-ok { background: var(--accent-soft); color: var(--accent-text); }
+.dv-acts .due-pass { background: var(--field); color: var(--ink-2); }
 .due-row .v.in { color: var(--gain); }
 .due-row.pale .t, .due-row.pale .v { color: var(--ink-3); font-weight: 400; }
 .due-done { color: var(--ink-3); background: var(--field); }
@@ -1058,15 +977,15 @@
 .dv-card.from-l { animation: dvFromL .22s var(--ease-out); }
 @keyframes dvFromR { from { opacity: 0; transform: translateX(28px); } }
 @keyframes dvFromL { from { opacity: 0; transform: translateX(-28px); } }
-.dv-l1 { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; color: var(--ink-2); }
+.dv-l1 { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--ink-2); }
 .dv-amt { font: 600 28px/1.2 var(--sans); letter-spacing: -.02em; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
 .dv-amt.in { color: var(--gain); }
-.dv-state { font-size: 14px; color: var(--ink-2); }
+.dv-state { font-size: 13px; color: var(--ink-2); }
 .dv-state.late { color: var(--loss); }
 .dv-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
 .dv-acts:empty { display: none; }
-.dv-acts .btn { flex: none; padding: 0 14px; height: 34px; border-radius: 99px; font-size: 14px; }
-.dv-other { font-size: 14px; color: var(--accent-text); padding: 6px 4px; }
+.dv-acts .btn { flex: none; padding: 0 14px; height: 34px; border-radius: 99px; font-size: 15px; }
+.dv-other { font-size: 13px; color: var(--accent-text); padding: 6px 4px; }
 /* regarder d'abord (revue du 2026-11-12) : la règle en une ligne sous ses fois, puis Modifier ; en modifiant, la bande
    reste en haut, ses fois à venir en pointillé (l'aperçu), réglées et en retard avec un cadenas */
 .dv-bar { margin: 0 -20px; padding: 0 20px; display: flow-root; }
@@ -1080,13 +999,13 @@
 .dv-tab.locked { color: var(--ink-3); }
 .dv-note { flex-basis: 100%; margin: 2px 0 0; font-size: 13px; line-height: 1.4; }
 .dv-rule { font-size: 15px; line-height: 1.45; margin: 0 0 6px; overflow-wrap: anywhere; }
-.dv-sum { font-size: 14px; line-height: 1.45; margin: 6px 0 2px; color: var(--ink-2); }
-.dv-undo { display: block; font-size: 14px; color: var(--accent-text); padding: 8px 0 4px; }
+.dv-sum { font-size: 13px; line-height: 1.4; margin: 6px 0 2px; color: var(--ink-2); }
+.dv-undo { display: block; font-size: 13px; color: var(--accent-text); padding: 8px 0 4px; }
 /* un type figé (une échéance) : le sien reste lisible, les autres s'effacent */
 /* le repère « aujourd'hui » dans la bande des fois ; l'écart d'une fois réglée avec ce qui était prévu */
-.dv-now { flex: none; display: flex; align-items: center; gap: 6px; padding: 0 6px; font-size: 11px; font-weight: 500; letter-spacing: .02em; color: var(--accent-text); white-space: nowrap; }
+.dv-now { flex: none; display: flex; align-items: center; gap: 6px; padding: 0 6px; font-size: 12px; font-weight: 500; letter-spacing: .02em; color: var(--accent-text); white-space: nowrap; }
 .dv-now::before { content: ''; width: 1px; height: 18px; background: currentColor; opacity: .5; }
-.dv-plan { font: 400 14px/1 var(--sans); letter-spacing: 0; color: var(--ink-3); margin-left: 8px; }
+.dv-plan { font: 400 12px/1 var(--sans); letter-spacing: 0; color: var(--ink-3); margin-left: 8px; }
 .seg.locked button:disabled { color: var(--ink-3); opacity: .55; }
 .seg.locked button.on:disabled { color: var(--ink); opacity: 1; }
 .due-sheet .due-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
@@ -1095,10 +1014,10 @@
 .due-sheet .due-times { width: 100%; }
 
 /* Début du mois (2026-11-19) : un jour, un jour de la semaine, la fin du mois */
-.ms-mode { margin-bottom: 14px; }
+.ms-mode { margin-bottom: 8px; }
 .ms-p[hidden] { display: none; }
 .ms-p .field { margin-bottom: 12px; }
-.ms-say { margin: 4px 2px 14px; color: var(--ink-2); font-size: 14px; }
+.ms-say { margin: 4px 2px 14px; color: var(--ink-2); font-size: 13px; }
 
 /* Dépense depuis une épargne (2026-11-19) : les réserves en ligne, avec leur part ; grisée : en une fois, pas encore payable */
 .sc.rs-chip.dim { opacity: .5; }
@@ -1117,21 +1036,20 @@
 .me-space { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; padding: 26px 0 18px; background: none; border: 0; color: var(--ink); font: inherit; cursor: pointer; }
 .me-ava { width: 88px; height: 88px; display: block; }
 .me-ava svg, .sp-ava svg, .tab-ava svg { width: 100%; height: 100%; display: block; }
-.me-name { display: inline-flex; align-items: center; gap: 4px; font: 600 19px var(--sans); }
+.me-name { display: inline-flex; align-items: center; gap: 4px; font: 600 22px var(--sans); }
 .me-name .ic { width: 16px; height: 16px; color: var(--ink-2); }
 .me-space:active .me-ava { transform: scale(.96); }
-.sp-ava { width: 36px; height: 36px; flex: none; display: block; }
-/* l'onglet Moi du bas (revu le 2026-11-19 : en couleur, il cassait le dessin des autres) : la tête à la couleur de
-   l'onglet, comme une icône — contour quand l'onglet n'est pas ouvert, pleine (les yeux découpés) quand il l'est */
-.dock-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
-.tab-ava { width: 23px; height: 23px; display: block; }
-.tab:not(.on) .tab-ava svg > g:first-child { filter: url(#ava-line); }
-.tab.on .tab-ava svg > g:last-child { fill: var(--dock); }
+.sp-ava { width: 36px; height: 36px; margin: 0 2px; flex: none; display: block; } /* dans la colonne des pastilles (40 px) : le texte aligné */
+/* l'onglet Moi du bas (revu le 2026-11-21, avec l'utilisateur) : la tête en couleur, sans disque ni anneau ; fermé, elle
+   s'atténue comme les autres icônes (le contour monochrome d'avant faisait une icône ratée) */
+.tab-ava { width: 26px; height: 26px; display: block; opacity: .6; transition: opacity .2s; }
+.tab.on .tab-ava { opacity: 1; }
+/* en haut de l'accueil : la tête et le nom, un toucher ouvre les espaces */
+.pf-brand.sp-go { border: 0; background: none; padding: 4px 6px 4px 0; margin: -4px 0; font: inherit; cursor: pointer; }
+.pf-brand .pf-ava { width: 22px; height: 22px; display: block; }
+.pf-brand .pf-ava svg { width: 100%; height: 100%; display: block; }
 
 /* Compte Google (D21, 2026-11-20) */
-.gg-lead { margin: 4px 0 16px; color: var(--ink-2); line-height: 1.45; }
-.settings .section > .btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; }
-.settings .section > .btn + .field-note { margin-top: 10px; }
 .btn.ghost.danger { background: none; color: var(--loss); }
 .settings .row.static { cursor: default; }
 .onboarding .ob-restore { margin-top: 8px; width: 100%; }
@@ -1141,7 +1059,7 @@
 /* À revoir (D21, 2026-11-20) : en rouge, pour que rien ne se perde sans qu'on le sache */
 .rv-alert .pill { background: color-mix(in srgb, var(--loss) 18%, transparent); color: var(--loss); }
 .rv-alert .t { color: var(--loss); font-weight: 600; }
-.rv-lead { margin: 4px 0 14px; color: var(--ink-2); line-height: 1.45; }
+.rv-lead { margin: 4px 0 14px; color: var(--ink-2); font-size: 13px; line-height: 1.4; }
 .rv-list { display: flex; flex-direction: column; gap: 10px; }
 .rv-item { border: 1px solid color-mix(in srgb, var(--loss) 45%, transparent); background: color-mix(in srgb, var(--loss) 7%, transparent); border-radius: 14px; padding: 12px 14px; }
 html[data-radius="square"] .rv-item { border-radius: 0; }
@@ -1151,3 +1069,4 @@ html[data-radius="square"] .rv-item { border-radius: 0; }
 .rv-why .ic { width: 15px; height: 15px; flex: none; margin-top: 1px; }
 .rv-acts { display: flex; gap: 8px; margin-top: 10px; }
 .rv-acts .btn { flex: 1; }
+.gg-foreign { margin-bottom: 14px; }

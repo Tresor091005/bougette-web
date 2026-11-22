@@ -1,11 +1,13 @@
 // Moi › Compte Google (D21, 2026-11-20, avec l'utilisateur) : lier un compte pour garder ses espaces dans son Google Drive
-// et les retrouver sur un autre téléphone ou sur iPhone (par le web) ; l'état de la synchro ; la délier.
+// et les retrouver sur un autre téléphone ou sur iPhone (par le web) ; l'état de la synchro ; la délier. Un espace attaché à
+// un autre compte ne se synchronise qu'avec celui-là : pas de transfert d'un compte à l'autre (2026-11-21, avec l'utilisateur).
 import { icon } from '../core/icons.js';
 import { buzz, confirmSheet, toast, $ } from '../core/ui.js';
 import { esc } from '../core/format.js';
 import { account, googleAvailable } from '../core/google.js';
 import { syncNow, syncStatus, onSync, linkAccount, unlinkAccount, reconnect } from '../core/cloud.js';
-import { isDemo } from '../core/spaces.js';
+import { isDemo, currentSpace } from '../core/spaces.js';
+import { askIdentity } from './lock.js';
 
 const g = /** @type {any} */ (globalThis);
 
@@ -23,10 +25,11 @@ function ago(at) {
 /** La ligne d'état de la synchro (aussi dans Moi). */
 export function syncLine() {
   const a = account();
-  if (!a) return 'Garder tes espaces dans ton Drive';
+  if (!a) return 'Garde tes données, retrouve-les partout';
   if (isDemo()) return `${a.email} · la Démo ne se synchronise pas`;
   const st = syncStatus();
   if (st.running) return `${a.email} · synchronisation…`;
+  if (st.foreign) return `${a.email} · espace d’un autre compte`;
   if (st.needsAuth) return `${a.email} · à reconnecter`;
   if (st.error) return `${a.email} · pas synchronisé`;
   return st.at ? `${a.email} · synchronisé ${ago(st.at)}` : a.email;
@@ -37,25 +40,28 @@ export function render(app, { back }) {
   const a = account();
   const st = syncStatus();
   const web = !g.BougetteGoogle;
+  const sp = currentSpace();
+  const foreign = !!(a && sp.owner && sp.owner !== a.email.toLowerCase() && !isDemo());
   const body = !googleAvailable()
-    ? `<p class="field-note">La synchronisation n’est pas encore possible ici.</p>`
+    ? `<p class="screen-help">Google Drive n’est pas disponible ici.</p>`
     : !a && isDemo()
-      ? `<p class="field-note">La Démo ne se synchronise jamais : ouvre un autre espace pour lier ton compte Google.</p>`
+      ? `<p class="screen-help">La Démo ne se synchronise jamais : ouvre un autre espace pour lier ton compte Google.</p>`
     : !a
-      ? `<section class="section">
-          <p class="gg-lead">Tes espaces gardés dans ton Google Drive : tu les retrouves sur tous tes appareils, et chaque changement suit tout seul.</p>
+      ? `<p class="screen-help">Tes espaces sont gardés dans ton Google Drive. Tu les retrouves à jour sur tes autres appareils.</p>
           <button class="btn primary" data-link>${icon('cloud-check')} Lier un compte Google</button>
-          <p class="field-note">Bougette n’a accès qu’à son propre dossier caché dans ton Drive : ni à tes fichiers, ni à ton mot de passe. Aucun serveur entre toi et Google : personne d’autre ne voit tes données.</p>
-        </section>`
+          <p class="hint left">Bougette ne voit que son dossier caché dans ton Drive : ni tes fichiers, ni ton mot de passe. Tes données vont droit chez Google, sans autre serveur.</p>`
       : `<section class="section"><div class="group plain">
           <div class="row static"><span class="pill acc">${icon('cloud-check')}</span><div class="main"><div class="t">${esc(a.name || a.email)}</div><div class="s">${esc(a.email)}</div></div></div>
           <div class="row static"><div class="main"><div class="t">${isDemo() ? 'La Démo ne se synchronise pas' : st.running ? 'Synchronisation…' : st.needsAuth ? 'À reconnecter' : st.error ? 'Pas synchronisé' : st.at ? `Synchronisé ${ago(st.at)}` : 'Pas encore synchronisé'}</div>
             ${!isDemo() && st.error && !st.running ? `<div class="s wrap">${esc(st.error)}</div>` : ''}</div></div>
         </div>
-        ${isDemo() ? '' : st.needsAuth && web
+        ${foreign ? `<div class="rv-item gg-foreign"><div class="rv-t">« ${esc(sp.name)} » est attaché à un autre compte</div>
+          <div class="rv-s">${esc(sp.owner || '')}</div>
+          <div class="rv-why">${icon('warning')}<span>Il se synchronise seulement avec ce compte, jamais avec ${esc(a?.email || '')}. Pour le synchroniser, délie cet appareil, puis lie ce compte.</span></div></div>`
+        : isDemo() ? '' : st.needsAuth && web
           ? `<button class="btn primary" data-reconnect>Reconnecter</button>`
           : `<button class="btn secondary" data-sync ${st.running ? 'disabled' : ''}>Synchroniser maintenant</button>`}
-        <p class="field-note">Chaque espace (sauf la Démo) se synchronise quand il est ouvert. Sur un autre appareil, lie le même compte pour y retrouver tes espaces.</p>
+        <p class="hint left">Chaque espace (sauf la Démo) se synchronise quand il est ouvert. Sur un autre appareil, lie le même compte pour y retrouver tes espaces.</p>
         </section>
         <section class="section"><button class="btn ghost danger" data-unlink>Délier cet appareil</button></section>`;
   app.innerHTML = `<div class="screen settings no-tabs">
@@ -67,6 +73,7 @@ export function render(app, { back }) {
   const link = $('[data-link]', app);
   if (link) link.onclick = async () => {
     buzz(8);
+    if (!(await askIdentity('Lier un compte Google'))) return;
     link.disabled = true;
     try {
       const r = await linkAccount();
@@ -87,7 +94,8 @@ export function render(app, { back }) {
   if (rc) rc.onclick = () => reconnect();
   const un = $('[data-unlink]', app);
   if (un) un.onclick = async () => {
-    const ok = await confirmSheet({ title: 'Délier cet appareil ?', text: 'Tes données restent sur cet appareil, et celles déjà dans ton Drive y restent aussi. Les changements ne suivront plus d’un appareil à l’autre.', yes: 'Délier', danger: true });
+    if (!(await askIdentity('Délier cet appareil'))) return;
+    const ok = await confirmSheet({ title: 'Délier cet appareil ?', text: 'Tes données restent sur cet appareil et dans ton Drive. Les changements ne passeront plus d’un appareil à l’autre.', yes: 'Délier', danger: true });
     if (!ok) return;
     await unlinkAccount();
     toast('Compte délié');

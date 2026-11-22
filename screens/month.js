@@ -9,7 +9,7 @@
 // les plus importantes d'abord — ce qui va mal toujours (budget dépassé, dépense inhabituelle sans budget), le reste
 // jusqu'à 3 lignes ; « Tous les budgets » ouvre leur détail (tous les budgets, puis les habitudes) ; toucher une catégorie ouvre sa page (budgets, opérations). « Réserves » (D17) : toutes les réserves ouvertes,
 // tous portefeuilles d'épargne confondus (barre, si elle sera prête ; toucher = son menu), « Nouvelle réserve ».
-// « Épargne » : une ligne par portefeuille d'épargne (solde, objectif, réserves échues ou sans rien de prévu), qui ouvre SA page
+// « Épargnes » : une ligne par portefeuille d'épargne (solde, objectif, réserves échues ou sans rien de prévu), qui ouvre SA page
 // (#/epargne?w=<id>) ; invitation « Fonds d'urgence »
 // tant qu'aucun portefeuille ne porte ce rôle ; « Mettre de côté » ouvre la saisie en virement vers l'épargne.
 // Ce qui est terminé n'est plus sur Plan (2026-11-12) : en bas de « Toutes les échéances », « Tous les budgets » (les
@@ -70,7 +70,7 @@ const savingsBad = x => x.rep.free < 0 || x.rep.reserves.some((/** @type {any} *
 const savingsReports = savings => savings.map(a => ({ a, rep: savingsReport(a.id) }))
   .sort((p, q) => Number(p.a.emergency) - Number(q.a.emergency) || Number(savingsBad(q)) - Number(savingsBad(p)) || q.rep.balance - p.rep.balance);
 /**
- * Une ligne d'épargne (Plan, « Toute l'épargne ») : son solde, son objectif, ses réserves, et seulement le rouge — les
+ * Une ligne d'épargne (Plan, « Toutes les épargnes ») : son solde, son objectif, ses réserves, et seulement le rouge — les
  * échues, « Rien de prévu ». @param {{ a: any, rep: any }} x
  */
 function savingsRowHTML({ a, rep }) {
@@ -93,12 +93,13 @@ function savingsRowHTML({ a, rep }) {
  * d'urgence » tant qu'aucun portefeuille ne porte ce rôle, « Mettre de côté » ; sans épargne, « Mettre ton épargne à part ».
  * @param {any[]} savings
  */
-/** aside : « Mettre de côté » (pas dans Toute l'épargne, 2026-11-20 : on n'y sait pas vers quelle épargne). @param {any[]} savings @param {{ aside?: boolean }} [o] */
+/** aside : « Mettre de côté » (pas dans Toutes les épargnes, 2026-11-20 : on n'y sait pas vers quelle épargne). @param {any[]} savings @param {{ aside?: boolean }} [o] */
 function savingsActionsHTML(savings, { aside = true } = {}) {
   if (!savings.length) return `<div class="group"><button type="button" class="row" data-create-sav><span class="pill acc">${icon('piggy-bank')}</span>
-    <div class="main"><div class="t">Mettre ton épargne à part</div><div class="s">Un portefeuille et ses réserves</div></div></button></div>`;
+    <div class="main"><div class="t">Mettre ton épargne à part</div><div class="s">Un portefeuille pour ton épargne et tes réserves</div></div></button></div>`;
   const invite = !emergencyAccount() && !pref('emergencyDismissed');
-  return `<div class="group plain">${invite ? `<button type="button" class="row" data-emergency>${accountPill({ kind: 'bank', savings: true, emergency: true })}
+  // l'invitation suit les épargnes : le même trait qu'entre deux d'entre elles (« Mettre de côté », une action, a le trait plein)
+  return `<div class="group plain">${invite ? `<button type="button" class="row rule" data-emergency>${accountPill({ kind: 'bank', savings: true, emergency: true })}
     <div class="main"><div class="t">Fonds d’urgence</div><div class="s">De quoi tenir dans un coup dur : 3 mois de dépenses</div></div></button>` : ''}
     ${aside ? `<button type="button" class="row add-row" data-aside><span class="pill">${icon('hand-coins')}</span><div class="main"><div class="t b-aside">Mettre de côté</div></div></button>` : ''}</div>`;
 }
@@ -164,17 +165,17 @@ export function render(app, ctx) {
 
     <section class="section">
       <div class="section-h">${titleLink('Budgets', 'data-all')}</div>
-      ${r.list.length ? '' : emptyAddHTML('Donne une destination à ton argent : choisis une catégorie pour lui fixer un budget.', 'data-new', 'Créer un budget')}
+      ${r.list.length ? '' : emptyAddHTML('Fixe un montant pour une catégorie : il ne compte plus dans Disponible.', 'data-new', 'Créer un budget')}
       ${catItems.length ? `<div class="group" data-budgets>${listHTML(catItems)}</div>` : ''}
     </section>
 
     ${savings.some(a => !a.emergency) ? `<section class="section">
       <div class="section-h">${titleLink('Réserves', 'data-all-res')}</div>
-      ${allRes.length ? `<div class="group">${allRes.filter((_, i) => resShown[i]).map(x => reserveRowHTML(x.v, { wallet: x.wallet })).join('')}</div>` : emptyAddHTML('Une dépense à venir, obligatoire ou souhaitée, que tu prépares à l’avance : l’assurance, la rentrée, un téléphone.', 'data-newres', 'Nouvelle réserve')}
+      ${allRes.length ? `<div class="group">${allRes.filter((_, i) => resShown[i]).map(x => reserveRowHTML(x.v, { wallet: x.wallet })).join('')}</div>` : emptyAddHTML('Prépare à l’avance une dépense à venir : l’assurance, la rentrée, un téléphone.', 'data-newres', 'Nouvelle réserve')}
     </section>` : ''}
 
     <section class="section">
-      <div class="section-h">${titleLink('Épargne', 'data-all-sav')}</div>
+      <div class="section-h">${titleLink('Épargnes', 'data-all-sav')}</div>
       ${reports.length ? `<div class="group">${reports.filter((_, i) => savShown[i]).map(savingsRowHTML).join('')}</div>` : ''}
       ${savingsActionsHTML(savings)}
     </section>
@@ -219,7 +220,7 @@ function splitHTML(r, ahead = 0) {
     ? `${key('free', r.available > 0 ? `${money(r.available)} disponibles` : 'Rien de disponible')}
       <button type="button" class="b-calc" data-habits><span>Habitudes estimées${icon('caret-right')}</span><b>${money(-ahead)}</b></button>
       <div class="b-marge"><span>Marge</span><b class="${margin < 0 ? 'loss' : 'gain'}">${margin > 0 ? '+' : ''}${money(margin)}</b><span class="of">sur ${money(r.total)}</span></div>`
-    : key('free', `${r.available > 0 ? `${money(r.available)} libres` : 'Rien de libre'}, sur ${money(r.total)}`);
+    : key('free', `${r.available > 0 ? `${money(r.available)} disponibles` : 'Rien de disponible'}, sur ${money(r.total)}`);
   return `<div class="b-split" aria-hidden="true">${seg(r.toPay, 'due')}${seg(r.inBudgets, 'bud')}${seg(free, 'free')}</div>
     <div class="b-keys">${r.toPay ? key('due', `${money(r.toPay)} d’échéances à payer`) : ''}${r.list.length ? key('bud', `${money(r.inBudgets)} dans tes budgets`) : ''}
       ${tail}</div>`;
@@ -278,7 +279,7 @@ export const allReservesScreen = {
 };
 
 /**
- * « Toute l'épargne » (2026-11-12) : tous les portefeuilles d'épargne, les mêmes lignes et le même ordre que Plan (un
+ * « Toutes les épargnes » (2026-11-12) : tous les portefeuilles d'épargne, les mêmes lignes et le même ordre que Plan (un
  * souci d'abord, puis les plus gros soldes), leur total en tête ; « Fonds d'urgence » et « Mettre de côté » toujours là.
  */
 export const allSavingsScreen = {
@@ -293,7 +294,7 @@ export const allSavingsScreen = {
     const split = reports.filter(x => x.a.currency === main).reduce((n, x) => ({ held: n.held + (x.rep.held || 0), free: n.free + Math.max(0, x.rep.balance - (x.rep.held || 0)) }), { held: 0, free: 0 });
     app.innerHTML = `<div class="screen month no-tabs has-fab">
       <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
-        <h1 class="title sm">Toute l’épargne</h1></div></div>
+        <h1 class="title sm">Toutes les épargnes</h1></div></div>
       ${reports.length ? `<section class="hero b-hero b-all"><div class="label">Mis de côté en tout</div><div class="big">${money(total)}</div>
         <div class="b-res">${[split.held ? `${money(split.held)} pour tes réserves` : '', split.free ? `${money(split.free)} d’épargne libre` : '', others ? `et ${plural(others, 'autre devise', 'autres devises')}` : ''].filter(Boolean).join(' · ')}</div></section>` : ''}
       <section class="section">${reports.length ? `<div class="group">${reports.map(savingsRowHTML).join('')}</div>` : ''}

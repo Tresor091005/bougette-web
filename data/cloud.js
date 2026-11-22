@@ -3,18 +3,22 @@
 //
 // Sur le Drive : « bougette-spaces.json » = { v: 1, spaces: [{ cid, name, nameAt, seed, primary, removed }] } (cid :
 // l'identifiant de l'espace sur le compte, le même sur tous les appareils ; seed : ce qui dessine sa tête, pour qu'elle
-// soit la même partout ; primary : l'espace qu'un téléphone neuf prend d'abord ; removed : supprimé de la liste sur un
-// appareil), et un « space-<cid>.bgj » par espace : son journal, avec dans appProperties sa tête (seq, head) et sa lignée
-// (epoch : change quand un appareil remplace exprès le journal, par Restaurer ou Tout effacer). Le journal remplacé reste
+// soit la même partout ; primary : l'espace qu'un téléphone neuf prend d'abord ; removed : retiré de la liste sur un
+// appareil, avant le 2026-11-21), et un « space-<cid>.bgj » par espace : son journal, avec dans appProperties sa tête (seq, head) et sa lignée
+// (epoch : change quand un appareil remplace exprès le journal, par Restaurer). Le journal remplacé reste
 // à côté (« space-<cid>.avant.bgj »).
 // Sur le téléphone, par espace : le repère de synchro (session.getSync) { cid, seq, hash, epoch, force } — le dernier point
-// où le téléphone et le Drive étaient pareils, la lignée d'alors, et force (Restaurer, Tout effacer faits ici).
+// où le téléphone et le Drive étaient pareils, la lignée d'alors, et force (Restaurer fait ici).
 // Un espace n'entre dans la liste du compte qu'avec son journal, et jamais vierge (rien que l'installation).
 import { unsealSync, sealSync } from './seal.js';
 import { parseJsonl, ImportError } from './exchange.js';
 import { replayStored } from '../domain/engine.js';
 import { stateHash } from '../domain/projection.js';
 import { isPristine } from './sync.js';
+import { verifyChain } from '../domain/events.js';
+
+/** Le journal du téléphone est abîmé : rien ne part sur le Drive (2026-11-21, avec l'utilisateur). */
+export class BrokenJournal extends Error {}
 
 /** @typedef {import('./drive.js').Drive} Drive */
 /** @typedef {import('./drive.js').DriveFile} DriveFile */
@@ -22,7 +26,7 @@ import { isPristine } from './sync.js';
 /** @typedef {{ cid: string, name: string, nameAt: number, seed: string, primary?: boolean, removed?: boolean }} CloudSpace */
 /** @typedef {{ v: 1, spaces: CloudSpace[] }} CloudIndex */
 /** @typedef {{ id: string, name: string, cid?: string, seed?: string, nameAt?: number }} LocalSpace */
-/** @typedef {{ cid?: string, seq?: number, hash?: string, epoch?: string, force?: string }} SyncMark force : date du geste Restaurer / Tout effacer */
+/** @typedef {{ cid?: string, seq?: number, hash?: string, epoch?: string, force?: string }} SyncMark force : date du geste Restaurer */
 
 export const INDEX_FILE = 'bougette-spaces.json';
 /** @param {string} cid */
@@ -51,7 +55,7 @@ export async function readIndex(drive, files) {
   const spaces = [];
   for (const f of all) {
     let o;
-    try { o = JSON.parse(await drive.read(f.id)); } catch (e) { throw new ImportError('La liste des espaces du compte ne se lit pas : synchronisation remise à plus tard.'); }
+    try { o = JSON.parse(await drive.read(f.id)); } catch (e) { throw new ImportError('La liste de tes espaces sur Google Drive ne se lit pas. On réessaiera plus tard.'); }
     for (const s of Array.isArray(o?.spaces) ? o.spaces : []) {
       const c = cleanEntry(s);
       if (!c) continue;
@@ -144,8 +148,8 @@ export async function readRemoteJournal(text, opts = {}) {
   const plain = await unsealSync(text);
   const { header, events } = await parseJsonl(plain, opts);
   let s;
-  try { s = replayStored(events); } catch (e) { throw new ImportError('Le journal du Drive ne se rejoue pas : ' + /** @type {Error} */ (e).message); }
-  if (await stateHash(s) !== header.state) throw new ImportError('Le journal du Drive ne redonne pas les données annoncées.');
+  try { s = replayStored(events); } catch (e) { throw new ImportError('Tes données sur Google Drive sont abîmées : ' + /** @type {Error} */ (e).message); }
+  if (await stateHash(s) !== header.state) throw new ImportError('Tes données sur Google Drive sont abîmées.');
   return events;
 }
 
@@ -162,7 +166,7 @@ export async function readRemoteJournal(text, opts = {}) {
 
 /**
  * Synchronise le journal d'un espace avec son fichier du Drive. Renvoie kind :
- * same | push | pull | adopt | rebase | replace (ce téléphone remplace le journal du Drive : Restaurer, Tout effacer) |
+ * same | push | pull | adopt | rebase | replace (ce téléphone remplace le journal du Drive : Restaurer) |
  * reset (le journal du Drive a été remplacé ailleurs : on le prend, les changements faits ici depuis sont refaits
  * par-dessus) | fork (aucun début commun : rien n'est mélangé, l'appelant garde les deux à part) | busy (un autre appareil
  * a écrit pendant ce temps : recommencer).
@@ -173,7 +177,7 @@ export async function syncJournal({ drive, files, cid, session, safety, schema, 
   const file = files.find(f => f.name === spaceFile(cid)) || null;
   const mark = await session.getSync();
   const p = mark && mark.cid === cid ? mark : null;
-  // Restaurer / Tout effacer ne remplace le Drive que pour l'espace et le compte d'alors, fait pendant la liaison
+  // Restaurer ne remplace le Drive que pour l'espace et le compte d'alors, fait pendant la liaison
   const force = !!(p && mark?.force && mark.force >= linkedAt);
   if (mark?.force && !force) await session.clearForce();
   const local = await session.events();
@@ -183,6 +187,9 @@ export async function syncJournal({ drive, files, cid, session, safety, schema, 
   const remember = (ev, ep) => session.setSync({ cid, seq: ev.length, hash: head(ev), epoch: ep });
   /** @param {StoredEvent[]} ev @param {string} ep */
   const upload = async (ev, ep) => {
+    // vérifié juste avant chaque envoi : une cassure ne remplace jamais le bon journal du Drive
+    const chain = await verifyChain(ev);
+    if (!chain.ok) throw new BrokenJournal(`Tes données ont un souci (${chain.problem}). Rien n’est envoyé.`);
     const text = await sealSync(await session.journalText(ev));
     const pr = { seq: String(ev.length), head: head(ev), epoch: ep };
     return file ? drive.update(file.id, text, pr) : drive.create(spaceFile(cid), text, pr);
@@ -195,7 +202,7 @@ export async function syncJournal({ drive, files, cid, session, safety, schema, 
     return (m.appProperties?.head || '') !== (props.head || '') || (m.appProperties?.epoch || '') !== epoch;
   };
 
-  // Restaurer ou Tout effacer faits ici : ce journal remplace celui du Drive, qui reste à côté ; nouvelle lignée
+  // Restaurer fait ici : ce journal remplace celui du Drive, qui reste à côté ; nouvelle lignée
   if (force && file) {
     const aside = files.find(f => f.name === asideFile(cid));
     const old = await drive.read(file.id);

@@ -17,7 +17,7 @@ const PENDING = 'bougette:google-pending';
 /** @typedef {{ email: string, name: string, linkedAt: string }} Account */
 
 export class NeedsAuth extends Error {
-  constructor(message = 'Relie ton compte Google pour synchroniser.') { super(message); }
+  constructor(message = 'Google demande de te reconnecter.') { super(message); }
 }
 
 const g = /** @type {any} */ (globalThis);
@@ -76,10 +76,11 @@ const webToken = () => { const t = readJson(TOKEN); return t && t.value && t.exp
 export function goToGoogle({ purpose, silent = false }) {
   const nonce = [...globalThis.crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, '0')).join('');
   writeJson(PENDING, { nonce, purpose, route: location.hash || '#/', silent, at: Date.now() });
+  const who = account()?.email || '';
   const here = location.origin + location.pathname;
   const q = new URLSearchParams({
     client_id: WEB_CLIENT_ID, redirect_uri: here, response_type: 'token', scope: SCOPE, state: nonce,
-    include_granted_scopes: 'true', ...(silent ? { prompt: 'none' } : {}), ...(account()?.email ? { login_hint: /** @type {Account} */ (account()).email } : {}),
+    include_granted_scopes: 'true', ...(silent ? { prompt: 'none' } : {}), ...(who ? { login_hint: who } : {}),
   });
   location.assign('https://accounts.google.com/o/oauth2/v2/auth?' + q);
 }
@@ -137,10 +138,10 @@ export const hasWebToken = () => !!webToken();
 /** Oublie le compte sur ce téléphone et retire l'accès donné à Bougette (le dossier du Drive reste). */
 export async function forgetAccount() {
   let t = '';
-  try { t = androidBridge() ? await androidToken(false) : webToken()?.value || ''; } catch (e) { /* plus d'accès : rien à retirer */ }
+  try { t = androidBridge() ? await androidToken(false) : readJson(TOKEN)?.value || ''; } catch (e) { /* plus d'accès : rien à retirer */ }
   if (t) { try { await fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(t), { method: 'POST' }); } catch (e) { /* hors ligne */ } }
   try { if (t && androidBridge()) androidBridge().clearToken(t); } catch (e) { /* rien */ }
-  writeJson(TOKEN, null);
+  for (const k of [TOKEN, PENDING, 'bougette:google-silent']) writeJson(k, null);
   androidCache = null;
   saveAccount(null);
 }

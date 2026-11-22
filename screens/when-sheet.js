@@ -34,7 +34,7 @@ export function pickWhen({ when, title = 'Quand ?', busy = new Map(), prefer = n
     let view = ([...sel].sort()[0] || t0).slice(0, 7);
     const s = openSheet(`<div class="when">
       <h2 class="sheet-title">${title}</h2>
-      <p class="muted when-help">Touche les jours où ça arrive.${busy.size ? ' Un point : déjà une échéance ce jour-là, touche le jour pour voir laquelle.' : ''}</p>
+      <p class="muted when-help">Touche les jours où ça arrive.${busy.size ? ' Un point : une autre échéance tombe ce jour-là.' : ''}</p>
       <div class="cal">
         <div class="cal-h"><button type="button" class="iconbtn" data-m="-1" aria-label="Mois précédent">${icon('caret-left')}</button>
           <b class="when-month" data-title></b>

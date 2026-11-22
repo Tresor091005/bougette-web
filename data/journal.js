@@ -90,7 +90,7 @@ const NO_DELETE_TRIGGER = "CREATE TRIGGER events_no_delete BEFORE DELETE ON even
 
 /**
  * Remplace tout le contenu (journal et projections) par un autre journal déjà vérifié et rejoué, dans la
- * transaction donnée : tout ou rien. Seul endroit où le journal est vidé (import, démo, « Tout effacer ») ;
+ * transaction donnée : tout ou rien. Seul endroit où le journal est vidé (import, démo) ;
  * le déclencheur qui l'interdit est levé puis remis dans la même transaction.
  * @param {Tx} tx
  * @param {StoredEvent[]} events

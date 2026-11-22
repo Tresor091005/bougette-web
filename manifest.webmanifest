@@ -1,7 +1,7 @@
 {
   "name": "Bougette",
   "short_name": "Bougette",
-  "description": "Tes finances, hors ligne : tes données restent sur ton appareil.",
+  "description": "Ton argent, au franc près. Marche sans internet ; avec Google, tes données te suivent partout.",
   "lang": "fr",
   "start_url": "./",
   "scope": "./",

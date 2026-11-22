@@ -47,7 +47,7 @@ export function suggestCategories(moves, { type, today, hour = 12, amount = 0, v
 }
 
 /**
- * Pré-choix de la catégorie (ROADMAP 1a, seuil § 6.9) : la catégorie qui domine nettement pour le montant tapé.
+ * Pré-choix de la catégorie (ROADMAP 1a, seuil § 6.8) : la catégorie qui domine nettement pour le montant tapé.
  * Parmi les opérations du même type des `days` derniers jours à un montant proche (même ordre de grandeur : entre la
  * moitié et le double), pondérées par la récence et l'heure, la première a au moins `share` du poids et au moins
  * `min` occurrences. Sinon rien : mieux vaut ne rien proposer que se tromper.

@@ -1,34 +1,44 @@
-// Moi › Verrouillage (page, ROADMAP étape 2, sécurité, 2026-11-09) : activer le code, le changer, déverrouiller avec
-// désactiver (le téléphone peut aussi attester : rien à régler). Pas de récupération d'un code oublié : il est dit tel quel.
+// Moi › Verrouillage (page, ROADMAP étape 2, sécurité, 2026-11-09 ; « code exigé, app libre », 2026-11-21, avec
+// l'utilisateur) : choisir le code, le changer (il ne se retire pas : les actions sensibles l'exigent), et, à part,
+// verrouiller l'app à l'ouverture. Le téléphone peut aussi attester : rien à régler. Pas de récupération d'un code
+// oublié autre que le verrouillage du téléphone : il est dit tel quel.
 import { icon } from '../core/icons.js';
-import { buzz, toast, confirmSheet, switchHTML, $ } from '../core/ui.js';
-import { lockEnabled, disableLock } from '../core/lock.js';
-import { askNewCode } from './lock.js';
+import { buzz, toast, switchHTML, $ } from '../core/ui.js';
+import { hasCode, lockAtOpen, setLockOpen } from '../core/lock.js';
+import { askNewCode, askIdentity } from './lock.js';
 
 export function render(app, { back, refresh }) {
-  const on = lockEnabled();
+  const code = hasCode(), open = lockAtOpen();
   app.innerHTML = `<div class="screen lock-screen no-tabs">
     <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
       <h1 class="title sm">Verrouillage</h1></div></div>
-    <p class="screen-help">À l’ouverture, et au retour après une minute ailleurs : le code de Bougette, ou ton téléphone qui confirme que c’est toi (empreinte, code ou schéma).</p>
+    <p class="screen-help">Le code est demandé avant les actions sensibles : Google, export, repartir de zéro, espaces. Sur le téléphone, ton empreinte ou le code du téléphone marchent aussi.</p>
 
     <section class="section"><div class="group">
-      <button class="row" data-toggle><span class="pill acc">${icon('lock-simple')}</span><div class="main"><div class="t">Verrouiller Bougette</div><div class="s">${on ? 'Code demandé' : 'Désactivé'}</div></div>${switchHTML(on)}</button>
-      ${on ? `<button class="row" data-change><span class="pill acc">${icon('pencil-simple')}</span><div class="main"><div class="t">Changer le code</div></div></button>` : ''}
+      <button class="row" data-code><span class="pill acc">${icon(code ? 'pencil-simple' : 'lock-simple')}</span><div class="main"><div class="t">${code ? 'Changer le code' : 'Choisir un code'}</div><div class="s">${code ? 'Code choisi' : 'Pas encore de code'}</div></div></button>
+      <button class="row" data-open><span class="pill acc">${icon('lock-simple')}</span><div class="main"><div class="t">Verrouiller à l’ouverture</div><div class="s">${open ? 'Aussi au retour, après une minute ailleurs' : 'Bougette s’ouvre sans code'}</div></div>${switchHTML(open)}</button>
     </div></section>
-    <p class="screen-help">Code oublié : le verrouillage de ton téléphone ouvre Bougette, sans rien perdre.</p>
+    <p class="screen-help">Code oublié ? Le verrouillage du téléphone ouvre Bougette, puis tu choisis un nouveau code.</p>
   </div>`;
 
   $('[data-back]', app).onclick = () => back('#/reglages');
-  $('[data-toggle]', app).onclick = async () => {
+  $('[data-code]', app).onclick = async () => {
     buzz(6);
-    if (!lockEnabled()) { if (await askNewCode()) refresh(); return; }
-    const ok = await confirmSheet({ title: 'Désactiver le verrouillage ?', text: 'Bougette s’ouvrira sans code.', yes: 'Désactiver' });
-    if (!ok) return;
-    disableLock();
-    toast('Verrouillage désactivé');
+    if (!hasCode()) { if (await askNewCode()) refresh(); return; }
+    if (await askIdentity('Changer le code')) await askNewCode();
+  };
+  $('[data-open]', app).onclick = async () => {
+    buzz(6);
+    if (lockAtOpen()) {
+      if (!(await askIdentity('Ne plus verrouiller à l’ouverture'))) return;
+      setLockOpen(false);
+      toast('Bougette s’ouvre sans code');
+      refresh();
+      return;
+    }
+    if (!hasCode() && !(await askNewCode({ title: 'Verrouiller à l’ouverture', intro: 'Choisis d’abord un code' }))) { refresh(); return; }
+    setLockOpen(true);
+    toast('Code demandé à l’ouverture');
     refresh();
   };
-  const change = $('[data-change]', app);
-  if (change) change.onclick = async () => { buzz(6); await askNewCode(); };
 }

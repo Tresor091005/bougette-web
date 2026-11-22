@@ -35,9 +35,9 @@ export function openAccountSheet(id, { onSaved = null, excluded = false, savings
         <button type="button" class="row" data-k="0"><span class="pill acc">${icon('wallet')}</span><div class="main"><div class="t">Portefeuille courant</div>
           <div class="s wrap">Espèces, Mobile Money, compte en banque : l’argent de tous les jours</div></div>${icon('caret-right')}</button>
         <button type="button" class="row" data-k="1"><span class="pill acc">${icon('piggy-bank')}</span><div class="main"><div class="t">Épargne</div>
-          <div class="s wrap">Livret, tirelire, compte épargne : mis à part, avec un objectif et des réserves</div></div>${icon('caret-right')}</button>
+          <div class="s wrap">Livret, tirelire, compte épargne : mis à part, avec un objectif ou des réserves</div></div>${icon('caret-right')}</button>
         ${accounts().some(x => x.emergency && !x.archived) ? '' : `<button type="button" class="row" data-k="2">${accountPill({ kind: 'bank', savings: true, emergency: true })}<div class="main"><div class="t">Fonds d’urgence</div>
-          <div class="s wrap">De quoi tenir dans un coup dur : à part, hors du total ; 3 mois de dépenses suffisent</div></div>${icon('caret-right')}</button>`}
+          <div class="s wrap">De quoi tenir en cas de coup dur, hors du total. 3 mois de dépenses suffisent.</div></div>${icon('caret-right')}</button>`}
       </div>`, { label: 'Nouveau portefeuille' });
     $$('[data-k]', ask.el).forEach(b => (b.onclick = () => {
       buzz(6);
@@ -62,13 +62,13 @@ export function openAccountSheet(id, { onSaved = null, excluded = false, savings
     <div class="field"><span>Type</span>${seg(KIND_SEG, f.kind, 'kind-seg')}</div>
     <div class="field"><span>Devise</span>
       <button type="button" class="field-btn" data-cur ${locked ? 'aria-disabled="true"' : ''}><b data-curl></b>${icon(locked ? 'lock-simple' : 'caret-right')}</button>
-      ${locked ? `<small class="field-note">${locked} opération${locked > 1 ? 's' : ''} en ${esc(currencyOf(f.currency).long)} : la devise ne peut plus changer, sinon leurs montants changeraient de valeur.</small>` : ''}
+      ${locked ? `<small class="field-note">${locked} opération${locked > 1 ? 's' : ''} en ${esc(currencyOf(f.currency).long)} : la devise ne peut plus changer.</small>` : ''}
     </div>
     ${a ? '' : `<label class="field"><span data-ball>Solde de départ</span>
       <input data-bal inputmode="decimal" placeholder="0" autocomplete="off"></label>`}
     ${f.savings && !em && !(a && openReserves(a.id).length) ? `<label class="field"><span data-goall>Objectif (facultatif)</span><input data-goal inputmode="decimal" placeholder="Aucun" autocomplete="off" value="${a?.goal ? a.goal.amount / 10 ** currencyOf(a.currency).dec : goal ? goal / 10 ** currencyOf(f.currency).dec : ''}"></label>
       <div class="field"><span>Date de l’objectif (facultative)</span><button type="button" class="field-btn" data-goalon><b data-goalonl></b>${icon('calendar-blank')}</button></div>` : ''}
-    ${em ? '<p class="muted rs-say">Hors du total, sans réserve, dépenses permises. On regarde combien de mois de dépenses il couvre : 3 mois suffisent.</p>' : `<div class="group plain acc-total"><button type="button" class="row" data-counted><div class="main"><div class="t">Compter dans le total</div>
+    ${em ? '<p class="field-note">Hors du total, sans réserve, dépenses permises. Bougette compte combien de mois de dépenses il couvre : 3 mois suffisent.</p>' : `<div class="group plain acc-total"><button type="button" class="row" data-counted><div class="main"><div class="t">Compter dans le total</div>
       <div class="s wrap" data-countedl></div></div>${switchHTML(f.counted)}</button>
       ${f.savings ? `<button type="button" class="row" data-spend><div class="main"><div class="t">Permettre les dépenses</div>
       <div class="s wrap" data-spendl></div></div>${switchHTML(f.spendOk)}</button>` : ''}</div>`}
@@ -88,7 +88,7 @@ export function openAccountSheet(id, { onSaved = null, excluded = false, savings
     const sw = $('[data-counted] .switch', el);
     sw.classList.toggle('on', f.counted);
     sw.setAttribute('aria-checked', String(f.counted));
-    $('[data-countedl]', el).textContent = !f.counted ? 'Hors du total : ni dans le total ni dans Disponible' : f.savings ? 'Dans le total, pas dans Disponible' : 'Dans le total et dans Disponible';
+    $('[data-countedl]', el).textContent = !f.counted ? 'Ni dans le total ni dans Disponible' : f.savings ? 'Dans le total, pas dans Disponible' : 'Dans le total et dans Disponible';
     if (!f.savings) return;
     for (const [sel, on] of [['[data-spend]', f.spendOk]]) {
       const x = $(`${sel} .switch`, el);
@@ -98,7 +98,7 @@ export function openAccountSheet(id, { onSaved = null, excluded = false, savings
     }
     $('[data-goall]', el).textContent = `Objectif (${symbol(f.currency)}, facultatif)`;
     $('[data-goalonl]', el).textContent = f.goalOn ? yearDate(f.goalOn) : 'Sans date';
-    $('[data-spendl]', el).textContent = f.spendOk ? 'Des dépenses peuvent être payées depuis ce portefeuille' : 'Virements et revenus seulement';
+    $('[data-spendl]', el).textContent = f.spendOk ? 'Toute dépense, avec ou sans réserve' : 'Dépenses par ses réserves seulement';
   }
   paint();
   const err = (text, field) => {
@@ -157,7 +157,7 @@ export function openAccountSheet(id, { onSaved = null, excluded = false, savings
     let created = null;
     if (!a) {
       const target = parseAmount(balIn.value, f.currency);
-      if (target === null) return err('Ce solde n’est pas un montant lisible.', balIn);
+      if (target === null) return err('Ce solde n’est pas lisible.', balIn);
       if (tooPrecise(balIn.value, f.currency)) {
         const c = currencyOf(f.currency);
         return err(c.dec ? `Pas plus de ${c.dec} chiffre${c.dec > 1 ? 's' : ''} après la virgule en ${esc(c.long)}.` : `Le ${esc(c.long)} n’a pas de centimes : saisis un montant entier.`, balIn);
@@ -178,7 +178,7 @@ async function toggleArchive(a) {
   const bal = balances()[a.id] || 0;
   const ok = await confirmSheet({
     title: `Archiver « ${esc(a.name)} » ?`,
-    text: `Il disparaît des choix ; ses opérations restent dans l’historique.${bal && !a.excluded ? ` Son solde (${money(bal, { cur: a.currency, hide: false })}) ne comptera plus dans le total.` : ''}`,
+    text: `Il disparaît des choix. Ses opérations restent dans le Journal.${bal && !a.excluded ? ` Son solde (${money(bal, { cur: a.currency })}) ne comptera plus dans le total.` : ''}`,
     yes: 'Archiver',
   });
   if (ok && (await updateAccount(a.id, { archived: true }))) toast('Portefeuille archivé');
@@ -202,7 +202,7 @@ async function walletMenu(a, { openEntry, go }) {
       ]),
       { key: 'ops', icon: 'clock-counter-clockwise', label: 'Voir ses opérations' },
       { key: 'arch', icon: 'archive', label: a.archived ? 'Désarchiver' : 'Archiver', off: last, note: last ? 'Garde au moins un portefeuille actif.' : '' },
-      { key: 'del', icon: 'trash', label: 'Supprimer', danger: true, off: !!used || last, note: used ? 'Il a des opérations : archive-le, elles restent dans l’historique.' : last ? 'Garde au moins un portefeuille actif.' : '' },
+      { key: 'del', icon: 'trash', label: 'Supprimer', danger: true, off: !!used || last, note: used ? 'Il a des opérations : archive-le plutôt.' : last ? 'Garde au moins un portefeuille actif.' : '' },
     ],
   });
   if (!k) return;
@@ -248,10 +248,10 @@ function walletRow(a, b) {
 // L'écart se compte toujours contre le vrai solde de l'app ; sans autre opération, c'est le solde de départ qui change.
 export function checkSayHTML(a, actual) {
   const gap = actual - (balances()[a.id] || 0);
-  const amt = v => money(v, { cur: a.currency, hide: false });
+  const amt = v => money(v, { cur: a.currency });
   return !gap ? 'C’est ce que dit Bougette.'
     : !accountTxCount(a.id) ? `Le solde de départ passera à <b>${amt(actual)}</b>.`
-      : gap < 0 ? `Il manque <b>${amt(-gap)}</b> : noté « Non suivi » (dépense).` : `Il y a <b>${amt(gap)}</b> de plus : noté « Non suivi » (entrée).`;
+      : gap < 0 ? `Il manque <b>${amt(-gap)}</b> : noté « Non suivi » (dépense).` : `Il y a <b>${amt(gap)}</b> de plus : noté « Non suivi » (revenu).`;
 }
 
 // Vérifier un solde (D9) : « Combien as-tu vraiment dessus ? », pavé prérempli avec le solde de l'app. « C'est juste » note
@@ -274,7 +274,7 @@ export function openCheckSheet(a) {
       <button type="button" class="btn primary" data-ok></button>
     </div>`, { label: `Vérifier ${a.name}`, onClose: () => resolve(out) });
     const exprEl = $('[data-expr]', s.el), say = $('[data-say]', s.el), ok = $('[data-ok]', s.el);
-    const amt = v => money(v, { cur: a.currency, hide: false });
+    const amt = v => money(v, { cur: a.currency });
     /** @type {ReturnType<typeof keypad>|null} */
     let pad = null;
     const paint = (v, expr = '', key = null) => {

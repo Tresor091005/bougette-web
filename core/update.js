@@ -47,7 +47,7 @@ export function checkUpdate() {
 }
 
 /**
- * Copie de sécurité (la copie du jour, forcée, et le dossier de sauvegarde s'il est choisi), téléchargement, puis
+ * Copie de sécurité (la copie du jour, forcée), téléchargement, puis
  * l'installation d'Android. onStep reçoit 'copy', 'progress' (pct), 'permission', 'ready'.
  * @param {string} url @param {(step: string, pct?: number) => void} onStep
  * @returns {Promise<'ready'|'permission'>}
@@ -86,7 +86,7 @@ export async function autoCheck() {
     pref('updateCheckedAt', new Date().toISOString());
     if (!u.newer) { resolve('update'); return; }
     const label = versionLabel(u.tag || '');
-    notify({ key: 'update', kind: 'info', title: 'Nouvelle version', body: `La version du ${label} est prête.`, action: { label: 'Installer', id: 'update' } });
+    notify({ key: 'update', kind: 'info', title: 'Nouvelle version', body: 'Prête à installer.', action: { label: 'Installer', id: 'update' } });
     toast(`Nouvelle version · ${label}`, { label: 'Installer', run: () => window.dispatchEvent(new CustomEvent('bougette:open-update', { detail: u })) });
   } catch (e) { /* pas d'internet : on réessaiera à la prochaine ouverture */ }
 }

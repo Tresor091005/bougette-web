@@ -4,13 +4,12 @@
 // dock flottant (D9) avec bouton + central, rendu à chaque changement des données.
 import { settings, subscribe, setErrorHandler, storageProblem, budgetReport, uiStyle, syncAppIcon, applyLook, savingsAccounts, savingsReport, duesToLook } from './store.js';
 import { icon } from './icons.js';
-import { spaceGlyph } from './avatar.js';
+import { spaceHead } from './avatar.js';
 import { currentSpace } from './spaces.js';
 import { closeAllSheets, closeTopSheet, sheetOpen, buzz, toast, dockTip, paintDockTip } from './ui.js';
 import { openEntry } from '../screens/entry.js';
 import { dailyCopy, copyOtherSpaces } from './backup.js';
 import { checkReserves } from './reserve-alerts.js';
-import { checkDues } from './due-alerts.js';
 import { onInbox, unread } from './inbox.js';
 import * as home from '../screens/home.js';
 import * as ops from '../screens/transactions.js';
@@ -28,7 +27,7 @@ import * as displayScreen from '../screens/display.js';
 import * as googleScreen from '../screens/google.js';
 import * as reviewScreen from '../screens/review.js';
 import { takeGoogleReturn } from './google.js';
-import { startCloud } from './cloud.js';
+import { startCloud, checkLinkInvite } from './cloud.js';
 import * as categoriesScreen from '../screens/categories.js';
 import * as onboarding from '../screens/onboarding.js';
 import * as dataScreen from '../screens/backup.js';
@@ -148,9 +147,7 @@ function renderTabbar(active) {
     dock.className = 'dock-wrap';
     dock.innerHTML = `<nav class="dock" aria-label="Navigation">${TABS.map(t => (t
       ? `<a class="tab" href="${t.href}" data-tab="${t.id}" aria-label="${t.label}"></a>`
-      : `<button class="fab" type="button" aria-label="Ajouter une opération" data-fab>${icon('plus')}</button>`)).join('')}</nav>
-      <svg class="dock-defs" width="0" height="0" aria-hidden="true" focusable="false"><filter id="ava-line" x="-10%" y="-10%" width="120%" height="120%">
-        <feMorphology in="SourceGraphic" operator="erode" radius="7" result="in"/><feComposite in="SourceGraphic" in2="in" operator="out"/></filter></svg>`;
+      : `<button class="fab" type="button" aria-label="Ajouter une opération" data-fab>${icon('plus')}</button>`)).join('')}</nav>`;
     document.body.appendChild(dock);
     dock.querySelector('[data-fab]').addEventListener('click', () => { buzz(8); dockTip(null); openEntry({}); });
     dock.addEventListener('click', e => {
@@ -168,8 +165,9 @@ function renderTabbar(active) {
     const t = TABS.find(x => x && x.id === a.dataset.tab);
     // l'icône change avec l'onglet actif et avec le style (Proto : Solar, D1)
     const key = `${on}:${document.documentElement.dataset.style}`;
-    // l'onglet Moi porte la tête de l'espace ouvert (D19, 2026-11-19) : on sait toujours dans quel espace on est
-    if (a.dataset.on !== key) { a.innerHTML = t.id === 'me' ? `<span class="tab-ava">${spaceGlyph(currentSpace())}</span>` : icon(t.icon, '', on ? 'fill' : 'regular'); a.dataset.on = key; }
+    // l'onglet Moi porte la tête de l'espace ouvert, en couleur, sans rien autour (D19, revu le 2026-11-21) : on sait
+    // toujours dans quel espace on est ; fermé, elle s'atténue comme les autres icônes
+    if (a.dataset.on !== key) { a.innerHTML = t.id === 'me' ? `<span class="tab-ava">${spaceHead(currentSpace())}</span>` : icon(t.icon, '', on ? 'fill' : 'regular'); a.dataset.on = key; }
     a.classList.toggle('on', on);
     if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     if (a.dataset.tab === 'month') {
@@ -212,7 +210,7 @@ window.addEventListener('hashchange', () => {
 });
 // Toute modification des données redessine l'écran courant (en gardant le défilement).
 subscribe(keys => {
-  if (settings().onboarded) setTimeout(() => { try { checkReserves(); checkDues(); } catch (e) { console.error(e); } }, 0);
+  if (settings().onboarded) setTimeout(() => { try { checkReserves(); checkLinkInvite(); } catch (e) { console.error(e); } }, 0);
   if (current && current.mod.onData) current.mod.onData(keys);
   else render({ keepScroll: true });
 });
@@ -231,15 +229,15 @@ window.addEventListener('bougette:restyle', () => render({ keepScroll: true }));
 // mises à jour (D20) : la recherche du jour, un peu après l'ouverture ; son message ou la cloche ouvre la feuille
 setTimeout(() => { if (settings().onboarded) autoCheck(); }, 4000);
 window.addEventListener('bougette:open-update', e => openUpdateSheet(/** @type {CustomEvent} */ (e).detail || null));
-// la cloche d'une réserve prête (2026-11-19) : « Tu la dépenses quand ? », ou Utiliser le jour venu
+// la cloche d'une réserve prête (2026-11-19) : « Tu la dépenses quand ? »
 window.addEventListener('bougette:reserve', e => {
   const d = /** @type {CustomEvent} */ (e).detail || {};
-  import('../screens/reserves.js').then(R => (d.when ? R.askWhen(d.id, openEntry) : R.useReserve(d.id, openEntry)));
+  import('../screens/reserves.js').then(R => R.askWhen(d.id, openEntry));
 });
 // « Charger la démo » depuis un autre espace (D19) : l'app s'est rouverte sur l'espace Démo, on le remplit ici
 // Compte Google (D21) : le retour de la page de Google (navigateur) est lu avant le premier écran
 const googleReturn = takeGoogleReturn();
-if (takeThen() === 'demo' && isDemo()) { try { await loadDemo(); toast('Espace Démo prêt'); } catch (e) { console.error(e); toast('Démo impossible.'); } }
+if (takeThen() === 'demo' && isDemo()) { try { await loadDemo(); toast('Espace Démo prêt'); } catch (e) { console.error(e); toast('La démo n’a pas pu se charger.'); } }
 render();
 document.documentElement.classList.add('ready');
 // synchro avec le Drive (D21) : à l'ouverture, après un changement, au retour dans l'app
@@ -257,13 +255,14 @@ onInbox(() => {
 // puis les autres espaces, en arrière-plan (2026-11-19) : vérifiés et copiés eux aussi, une fois par jour
 setTimeout(() => { if (settings().onboarded) dailyCopy().finally(() => copyOtherSpaces()); }, 1500);
 // Réserves et objectifs (D17) : ce qu'ils ont à dire va dans la cloche
-setTimeout(() => { if (settings().onboarded) { try { checkReserves(); checkDues(); } catch (e) { console.error(e); } } }, 1200);
-// Verrouillage (ROADMAP étape 2) : à l'ouverture, et au retour dans l'app après plus d'une minute ailleurs. MainActivity
+setTimeout(() => { if (settings().onboarded) { try { checkReserves(); checkLinkInvite(); } catch (e) { console.error(e); } } }, 1200);
+// Verrouillage (ROADMAP étape 2) : si « Verrouiller à l'ouverture » est choisi (2026-11-21), à l'ouverture, et au retour
+// dans l'app après plus d'une minute ailleurs. MainActivity
 // appelle appPaused / appResumed ; le navigateur passe par visibilitychange. Le verrou protège tous les espaces (D19) :
 // même un espace pas encore commencé le demande.
 showLock();
 let awayAt = 0;
 window.appPaused = () => { awayAt = Date.now(); };
-window.appResumed = () => { if (awayAt && Date.now() - awayAt > AWAY_MS && settings().onboarded) showLock(); awayAt = 0; };
+window.appResumed = () => { if (awayAt && Date.now() - awayAt > AWAY_MS) showLock(); awayAt = 0; };
 document.addEventListener('visibilitychange', () => { if (document.hidden) window.appPaused(); else window.appResumed(); });
 if (storageProblem()) setTimeout(() => toast(storageProblem()), 600);

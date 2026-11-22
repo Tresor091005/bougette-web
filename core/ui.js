@@ -204,7 +204,7 @@ export function menuSheet({ title, items }) {
     const s = openSheet(`<h2 class="sheet-title">${title}</h2>
       <div class="group menu">${items.map(it => `<button type="button" class="row menu-row${it.danger ? ' danger' : ''}" data-k="${it.key}"${it.off ? ' disabled' : ''}>
         <span class="pill acc">${icon(it.icon)}</span><div class="main"><div class="t">${it.label}</div>${it.note ? `<div class="s wrap">${it.note}</div>` : ''}</div></button>`).join('')}</div>`, {
-      cls: 'compact', label: title, onClose: () => resolve(picked),
+      label: title, onClose: () => resolve(picked),
     });
     $$('[data-k]', s.el).forEach(b => (b.onclick = () => { if (b.disabled) return; picked = b.dataset.k; buzz(8); s.close(); }));
   });
@@ -218,7 +218,7 @@ export function confirmSheet({ title, text = '', yes = 'Confirmer', danger = fal
       <h2 class="sheet-title">${title}</h2>${text ? `<p class="muted">${text}</p>` : ''}
       <button class="btn ${danger ? 'danger' : 'primary'}" data-yes>${yes}</button>
       ${cancel ? `<button class="btn ghost" data-no>${cancel}</button>` : ''}</div>`, {
-      cls: 'compact', onClose: () => { if (!answered) resolve(false); },
+      onClose: () => { if (!answered) resolve(false); },
     });
     $('[data-yes]', s.el).onclick = () => { answered = true; buzz(12); s.close(); resolve(true); };
     if (cancel) $('[data-no]', s.el).onclick = () => s.close();
@@ -239,7 +239,7 @@ export function promptSheet({ title, text = '', label = 'Nom', value = '', place
       <p class="field-note" data-err hidden></p>
       <button class="btn ${danger ? 'danger' : 'primary'}" data-yes>${yes}</button>
       <button class="btn ghost" data-no>Annuler</button></div>`, {
-      cls: 'compact', label: title, onClose: () => resolve(answer),
+      label: title, onClose: () => resolve(answer),
     });
     const input = /** @type {HTMLInputElement} */ ($('[data-v]', s.el));
     const err = /** @type {HTMLElement} */ ($('[data-err]', s.el));
@@ -255,18 +255,6 @@ export function promptSheet({ title, text = '', label = 'Nom', value = '', place
     $('[data-no]', s.el).onclick = () => s.close();
     setTimeout(() => input.focus(), 350);
   });
-}
-
-/**
- * Confirmation d'un effacement en tapant un nom (D19, 2026-11-17) : toucher « Oui » ne suffit pas. true si le nom tapé
- * est le bon (casse et espaces ignorés).
- * @param {{ title: string, text: string, name: string, yes: string }} o
- */
-export async function typedConfirmSheet({ title, text, name, yes }) {
-  const norm = (/** @type {string} */ v) => v.replace(/\s+/g, ' ').trim().toLowerCase();
-  const v = await promptSheet({ title, text: `${text} Pour confirmer, tape « ${esc(name)} ».`, label: 'Nom', placeholder: name, yes, danger: true,
-    check: x => (norm(x) === norm(name) ? null : `Tape exactement « ${name} ».`) });
-  return v !== null;
 }
 
 /**
@@ -298,7 +286,7 @@ export function countUp(root, opts = {}) {
     const from = lastValues.has(key) ? lastValues.get(key) : (opts.fromZero ? 0 : to);
     lastValues.set(key, to);
     const fmt = v => (el.dataset.plain === '1' ? num(v, { cur }) : money(v, { sign, cur }));
-    if (from === to || reducedMotion() || settings().discreet) { el.innerHTML = gs(fmt(to)); return; }
+    if (from === to || reducedMotion()) { el.innerHTML = gs(fmt(to)); return; }
     const t0 = performance.now(), dur = 520;
     const step = now => {
       const k = Math.min(1, (now - t0) / dur);
@@ -361,7 +349,7 @@ export function keypad(host, { initial = 0, ops = true, cur, onChange = () => {}
   host.classList.add('keypad');
   host.innerHTML = (ops ? `<div class="ops">${Object.keys(OPS).map(k => `<button type="button" class="op" data-k="${k}" aria-label="${OP_LABEL[k]}">${k}</button>`).join('')}</div>` : '')
     + `<div class="digits">${digits.map(k => {
-      if (k === 'del') return `<button type="button" class="key fn" data-k="del" aria-label="Effacer (appui long : tout effacer)">${icon('backspace')}</button>`;
+      if (k === 'del') return `<button type="button" class="key fn" data-k="del" aria-label="Effacer (garde appuyé pour tout effacer)">${icon('backspace')}</button>`;
       if (k === ',') return `<button type="button" class="key" data-k="," aria-label="Séparateur décimal">${decSep()}</button>`;
       return `<button type="button" class="key" data-k="${k}">${k}</button>`;
     }).join('')}</div>`;
@@ -495,13 +483,12 @@ export function bigAmount(minor, placeholder = '0', cur) {
 export const gs = text => esc(text).replace(/[\u2009\u202f\u00a0 ]/g, '<span class="gs"></span>');
 /** @param {any} v @param {{ cur?: any, key?: any, neg?: boolean }} [o] */
 export function splitAmount(v, { cur, key = null, neg = false } = {}) {
-  if (settings().discreet) return place('<span>•••</span>', cur);
   const n = key ? `<span data-count="${key}" data-value="${v}" data-plain="1" data-cur="${cur || ''}">${gs(num(v, { cur }))}</span>` : `<span>${gs(num(v, { cur }))}</span>`;
   return (neg ? '<span>−</span>' : '') + place(n, cur);
 }
 
 // Grands montants : réduit la taille tant que le texte déborde de son conteneur (formats longs, « FCFA » avant…).
-export const FIT = '.hero .big, .row .amt, .preview-card .pv1, .mrow .v, .jar .a, .wal .v b';
+export const FIT = '.hero .big, .row .amt, .preview-card .pv1, .mrow .v';
 // min : plancher en px ; par défaut la moitié de la taille d'origine, jamais sous 11 px.
 export function fitText(root, sel = FIT, min = null) {
   (root.matches && root.matches(sel) ? [root] : $$(sel, root)).forEach(el => {
@@ -669,34 +656,6 @@ export function wireSeg(el, onChange) {
   });
 }
 
-// ---------- compteur à rouleaux (D5) ----------
-// Chaque chiffre est une colonne 0-9 qui glisse vers sa valeur (900 ms, courbe unique). from : valeur de départ
-// (le compteur part de là, puis roule vers value après `delay`). Sans animation si reducedMotion ou mode discret.
-const SPACES = /[\s   ]/;
-export function odometer(el, value, { from = null, delay = 0, format = v => num(v) } = {}) {
-  const text = format(value);
-  const build = t => {
-    el.classList.add('odo');
-    el.classList.remove('rolling');
-    el.innerHTML = [...t].map(ch => (/\d/.test(ch)
-      ? `<span class="col">${[...'0123456789'].map(d => `<span>${d}</span>`).join('')}</span>`
-      : `<span class="sep${SPACES.test(ch) ? ' sp' : ''}">${SPACES.test(ch) ? '' : esc(ch)}</span>`)).join('');
-    el.setAttribute('aria-label', t);
-  };
-  const roll = t => {
-    const cols = $$('.col', el);
-    let k = 0;
-    [...t].forEach(ch => { if (/\d/.test(ch) && cols[k]) cols[k++].style.transform = `translateY(${-Number(ch)}em)`; });
-  };
-  if (from === null || from === value || reducedMotion() || settings().discreet) { build(text); roll(text); return; }
-  const start = format(from);
-  // même gabarit (nombre de chiffres) : on roule ; sinon on reconstruit au nouveau gabarit en partant de zéro
-  if (start.replace(/\d/g, '0') === text.replace(/\d/g, '0')) { build(start); roll(start); }
-  else { build(text); roll(text.replace(/\d/g, '0')); }
-  void el.offsetWidth;
-  setTimeout(() => { el.classList.add('rolling'); roll(text); }, delay);
-}
-
 // Tremblement d'erreur (une fois) + double vibration (D5).
 export function shake(el) {
   if (!el) return;
@@ -768,8 +727,3 @@ export function exprHTML(expr, { cur, typed = false, placeholder = '0' } = {}) {
   return html + '<span class="caret"></span>' + (hasOp ? '' : unit);
 }
 
-// ---------- signal de mouvement entre écrans (D5) ----------
-// La saisie annonce un ajout ; l'accueil, au rendu suivant, joue sa réponse (compteur, barre, bocal) après la feuille.
-let motionCue = null;
-export function cueMotion(info) { motionCue = { ...info, at: performance.now() }; }
-export function takeMotion() { const c = motionCue; motionCue = null; return c && performance.now() - c.at < 4000 ? c : null; }

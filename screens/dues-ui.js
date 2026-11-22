@@ -13,9 +13,8 @@ import { esc, today, money, period } from '../core/format.js';
 import { icon } from '../core/icons.js';
 import { chip, buzz, fitText, fabHTML, $, $$ } from '../core/ui.js';
 import { accountPill, fillsHTML } from './pickers.js';
-import { openDueSheet, dueHref, endedLabel, dueMoney, dueTitle, dayShort, confirmNow, skipNow } from './due-page.js';
+import { openDueSheet, dueHref, endedLabel, dueMoney, dueTitle, dayShort } from './due-page.js';
 import { openOperation } from './history.js';
-import { confirmWeekOr } from './week-sheet.js';
 
 /** @typedef {import('../domain/dues.js').DueItem} DueItem */
 /** @typedef {import('../domain/dues.js').EndedDue} EndedDue */
@@ -23,7 +22,7 @@ import { confirmWeekOr } from './week-sheet.js';
 /** Ce qu'on dit sous le nom : l'étape en cours. @param {DueItem} d */
 function when(d) {
   const rank = d.rank && d.times ? ` · ${d.rank} sur ${d.times}` : '';
-  const flags = `${d.paused ? ' · à revoir' : ''}${d.needsWallet ? ' · réserve close' : ''}`;
+  const flags = `${d.paused ? ' · en pause' : ''}${d.needsWallet ? ' · réserve close' : ''}`;
   if (d.state === 'late') return `<span class="loss">${d.lateCount > 1 ? `${d.lateCount} retards, depuis le ${dayShort(d.date)}` : `En retard · le ${dayShort(d.date)}`}</span>${rank}${flags}`;
   if (d.state === 'today') return `Aujourd’hui${rank}${flags}`;
   return `Le ${dayShort(d.date)}${rank}${flags}`;
@@ -33,14 +32,12 @@ function when(d) {
 function rowHTML(d) {
   const c = d.category ? category(d.category) : null;
   const pill = d.kind === 'transfer' ? accountPill(account(d.to || '') || { kind: 'cash' }, 'sm') : chip(c);
-  // Confirmer d'un toucher : du jour ou en retard, pas en pause, et pas quand sa réserve est close (portefeuille à choisir)
-  const act = (d.state === 'late' || d.state === 'today') && !d.paused && !d.needsWallet;
+  // pas d'action sur la ligne (2026-11-22, avec l'utilisateur : les gélules prenaient trop de place, un rond ✓ jurait) :
+  // la toucher ouvre sa page, où sont Confirmer et Passer
   return `<div class="row mrow due-row" data-due="${esc(d.key)}">
     <button type="button" class="mrow-go" data-due-go="${esc(d.key)}" aria-label="${esc(dueTitle(d))}">${pill}
       <span class="main"><span class="l1"><span class="t">${esc(dueTitle(d))}</span><span class="v${d.kind === 'income' ? ' in' : ''}">${dueMoney(d)}</span></span>
-        <span class="l2"><span class="s">${when(d)}</span></span>${d.kind === 'transfer' ? fillsHTML(d.reserve) : ''}</span></button>
-    ${act ? `<div class="due-acts"><button type="button" class="btn sm due-ok" data-due-ok="${esc(d.key)}">${icon('check')}Confirmer</button>
-      <button type="button" class="btn sm due-pass" data-due-skip="${esc(d.key)}">Passer</button></div>` : ''}</div>`;
+        <span class="l2"><span class="s">${when(d)}</span></span>${d.kind === 'transfer' ? fillsHTML(d.reserve) : ''}</span></button></div>`;
 }
 
 /** Des lignes d'échéances (le Journal, « À venir », 2026-11-13) : la même ligne que Plan. @param {DueItem[]} items */
@@ -91,8 +88,6 @@ export function wireDues(root, items, ctx) {
   }));
   $$('[data-due-done]', root).forEach(b => (b.onclick = () => { buzz(6); ctx.go(dueHref(b.dataset.dueDone || '')); }));
   $$('[data-all-dues]', root).forEach(b => (b.onclick = () => { buzz(6); ctx.go('#/mois/echeances'); }));
-  $$('[data-due-ok]', root).forEach(b => (b.onclick = () => { const d = byKey.get(b.dataset.dueOk || ''); if (d) { buzz(6); confirmWeekOr(d, () => confirmNow(d, ctx.openEntry)); } }));
-  $$('[data-due-skip]', root).forEach(b => (b.onclick = () => { const d = byKey.get(b.dataset.dueSkip || ''); if (d) skipNow(d); }));
 }
 
 /**
@@ -110,7 +105,7 @@ export const allDuesScreen = {
     const late = items.filter(d => d.state === 'late').length;
     const end = period(today(), settings().monthStart).end;
     const inflow = duesUntil(end).filter(d => d.kind === 'income' && !d.paused && d.currency === cur).reduce((n, d) => n + d.amount, 0);
-    const sub = [late ? `<span class="loss">dont ${late} en retard</span>` : '', inflow ? `${money(inflow, { cur })} qui rentrent` : ''].filter(Boolean).join(' · ');
+    const sub = [late ? `<span class="loss">dont ${late} en retard</span>` : '', inflow ? `${money(inflow, { cur })} à recevoir` : ''].filter(Boolean).join(' · ');
     app.innerHTML = `<div class="screen month no-tabs has-fab">
       <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
         <h1 class="title sm">Toutes les échéances</h1></div></div>

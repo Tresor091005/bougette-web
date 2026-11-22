@@ -95,17 +95,17 @@ export function txRow(t, opts = {}) {
 export function balanceMessage(chk, { editing = false, deleting = false } = {}) {
   const a = account(chk.accountId);
   const name = esc(a?.name || '?');
-  const m = v => money(v, { cur: a?.currency, hide: false });
+  const m = v => money(v, { cur: a?.currency });
   // rentrée réduite, déplacée ou supprimée : on dit simplement où tomberait le solde
   if (!chk.debit) {
     const when = chk.kind === 'past' ? ` le ${shortDate(chk.date)}` : '';
-    return { text: `${name} passerait à ${m(chk.after)}${when}.`, sub: `${deleting ? 'Annuler cette opération' : 'Cette modification'} rendrait le solde négatif${chk.kind === 'past' ? ' après coup' : ''}.` };
+    return { text: `${name} passerait à ${m(chk.after)}${when}.`, sub: 'Le solde ne peut pas passer sous zéro.' };
   }
-  if (chk.kind === 'already') return { text: `${name} est déjà à ${m(chk.avail)}.`, sub: 'Ajoute d’abord un revenu ou un virement vers ce portefeuille.' };
-  if (chk.kind === 'now') return { text: chk.avail > 0 ? `Il ne reste que ${m(chk.avail)} dans ${name}.` : `Il n’y a plus rien dans ${name}.`, sub: deleting ? 'Sans cette opération, le solde passerait sous zéro.' : '' };
+  if (chk.kind === 'already') return { text: `${name} est déjà à ${m(chk.avail)}.`, sub: 'Note d’abord l’argent qui y est entré.' };
+  if (chk.kind === 'now') return { text: chk.avail > 0 ? `Il ne reste que ${m(chk.avail)} dans ${name}.` : `Il n’y a plus rien dans ${name}.`, sub: deleting ? 'Le solde ne peut pas passer sous zéro.' : '' };
   return {
     text: `Le ${shortDate(chk.date)}, ${name} passerait à ${m(chk.after)}.`,
-    sub: `Il ne restait que ${m(chk.avail)} ce jour-là. ${deleting ? 'Annuler cette opération' : editing ? 'Cette modification' : 'Cette opération'} rendrait le solde négatif après coup.`,
+    sub: `Il ne restait que ${m(chk.avail)} ce jour-là.`,
   };
 }
 

@@ -1,20 +1,24 @@
-// Moi › Données et sauvegarde (page, ROADMAP 1b, 2026-11-09) et messages de la cloche (accueil).
-// Sauvegarde : « Sauvegarder hors du téléphone » (le fichier du journal part par le menu de partage d'Android : Drive,
-// WhatsApp, Fichiers… ; téléchargé dans le navigateur), « Faire une copie maintenant », « Restaurer depuis un fichier »,
-// puis les copies automatiques gardées sur le téléphone (les 5 plus récentes, vérifiées, et les copies de sécurité) : en
-// toucher une la restaure. « Dossier de sauvegarde » (D15, 2026-11-17, téléphone seulement) : un dossier choisi une fois
-// reçoit aussi chaque copie, chiffrée ; il survit à la désinstallation, et l'on peut y restaurer.
-// Avant toute restauration, le fichier est relu et rejoué, et la feuille dit ce qu'il contient. Données : export CSV,
-// tout effacer.
-import { toCSV, resetAll } from '../core/store.js';
-import { confirmSheet, typedConfirmSheet, menuSheet, openSheet, buzz, toast, $, $$ } from '../core/ui.js';
-import { folderAvailable, folderName, pickFolder, folderCopies, folderSpaces, readFromFolder } from '../core/folder.js';
-import { currentSpace } from '../core/spaces.js';
-import { isSafety, safetyReason } from '../data/copies.js';
+// Moi › Données et sauvegarde (page, ROADMAP 1b, 2026-11-09 ; revue le 2026-11-21, avec l'utilisateur) et messages de la
+// cloche (accueil). Deux parties :
+// - Sauvegarde : Google Drive (l'état du compte et de la synchro, ouvre Moi › Google Drive, D21).
+// - Données : « Vérifier mes données » (le résultat en clair dans la page), l'export CSV, « Repartir de zéro » (un
+//   nouvel espace vide ; celui-ci est archivé, rien n'est effacé, D19).
+// Réparer (depuis la cloche ou Vérifier) et, dans la page Développeur, revenir à une date (mountGoBack). Avant toute
+// restauration, l'état repris est relu et rejoué, et la feuille dit ce qu'il contient.
+// La cloche (D15) : « À faire » puis « Pour info », une ligne par message.
+import { toCSV } from '../core/store.js';
+import { askIdentity } from './lock.js';
+import { confirmSheet, menuSheet, openSheet, buzz, toast, $, $$ } from '../core/ui.js';
 import { icon } from '../core/icons.js';
-import { esc, shortDate, iso, dayLabel, today } from '../core/format.js';
-import { listCopies, lastExternal, journalFile, markExternal, inspect, restore, dailyCopy, keepSafety, copyToFolderNow } from '../core/backup.js';
+import { esc, shortDate, iso, dayLabel, today, addDays } from '../core/format.js';
+import { inspect, restore, verifyData, healPlan, heal, stateAt, firstDay, lastReturn } from '../core/backup.js';
+import { pickDate } from './pickers.js';
+import { driveJournal } from '../core/cloud.js';
 import { messages, markAllRead } from '../core/inbox.js';
+import { googleAvailable, account } from '../core/google.js';
+import { syncLine } from './google.js';
+import { startOverFlow } from './spaces.js';
+import { chooseSpace, reopen, spaces } from '../core/spaces.js';
 
 const fmtTime = new Intl.DateTimeFormat('fr-FR', { hour: 'numeric', minute: '2-digit' });
 /** « Aujourd'hui, 9 h 17 », « Hier, 8 h 05 », « 3 nov., 18 h 00 » @param {string} at */
@@ -24,15 +28,7 @@ function when(at) {
   const l = dayLabel(iso(d));
   return `${['Aujourd’hui', 'Hier'].includes(l) ? l : shortDate(iso(d))}, ${p.hour} h ${p.minute}`;
 }
-/** « Il y a 12 jours » @param {string|null} at */
-function since(at) {
-  if (!at) return 'Jamais';
-  const n = Math.floor((Date.now() - Date.parse(at)) / 86400e3);
-  return n <= 0 ? 'Aujourd’hui' : n === 1 ? 'Hier' : `Il y a ${n} jours`;
-}
 const opsLabel = n => `${n} opération${n > 1 ? 's' : ''}`;
-/** « la copie d'aujourd'hui, 9 h 17 », « la copie du 3 nov., 18 h 00 » @param {string} at */
-const copyName = at => `la copie ${when(at).replace(/^Aujourd’hui/, 'd’aujourd’hui').replace(/^Hier/, 'd’hier').replace(/^(\d)/, 'du $1')}`;
 
 /** @param {string} name @param {string} text @param {string} type */
 function download(name, text, type) {
@@ -42,7 +38,7 @@ function download(name, text, type) {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
-/** Sur le téléphone, le menu de partage d'Android (le téléchargement par lien n'y marche pas) ; sinon téléchargement. */
+/** Sur le téléphone, le menu de partage d'Android (le téléchargement par lien n'y marche pas) ; sinon téléchargement. @param {string} name @param {string} text @param {string} type */
 function shareFile(name, text, type) {
   const A = /** @type {any} */ (globalThis).BougetteAndroid;
   if (A && typeof A.shareFile === 'function') return !!A.shareFile(name, text);
@@ -50,25 +46,52 @@ function shareFile(name, text, type) {
   return true;
 }
 
-/** Envoie le fichier du journal hors du téléphone. */
-export async function shareJournal() {
-  buzz(8);
-  try {
-    const { name, text } = await journalFile();
-    if (!shareFile(name, text, 'application/octet-stream')) throw new Error('partage');
-    markExternal();
-    return true;
-  } catch (e) {
-    console.error(e);
-    toast('Sauvegarde impossible pour l’instant.');
-    return false;
-  }
+// Les contrôles de « Vérifier mes données », dits simplement : ce qui va, ce qui ne va pas (même ordre que session.verify).
+const PLAIN = {
+  'Chaîne d’empreintes': ['L’historique de tes changements est intact', 'L’historique de tes changements a été abîmé'],
+  'Partie double': ['Chaque opération tombe juste', 'Une opération ne tombe pas juste, ou un montant a perdu son opération ou son portefeuille'],
+  'Devises et comptes': ['Chaque portefeuille garde sa monnaie', 'Un montant n’est pas dans la monnaie de son portefeuille, ou il est sur un portefeuille supprimé'],
+  'Soldes': ['Les soldes de tes portefeuilles sont justes', 'Un solde ne correspond pas à tes opérations'],
+  'Projections': ['Ce que tu vois correspond à ton historique', 'Ce que tu vois ne correspond plus à ton historique'],
+};
+/** @param {{ name: string, ok: boolean, detail: string }[]} checks */
+function checksHTML(checks) {
+  const ok = checks.every(c => c.ok);
+  const head = ok
+    ? `<div class="row rule"><span class="pill acc" style="color:var(--gain)">${icon('check-circle')}</span><div class="main"><div class="t">Tout concorde</div><div class="s wrap">Tes données sont saines.</div></div></div>`
+    : `<div class="row rule"><span class="pill acc" style="color:var(--loss)">${icon('warning')}</span><div class="main"><div class="t">Un problème a été trouvé</div><div class="s wrap">Rien n’est changé tant que tu ne répares pas.</div></div><button class="btn secondary sm" data-heal>Réparer</button></div>`;
+  return head + checks.map(c => {
+    const [good, bad] = /** @type {Record<string, string[]>} */ (PLAIN)[c.name] || [c.name, c.name];
+    return `<div class="row" data-check="${c.ok ? 'ok' : 'ko'}"><span class="pill acc" style="color:var(--${c.ok ? 'gain' : 'loss'})">${icon(c.ok ? 'check' : 'warning')}</span><div class="main"><div class="s wrap">${esc(c.ok ? good : bad)}</div></div></div>`;
+  }).join('');
+}
+
+/**
+ * Réparer (2026-11-21, avec l'utilisateur) : un geste, l'app choisit ce qui est sain et garde le plus (core/backup.js
+ * healPlan) ; la feuille dit d'où vient l'état repris et ce qui serait à refaire. @returns {Promise<boolean>}
+ */
+export async function healFlow() {
+  if (!(await askIdentity('Réparer mes données'))) return false;
+  toast('Recherche d’une version saine…');
+  let plan;
+  try { plan = await healPlan(await driveJournal()); } catch (e) { console.error(e); }
+  if (!plan) { toast('Aucune version saine à reprendre.'); return false; }
+  const from = plan.from === 'drive' ? 'tes données de Google Drive' : plan.from === 'copy' ? `la copie ${when(/** @type {string} */ (plan.at)).toLowerCase()}` : 'ce qui est sur ce téléphone';
+  const lost = plan.lost
+    ? `${plan.lost} changement${plan.lost > 1 ? 's' : ''} noté${plan.lost > 1 ? 's' : ''} depuis ${when(/** @type {string} */ (plan.since)).toLowerCase()} ${plan.lost > 1 ? 'seront' : 'sera'} à refaire.`
+    : 'Rien de ce que tu as noté n’est perdu.';
+  if (!(await confirmSheet({ title: 'Réparer tes données ?', text: `On repart de ${from}. ${lost}`, yes: 'Réparer', danger: plan.lost > 0 }))) return false;
+  try { await heal(plan); } catch (e) { toast(/** @type {Error} */ (e).message || 'Réparation impossible.'); return false; }
+  buzz(12);
+  toast('Réparé');
+  return true;
 }
 
 /** Relit puis restaure un journal, après confirmation. @param {string} text @param {string} what */
 async function askRestore(text, what) {
+  if (!(await askIdentity('Restaurer'))) return false;
   let info;
-  try { info = await inspect(text); } catch (e) { toast(/** @type {Error} */ (e).message || 'Fichier illisible.'); return false; }
+  try { info = await inspect(text); } catch (e) { toast(/** @type {Error} */ (e).message || 'Copie illisible.'); return false; }
   const ok = await confirmSheet({
     title: `Restaurer ${what} ?`,
     text: `${opsLabel(info.ops)}${info.last ? `, dernier changement ${when(info.last).toLowerCase()}` : ''}. Ce qui a été noté depuis sera remplacé.`,
@@ -81,152 +104,120 @@ async function askRestore(text, what) {
   return true;
 }
 
-export function render(app, { back, go }) {
+export function render(app, { back }) {
+  const google = googleAvailable();
   app.innerHTML = `<div class="screen data-screen no-tabs">
     <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
       <h1 class="title sm">Données et sauvegarde</h1></div></div>
-    <p class="screen-help">Une copie vérifiée chaque jour sur ce téléphone. Garde aussi une copie ailleurs : le fichier est chiffré, il ne se lit pas comme un texte.</p>
+    <p class="screen-help">Chaque jour où tu ouvres Bougette, tes données sont vérifiées et copiées sur ce téléphone. ${google ? 'Avec un compte Google, elles sont aussi sur Google Drive et sur tes autres appareils.' : ''}</p>
 
-    <section class="section"><div class="section-h"><span class="eyebrow">Sauvegarde</span></div>
+    ${google ? `<section class="section" data-part="save"><div class="section-h"><span class="eyebrow">Sauvegarde</span></div>
       <div class="group">
-        <button class="row" data-share><span class="pill acc">${icon('upload-simple')}</span><div class="main"><div class="t">Sauvegarder hors du téléphone</div><div class="s" data-ext>${since(lastExternal())}</div></div></button>
-        <button class="row" data-now><span class="pill acc">${icon('shield-check')}</span><div class="main"><div class="t">Faire une copie maintenant</div><div class="s" data-last>…</div></div></button>
-        <button class="row" data-file><span class="pill acc">${icon('download-simple')}</span><div class="main"><div class="t">Restaurer depuis un fichier</div></div></button>
-      </div></section>
+        ${google ? `<button class="row" data-google><span class="pill acc">${icon('cloud-check')}</span><div class="main"><div class="t">Google Drive</div><div class="s wrap">${esc(account() ? syncLine() : 'Garde tes données, retrouve-les partout')}</div></div><span class="end">${icon('caret-right')}</span></button>` : ''}
+      </div></section>` : ''}
 
-    ${folderAvailable() ? `<section class="section"><div class="section-h"><span class="eyebrow">Hors de l’app</span></div>
-      <div class="group"><button class="row" data-folder><span class="pill acc">${icon('folder-simple')}</span><div class="main"><div class="t">Dossier de sauvegarde</div><div class="s wrap" data-folder-s></div></div><span class="end">${icon('caret-right')}</span></button></div></section>` : ''}
 
-    <section class="section"><div class="section-h"><span class="eyebrow">Sur ce téléphone</span></div>
-      <div class="group" data-copies><div class="row"><div class="main"><div class="s">…</div></div></div></div></section>
-
-    <section class="section"><div class="section-h"><span class="eyebrow">Données</span></div>
+    <section class="section" data-part="data"><div class="section-h"><span class="eyebrow">Données</span></div>
       <div class="group">
-        <button class="row" data-csv><span class="pill acc">${icon('download-simple')}</span><div class="main"><div class="t">Exporter en CSV</div><div class="s">Un fichier lisible dans un tableur</div></div></button>
-        <button class="row" data-reset><span class="pill acc" style="color:var(--loss)">${icon('trash')}</span><div class="main"><div class="t" style="color:var(--loss)">Tout effacer</div><div class="s">Revenir au premier lancement</div></div></button>
+        <button class="row" data-verify><span class="pill acc">${icon('check-circle')}</span><div class="main"><div class="t">Vérifier mes données</div><div class="s">Historique, opérations, soldes</div></div></button>
+        <div data-checks></div>
+        <button class="row rule" data-csv><span class="pill acc">${icon('download-simple')}</span><div class="main"><div class="t">Exporter en CSV</div><div class="s">Un fichier lisible dans un tableur</div></div></button>
+        <button class="row" data-fresh><span class="pill acc">${icon('arrow-counter-clockwise')}</span><div class="main"><div class="t">Repartir de zéro</div><div class="s wrap">Un nouvel espace vide. Celui-ci est archivé, rien n’est effacé</div></div></button>
       </div></section>
-    <input type="file" data-input hidden>
   </div>`;
 
-  const paint = async () => {
-    const list = await listCopies();
-    const host = $('[data-copies]', app);
-    if (!host) return;
-    const daily = list.filter(c => !isSafety(c));
-    $('[data-last]', app).textContent = daily[0] ? `Dernière : ${when(daily[0].at).toLowerCase()}` : 'Aucune encore';
-    // copies du jour, puis copies de sécurité (D15, 2026-11-17), chacune avec ce qui l'a déclenchée
-    const why = (/** @type {any} */ c) => ({ reset: 'Avant Tout effacer', restore: 'Avant restauration', sync: 'Avant synchronisation' }[safetyReason(c) || ''] || 'Copie de sécurité');
-    host.innerHTML = list.length
-      ? [...daily, ...list.filter(isSafety)].map(c => `<button class="row" data-copy="${esc(c.id)}"><span class="pill acc">${icon(isSafety(c) ? 'shield-check' : 'clock-counter-clockwise')}</span><div class="main"><div class="t">${isSafety(c) ? `${why(c)} · ${when(c.at).toLowerCase()}` : when(c.at)}</div><div class="s">${opsLabel(c.ops)} · vérifiée</div></div><span class="end act">Restaurer</span></button>`).join('')
-      : '<div class="row"><div class="main"><div class="s">La première copie se fait à la prochaine ouverture.</div></div></div>';
-    $$('[data-copy]', host).forEach(b => (b.onclick = async () => {
-      const c = list.find(x => x.id === b.dataset.copy);
-      if (c) await askRestore(c.text, copyName(c.at));
-    }));
-  };
-  paint();
+  // un résultat de « Vérifier mes données » ne vaut que pour les données vérifiées : il s'efface quand elles changent
+  const clearChecks = () => { const h = $('[data-checks]', app); if (h) h.innerHTML = ''; };
 
   $('[data-back]', app).onclick = () => back('#/reglages');
-  $('[data-share]', app).onclick = async () => { if (await shareJournal()) $('[data-ext]', app).textContent = since(lastExternal()); };
-  $('[data-now]', app).onclick = async () => {
+  const googleRow = $('[data-google]', app);
+  if (googleRow) googleRow.onclick = () => { buzz(6); location.hash = '#/reglages/google'; };
+  $('[data-verify]', app).onclick = async () => {
+    buzz(8);
+    const host = $('[data-checks]', app);
+    let checks;
+    try { checks = await verifyData(); } catch (e) { console.error(e); toast('Vérification impossible. Réessaie.'); return; }
+    host.innerHTML = checksHTML(checks);
+    const h = $('[data-heal]', host);
+    if (h) h.onclick = async () => { if (await healFlow()) clearChecks(); };
+    toast(checks.every(c => c.ok) ? 'Tout concorde' : 'Un problème a été trouvé');
+  };
+  $('[data-csv]', app).onclick = async () => {
     buzz(6);
-    const r = await dailyCopy({ force: true });
-    toast(r.status === 'done' ? 'Copie faite et vérifiée' : r.status === 'same' ? 'Rien de nouveau depuis la dernière copie' : r.status === 'broken' ? 'Intégrité atteinte : pas de copie' : 'Copie impossible pour l’instant');
-    paint();
-  };
-  const input = /** @type {HTMLInputElement} */ ($('[data-input]', app));
-  $('[data-file]', app).onclick = () => { buzz(6); input.value = ''; input.click(); };
-  // dossier de sauvegarde (D15, 2026-11-17) : le choisir ; une fois choisi, le changer ou y restaurer
-  const folderRow = $('[data-folder]', app);
-  const paintFolder = () => {
-    const el = $('[data-folder-s]', app);
-    if (!el) return;
-    const name = folderName();
-    const n = name ? folderCopies().length : 0;
-    el.textContent = name ? `${name} · ${n} copie${n > 1 ? 's' : ''} chiffrée${n > 1 ? 's' : ''} de cet espace` : 'Pas encore choisi · une copie qui survit à la désinstallation';
-  };
-  paintFolder();
-  const choose = async () => {
-    const name = await pickFolder();
-    if (!name) return;
-    await copyToFolderNow();
-    paintFolder();
-    toast(`Copies aussi dans « ${name} »`);
-  };
-  if (folderRow) folderRow.onclick = async () => {
-    buzz(6);
-    if (!folderName()) return choose();
-    const k = await menuSheet({ title: 'Dossier de sauvegarde', items: [
-      { key: 'restore', icon: 'clock-counter-clockwise', label: 'Restaurer depuis le dossier', note: 'Après une réinstallation, ou pour revenir en arrière' },
-      { key: 'change', icon: 'folder-simple', label: 'Changer de dossier' },
-    ] });
-    if (k === 'change') return choose();
-    if (k !== 'restore') return;
-    // les copies de tous les espaces du dossier (après une réinstallation, l'espace peut porter un autre nom)
-    // les copies de cet espace d'abord ; celles des autres espaces ensuite, à part et nommées (2026-11-18 : elles se
-    // mélangeaient), utiles surtout après une réinstallation
-    const here = currentSpace().name;
-    const mine = folderCopies(here).map(f => ({ dir: here, f }));
-    const others = folderSpaces().filter(d => d !== here).flatMap(dir => folderCopies(dir).map(f => ({ dir, f })));
-    const all = [...mine.slice(0, 6), ...others.slice(0, 12 - Math.min(6, mine.length))];
-    if (!all.length) { toast('Aucune copie dans ce dossier.'); return; }
-    const pickedKey = await menuSheet({ title: 'Quelle copie ?', items: all.map(({ dir, f }, i) => ({
-      key: String(i), icon: dir === here ? 'shield-check' : 'folder-simple',
-      label: esc(dir === here ? when(new Date(f.modified).toISOString()) : `${dir} · ${when(new Date(f.modified).toISOString())}`),
-      note: dir === here ? (i === 0 ? 'Cet espace' : '') : 'Un autre espace' })) });
-    if (pickedKey === null) return;
-    const c = all[Number(pickedKey)];
-    const text = readFromFolder(c.f.name, c.dir);
-    if (!text) { toast('Copie illisible.'); return; }
-    if (await askRestore(text, `la copie du dossier (${c.dir})`)) paint();
-  };
-  input.onchange = async () => {
-    const f = input.files && input.files[0];
-    if (f) await askRestore(await f.text(), 'ce fichier');
-  };
-  $('[data-csv]', app).onclick = () => {
-    buzz(6);
+    if (!(await askIdentity('Exporter en CSV'))) return;
     if (shareFile(`bougette-${today()}.csv`, toCSV(), 'text/csv;charset=utf-8')) toast('Fichier CSV créé');
-    else toast('Export impossible pour l’instant.');
+    else toast('Export impossible. Réessaie.');
   };
-  $('[data-reset]', app).onclick = async () => {
-    // D19 : taper le nom de l'espace ; D15 : une copie de sécurité d'abord (sans elle, on n'efface pas)
-    const sp = currentSpace();
-    const ok = await typedConfirmSheet({ title: 'Tout effacer ?', text: `Opérations, portefeuilles, catégories, budgets et réglages de l’espace « ${esc(sp.name)} » seront effacés. Une copie de sécurité est gardée juste avant.`, name: sp.name, yes: 'Tout effacer' });
-    if (!ok) return;
-    try { await keepSafety('reset'); } catch (e) { toast('Copie de sécurité impossible : rien n’est effacé.'); return; }
-    await resetAll();
-    setTimeout(() => go('#/bienvenue', { replace: true }), 260);
+  $('[data-fresh]', app).onclick = () => startOverFlow();
+}
+
+/**
+ * Revenir à une date, annuler le dernier retour (2026-11-21, avec l'utilisateur : dans la page Développeur seulement ;
+ * pour tout le monde, un retour en arrière efface ce qui a été noté depuis et se comprend mal, une erreur se corrige par
+ * la fiche › Modifier, des données abîmées par Réparer). Le journal arrêté à la fin d'un jour choisi au calendrier.
+ * @param {HTMLElement} host
+ */
+export async function mountGoBack(host) {
+  const paint = () => mountGoBack(host);
+  // une date au choix, pas de liste (trop de lignes) ; juste après un retour, de quoi l'annuler
+  const undo = await lastReturn().catch(() => null);
+  host.innerHTML = `<button class="row" data-pick-day><span class="pill acc">${icon('clock-counter-clockwise')}</span><div class="main"><div class="t">Revenir à une date</div><div class="s">Tes données comme à la fin de ce jour-là</div></div><span class="end">${icon('caret-right')}</span></button>
+    ${undo ? `<button class="row" data-undo><span class="pill acc">${icon('arrow-counter-clockwise')}</span><div class="main"><div class="t">Annuler le dernier retour</div><div class="s">Comme avant le retour ${esc(when(undo.at).toLowerCase())}</div></div><span class="end">${icon('caret-right')}</span></button>` : ''}`;
+  $('[data-pick-day]', host).onclick = async () => {
+    buzz(6);
+    const first = await firstDay();
+    if (!first) { toast('Rien n’a encore été noté.'); return; }
+    const day = await pickDate({ current: addDays(today(), -1), title: 'Revenir à quel jour ?', min: first });
+    if (!day) return;
+    let st;
+    try { st = await stateAt(day); } catch (e) { toast('Ce jour-là est abîmé. Utilise Réparer.'); return; }
+    if (!st) { toast('Rien n’a changé depuis ce jour-là.'); return; }
+    const name = dayLabel(day) === 'Hier' ? 'tes données d’hier soir' : `tes données du ${shortDate(day)} au soir`;
+    if (await askRestore(st.text, name)) paint();
   };
+  const u = $('[data-undo]', host);
+  if (u && undo) u.onclick = async () => { if (await askRestore(undo.text, 'tes données d’avant le dernier retour')) paint(); };
 }
 
 /** Messages de la cloche. Les ouvrir les marque lus. */
 export function openInboxSheet() {
   const list = messages();
-  const KIND = { error: ['warning', 'var(--loss)'], warn: ['info', 'var(--ink-2)'], info: ['check-circle', 'var(--gain)'] };
+  // piste B (2026-11-21, avec l'utilisateur, D15 ; les cartes de la piste A chargeaient trop) : une ligne par message,
+  // un point de couleur (rouge problème, ambre à faire, vert réussite, gris information), le titre, une phrase pâle
+  // dessous, le geste en lien sur sa propre ligne, calé à droite, avec un chevron ; une ligne de séparation entre deux messages. « À faire » : ce qui attend un geste, les problèmes d'abord ; « Pour info » : le reste.
+  const DOT = { error: 'var(--loss)', warn: 'var(--c3)', ok: 'var(--gain)', info: 'var(--ink-3)' };
+  const items = list.map((m, i) => ({ m, i }));
+  const todo = items.filter(({ m }) => m.kind === 'error' || m.kind === 'warn' || (m.kind === 'ok' && m.action))
+    .sort((a, b) => Number(b.m.kind === 'error') - Number(a.m.kind === 'error'));
+  const info = items.filter(x => !todo.includes(x));
+  const rowHTML = (/** @type {{ m: import('../core/inbox.js').Message, i: number }} */ { m, i }) =>
+    `<div class="im-row${m.read ? '' : ' new'}"><span class="im-dot" style="--c:${DOT[m.kind] || DOT.info}"></span>
+      <div class="im-main"><div class="im-t">${esc(m.title)}</div>${m.body ? `<div class="im-s">${esc(m.body)}</div>` : ''}
+      ${m.action ? `<button type="button" class="im-go" data-act="${i}" aria-label="${esc(m.action.label)} : ${esc(m.title)}">${esc(m.action.label)}${icon('caret-right')}</button>` : ''}</div></div>`;
   const s = openSheet(`<h2 class="sheet-title">Notifications</h2>
-    ${list.length ? `<div class="group plain">${list.map((m, i) => `<div class="row inbox-m${m.read ? '' : ' new'}">
-      <span class="pill acc" style="color:${KIND[m.kind][1]}">${icon(KIND[m.kind][0])}</span>
-      <div class="main"><div class="t">${esc(m.title)}</div><div class="s wrap">${esc(m.body)}</div><div class="s">${when(m.at)}</div></div>
-      ${m.action ? `<button class="btn secondary sm" data-act="${i}">${esc(m.action.label)}</button>` : ''}</div>`).join('')}</div>`
+    ${list.length ? `${todo.length ? `<h3 class="im-h">À faire</h3><div class="im-list">${todo.map(rowHTML).join('')}</div>` : ''}
+      ${info.length ? `<h3 class="im-h">Pour info</h3><div class="im-list">${info.map(rowHTML).join('')}</div>` : ''}`
       : '<p class="muted" style="margin:6px 0 14px">Rien de nouveau.</p>'}`, { label: 'Notifications' });
   markAllRead();
   $$('[data-act]', s.el).forEach(b => (b.onclick = async () => {
     const m = list[Number(b.dataset.act)];
     if (!m || !m.action) return;
     s.close();
-    if (m.action.id === 'share') setTimeout(() => shareJournal(), 280);
-    else if (m.action.id === 'backup') setTimeout(() => { location.hash = '#/reglages/donnees'; }, 280);
+    if (m.action.id === 'heal') setTimeout(healFlow, 280);
+    // un autre espace abîmé : l'ouvrir (on le répare de là)
+    else if (m.action.id.startsWith('space:')) {
+      const id = m.action.id.slice(6);
+      if (spaces().some(x => x.id === id)) { chooseSpace(id); reopen(); }
+    }
     else if (m.action.id === 'google') setTimeout(() => { location.hash = '#/reglages/google'; }, 280);
     else if (m.action.id === 'review') setTimeout(() => { location.hash = '#/a-revoir'; }, 280);
     else if (m.action.id === 'update') setTimeout(() => window.dispatchEvent(new CustomEvent('bougette:open-update')), 280);
     else if (m.action.id === 'assign') setTimeout(() => { location.hash = '#/mois'; }, 280);
     else if (m.action.id === 'savings') setTimeout(() => { location.hash = '#/epargne'; }, 280);
-    else if (m.action.id === 'dues') setTimeout(() => { location.hash = '#/mois'; }, 280);
-    // une réserve prête (2026-11-19) : « Tu la dépenses quand ? », ou Utiliser le jour venu
-    else if (/^(when|use):/.test(m.action.id)) {
-      const [how, id] = m.action.id.split(':');
-      setTimeout(() => window.dispatchEvent(new CustomEvent('bougette:reserve', { detail: { id, when: how === 'when' } })), 280);
+    // une réserve prête (2026-11-19) : « Tu la dépenses quand ? »
+    else if (m.action.id.startsWith('when:')) {
+      const id = m.action.id.slice(5);
+      setTimeout(() => window.dispatchEvent(new CustomEvent('bougette:reserve', { detail: { id } })), 280);
     }
   }));
 }

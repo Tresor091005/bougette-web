@@ -93,7 +93,7 @@ export function catRowHTML(x) {
   if (x.habit) {
     const avg = money(approx(x.average, cur), { cur });
     const say = x.unusual ? `<span class="loss">Plus que d’habitude (${avg} en moyenne)</span>`
-      : x.spent > x.average ? `au-dessus de l’habitude (${avg})` : `habitude ${avg}`;
+      : x.spent > x.average ? `au-dessus de l’habitude (${avg})` : `${avg} d’habitude`;
     const pct = Math.min(100, (x.spent / (x.average * UNUSUAL)) * 100);
     s = `<span class="bar hb${x.unusual ? ' hot' : ''}"><i style="width:${pct}%"></i><b class="tick" style="left:${100 / UNUSUAL}%"></b></span>
       <span class="l2"><span class="s">${say}</span></span>`;
@@ -154,7 +154,7 @@ export function wireDone(root, ctx) {
     const items = [
       { key: 'ops', icon: 'list-bullets', label: 'Voir les opérations', note: period(b.start, b.end) },
       ...(x.reconducted || c?.archived ? [] : [{ key: 'again', icon: 'arrows-clockwise', label: 'Reconduire', note: 'Même montant, même durée, à partir d’aujourd’hui' }]),
-      ...(many ? [{ key: 'cat', icon: 'caret-right', label: Number(btn.dataset.count) > 1 ? `Ses ${btn.dataset.count} budgets terminés` : 'Sa page' }] : []),
+      ...(many ? [{ key: 'cat', icon: 'caret-right', label: Number(btn.dataset.count) > 1 ? `Ses ${btn.dataset.count} budgets terminés` : 'Voir la catégorie' }] : []),
     ];
     const k = await menuSheet({ title: esc(c?.name || categoryLabel(b.category)), items });
     if (k === 'ops') ctx.go(opsHref({ cat: b.category, exact: !!c?.parent, from: b.start, to: b.end }));
@@ -245,9 +245,9 @@ export const categoryScreen = {
         <div class="section-h"><h2>Budgets</h2></div>
         ${budgets.length ? `<div class="group">${budgets.map(s => `<div class="row mrow" style="--c:var(--${c.color || 'c0'})">
             <button type="button" class="mrow-go" data-bud="${s.budget.id}" aria-label="Ce budget : le modifier ou voir ses opérations">${budgetBlock(s)}${icon('caret-right')}</button></div>`).join('')}</div>`
-          : emptyAddHTML(x && x.byParent ? `Pas de budget à elle : elle compte dans celui de ${esc(category(c.parent)?.name || '')}`
+          : emptyAddHTML(x && x.byParent ? `Elle compte dans le budget de ${esc(category(c.parent)?.name || '')}.`
             : x && x.average ? `Tu y dépenses ${money(approx(x.average, cur), { cur })} par mois en moyenne.` : 'Pas encore de budget', 'data-new', 'Créer un budget')}
-        ${aside ? `<p class="muted b-note">${money(aside, { cur })} payés depuis l’épargne ne comptent pas dans le budget : ils étaient mis de côté.</p>` : ''}
+        ${aside ? `<p class="muted b-note">${money(aside, { cur })} payés depuis l’épargne ou un portefeuille hors du total ne comptent pas dans ce budget.</p>` : ''}
       </section>
 
       ${done.length ? `<details class="section b-done"><summary>Budgets terminés <span class="muted">${done.length}</span></summary>
@@ -258,7 +258,7 @@ export const categoryScreen = {
             <span class="main"><span class="l1"><span class="t">${period(b.start, b.end)}</span><span class="v">${num(d.spent, { cur: bcur })} <small>/ ${money(b.amount, { cur: bcur })}</small></span></span>
               ${d.reconducted ? '<span class="l2"><span class="s">reconduit</span></span>' : ''}</span></button></div>`;
         }).join('')}</div></details>` : ''}
-    </div>${budgets.length ? fabHTML('Ajouter un budget') : ''}`;
+    </div>${budgets.length ? fabHTML('Créer un budget') : ''}`;
 
     $('[data-back]', app).onclick = () => ctx.back('#/mois');
     $$('[data-new], [data-add]', app).forEach(b => (b.onclick = () => { buzz(6); openBudgetSheet({ category: id, amount: budgets.length ? 0 : suggest, fixed: true }); }));
@@ -270,7 +270,7 @@ export const categoryScreen = {
       const p = currentWindow(b, t) || { start: b.start, end: b.end };
       const ops = () => ctx.go(opsHref({ cat: b.category, exact: !!category(b.category)?.parent, from: p.start, to: p.end }));
       const k = await menuSheet({ title: esc(c.name), items: [
-        { key: 'edit', icon: 'pencil-simple', label: 'Modifier', note: 'Montant, fin, se répète' },
+        { key: 'edit', icon: 'pencil-simple', label: 'Modifier', note: 'Montant, fin, répétition' },
         { key: 'ops', icon: 'list-bullets', label: 'Voir les opérations', note: period(p.start, p.end) },
       ] });
       if (k === 'edit') afterSheets(() => openBudgetSheet({ id: b.id }));

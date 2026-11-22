@@ -149,7 +149,7 @@ export async function openWasmDb({ persist = false, bytes = null, idbName = DEFA
         db.run('PRAGMA foreign_keys = ON');
         failure = null;
       });
-      throw new Error('Enregistrement impossible sur cet appareil : ' + String(e && e.message || e));
+      throw new Error('Enregistrement impossible sur ce navigateur : ' + String(e && e.message || e));
     },
     close: () => serial(async () => { await saving; db.close(); }),
   };
