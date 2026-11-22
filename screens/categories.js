@@ -12,8 +12,10 @@ import { icon, catIcon, searchIcons } from '../core/icons.js';
 import { openSheet, seg, wireSeg, buzz, toast, confirmSheet, chip, noticeHTML, enableReorder, afterSheets, wireArrange, arrangeBtnHTML, isArranging, fabHTML, $, $$ } from '../core/ui.js';
 import { pickColor, brushHTML } from './pickers.js';
 import { catTreeHTML, paintTree, catSearchHTML, wireCatSearch } from './catlist.js';
+import { topbarHTML, wireBack, rowHTML, sectionHTML, fieldHTML, sheetHead, sheetActions } from './parts.js';
 
 let tab = 'expense';
+if (typeof window !== 'undefined') window.addEventListener('bougette:space', () => { tab = 'expense'; }); // un autre espace (D19)
 const TAB_SEG = [['expense', 'Dépenses'], ['income', 'Revenus']];
 
 // Grille du catalogue, par rubriques (ou résultats d'une recherche).
@@ -47,21 +49,17 @@ export function openCategorySheet(id, type, { parent = null, name = '', onSaved 
     : used ? `« ${esc(c.name)} » a des opérations : archive-la, elles sont gardées.` : '';
   const s = openSheet(`<div class="cat-sheet">
     <div class="sheet-head"><div class="head-id cat-pv" data-pv></div></div>
-    <label class="field"><span>Nom</span><input data-name maxlength="24" value="${esc(f.name)}" placeholder="${type === 'income' ? 'Ex. Tontine, Loyer perçu' : 'Ex. Zem, Coiffure, Loyer'}" autocomplete="off"></label>
-    <div class="field"><span>Ranger dans</span>
-      <button type="button" class="field-btn" data-par ${stayTop ? 'aria-disabled="true"' : ''}><b data-parl></b>${icon(stayTop ? 'lock-simple' : 'caret-right')}</button>
-      ${stayTop ? `<small class="field-note">${stayTop}</small>` : '<small class="field-note" data-parn></small>'}
-    </div>
-    ${c && !c.parent ? `<div class="field" data-subsf><span>Sous-catégories</span>
-      <div class="group plain cat-subs">${subs.map(x => `<button type="button" class="row${x.archived ? ' dim' : ''}" data-sub="${x.id}">${chip(x)}
-        <div class="main"><div class="t">${esc(x.name)}</div>${x.archived ? '<div class="s">Archivée</div>' : ''}</div><span class="end">${icon('caret-right')}</span></button>`).join('')}
-        <button type="button" class="row add-row" data-add-sub><span class="pill">${icon('plus')}</span><div class="main"><div class="t">Ajouter une sous-catégorie</div></div></button>
-      </div></div>` : ''}
-    <div class="field"><span>Icône</span>
-      <div class="search ic-search">${icon('magnifying-glass')}<input type="search" data-q placeholder="Chercher : marché, zem, coiffure…" autocomplete="off" enterkeyhint="search"></div>
-      <div data-icons role="radiogroup" aria-label="Icônes"></div></div>
+    ${fieldHTML({ label: 'Nom', control: `<input data-name maxlength="24" value="${esc(f.name)}" placeholder="${type === 'income' ? 'Ex. Tontine, Loyer perçu' : 'Ex. Zem, Coiffure, Loyer'}" autocomplete="off">` })}
+    ${fieldHTML({ label: 'Ranger dans', note: stayTop,
+      control: `<button type="button" class="field-btn" data-par ${stayTop ? 'aria-disabled="true"' : ''}><b data-parl></b>${icon(stayTop ? 'lock-simple' : 'caret-right')}</button>${stayTop ? '' : '<small class="field-note" data-parn></small>'}` })}
+    ${c && !c.parent ? fieldHTML({ label: 'Sous-catégories', attrs: 'data-subsf', control: `<div class="group plain cat-subs">${subs.map(x => rowHTML({ cls: x.archived ? 'dim' : '', attrs: `data-sub="${x.id}"`, pill: chip(x),
+      title: esc(x.name), sub: x.archived ? 'Archivée' : '', end: `<span class="end">${icon('caret-right')}</span>` })).join('')}
+        ${rowHTML({ cls: 'add-row', attrs: 'data-add-sub', pill: `<span class="pill">${icon('plus')}</span>`, title: 'Ajouter une sous-catégorie' })}
+      </div>` }) : ''}
+    ${fieldHTML({ label: 'Icône', control: `<div class="search ic-search">${icon('magnifying-glass')}<input type="search" data-q placeholder="Chercher : marché, zem, coiffure…" autocomplete="off" enterkeyhint="search"></div>
+      <div data-icons role="radiogroup" aria-label="Icônes"></div>` })}
     <div data-err></div>
-    <div class="sheet-actions"><button class="btn primary" data-save>${icon('check')}<span data-savel></span></button></div>
+    ${sheetActions(`<button class="btn primary" data-save>${icon('check')}<span data-savel></span></button>`)}
     <div class="sheet-more">
       ${c && !lastActive ? `<div class="btn-row">
         <button class="btn ghost" data-arch>${icon('archive')}${c.archived ? 'Désarchiver' : 'Archiver'}</button>
@@ -157,9 +155,9 @@ function pickParent({ type, current, exclude }) {
   return new Promise(resolve => {
     let picked;
     // la liste partagée (catlist.js), catégories principales seules (deux niveaux), précédée de « Aucune »
-    const s = openSheet(`<h2 class="sheet-title">Ranger dans</h2>
-      <div class="group cl-g"><button type="button" class="row cl-row${current ? '' : ' on'}" data-pid><span class="pill">${icon('squares-four')}</span>
-        <div class="main"><div class="t">Aucune</div><div class="s">Catégorie principale</div></div>${current ? '' : `<span class="end">${icon('check')}</span>`}</button></div>
+    const s = openSheet(`${sheetHead({ title: 'Ranger dans' })}
+      <div class="group cl-g">${rowHTML({ cls: `cl-row${current ? '' : ' on'}`, attrs: 'data-pid', pill: `<span class="pill">${icon('squares-four')}</span>`,
+        title: 'Aucune', sub: 'Catégorie principale', end: current ? '' : `<span class="end">${icon('check')}</span>` })}</div>
       <div class="cl" data-tree>${catTreeHTML({ type, current, exclude, withSubs: false })}</div>`, {
       label: 'Ranger dans', onClose: () => resolve(picked),
     });
@@ -173,25 +171,21 @@ export function render(app, { back }) {
   // archivées dans l'ordre de l'arbre : une catégorie, puis ses sous-catégories, comme la liste au-dessus
   const archived = allCategories(tab).filter(c => !c.parent).flatMap(c => [c, ...subcategories(c.id, { all: true })]).filter(c => c.archived);
   app.innerHTML = `<div class="screen cats no-tabs has-fab">
-    <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
-      <h1 class="title sm">Catégories</h1></div>
-      <div class="right"><button class="iconbtn" data-find aria-label="Chercher une catégorie" aria-pressed="false">${icon('magnifying-glass')}</button>${arrangeBtnHTML()}</div></div>
+    ${topbarHTML({ title: 'Catégories', right: `<button class="iconbtn" data-find aria-label="Chercher une catégorie" aria-pressed="false">${icon('magnifying-glass')}</button>${arrangeBtnHTML()}` })}
     <p class="screen-help">Touche une catégorie pour la modifier. L’ordre choisi ici se retrouve partout.</p>
     <div data-findbox hidden>${catSearchHTML()}</div>
     ${seg(TAB_SEG, tab, 'tab-seg')}
-    <section class="section" style="margin-top:16px">
+    ${sectionHTML({ cls: 'cl-sec', body: `
       <div class="cl" data-tree>${catTreeHTML({ type: tab, handle: true })}</div>
-      <p class="muted b-note" data-none hidden>Aucune catégorie trouvée.</p>
-    </section>
-    ${archived.length ? `<section class="section"><div class="section-h"><span class="eyebrow">Archivées</span></div>
-      <div class="group">${archived.map(c => `<button type="button" class="row dim" data-cat="${c.id}">${chip(c)}
-        <div class="main"><div class="t">${esc(categoryLabel(c.id))}</div></div><span class="end">${icon('caret-right')}</span></button>`).join('')}</div></section>` : ''}
+      <p class="muted b-note" data-none hidden>Aucune catégorie trouvée.</p>` })}
+    ${archived.length ? sectionHTML({ title: 'Archivées', body: `
+      <div class="group">${archived.map(c => rowHTML({ cls: 'dim', attrs: `data-cat="${c.id}"`, pill: chip(c), title: esc(categoryLabel(c.id)), end: `<span class="end">${icon('caret-right')}</span>` })).join('')}</div>` }) : ''}
   </div>
   ${fabHTML(tab === 'income' ? 'Nouvelle catégorie de revenus' : 'Nouvelle catégorie de dépenses')}`;
 
   // même modèle que Portefeuilles (D9) : « Ranger » montre les poignées, + flottant
   wireArrange($('.screen', app), $('[data-arrange]', app), 'categories');
-  $('[data-back]', app).onclick = () => back('#/reglages');
+  wireBack(app, () => back('#/reglages'));
   wireSeg($('.tab-seg', app), v => { tab = v; setTimeout(() => render(app, { back }), 160); });
   $$('[data-cat]', app).forEach(b => (b.onclick = e => {
     if (e.target.closest('.handle') || isArranging('categories')) return;

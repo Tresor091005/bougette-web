@@ -288,6 +288,20 @@ export function tooPrecise(str, cur) {
   const x = v * 10 ** unitDec(cur);
   return Math.abs(x - Math.round(x)) > 1e-6;
 }
+/**
+ * Lecture d'un montant tapé dans un champ, la seule : l'entier en plus petite unité (0 si vide), ou ce qui ne va pas —
+ * illisible, ou plus de décimales que la devise n'en a (jamais arrondi sans le dire). Le signe et le zéro sont à l'appelant.
+ * @param {string} str @param {string} [cur] @returns {{ amount: number, error?: undefined } | { amount?: undefined, error: string }}
+ */
+export function readAmount(str, cur) {
+  const amount = parseAmount(str, cur);
+  if (amount === null) return { error: 'Ce montant n’est pas lisible.' };
+  if (tooPrecise(str, cur)) {
+    const c = currencyOf(cur);
+    return { error: c.dec ? `Pas plus de ${c.dec} chiffre${c.dec > 1 ? 's' : ''} après la virgule en ${c.long}.` : `Le ${c.long} n’a pas de centimes : saisis un montant entier.` };
+  }
+  return { amount };
+}
 
 export function ordinal(n) { return n === 1 ? '1er' : String(n); }
 

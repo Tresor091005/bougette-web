@@ -17,8 +17,10 @@ import { openSpacesSheet } from './spaces.js';
 
 // L'ouverture (2026-11-21, avec l'utilisateur) : au premier rendu de l'accueil, ses tuiles se lèvent l'une après l'autre,
 // comme l'écran Bienvenue ; une fois par ouverture de l'app, jamais avec « réduire les animations ». Verrouillée, l'app
-// tient le mouvement en pause sous le code (proto.css, html.locked) : il se joue au déverrouillage.
+// tient le mouvement en pause sous le code (proto.css, html.locked) : il se joue au déverrouillage. Passer à un autre
+// espace (D19) est une ouverture : elles se lèvent de nouveau.
 let risen = false;
+window.addEventListener('bougette:space', () => { risen = false; });
 
 const fmtHead = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
 /** Un montant sans son symbole (la tuile dit « F » à part). @param {number} v */

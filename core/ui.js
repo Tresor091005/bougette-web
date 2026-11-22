@@ -112,7 +112,10 @@ export function openSheet(html, { cls = '', onClose = null, label = '', beforeCl
 }
 // silent : ne touche pas à l'historique (on change déjà de page).
 export function closeAllSheets({ silent = false } = {}) {
-  [...stack].reverse().forEach(s => s.close({ fromHistory: silent }));
+  const all = [...stack].reverse();
+  all.forEach(s => s.close({ fromHistory: true }));
+  // un seul recul pour toutes leurs entrées (plusieurs history.back() de suite peuvent n'en faire qu'un)
+  if (!silent && all.length) { pendingBacks++; history.go(-all.length); }
 }
 
 // Glisser la poignée (ou le haut de la feuille) vers le bas pour fermer.
@@ -277,6 +280,8 @@ export function onSwipe(el, { left, right }) {
 // ---------- chiffres qui défilent ----------
 // Les éléments [data-count="clé"] gardent leur dernière valeur : au rendu suivant ils défilent de l'ancienne à la nouvelle.
 const lastValues = new Map();
+// un autre espace (D19) : ses chiffres ne défilent pas depuis ceux de l'espace d'avant
+if (typeof window !== 'undefined') window.addEventListener('bougette:space', () => lastValues.clear());
 export function countUp(root, opts = {}) {
   $$('[data-count]', root).forEach(el => {
     const key = el.dataset.count;

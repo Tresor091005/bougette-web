@@ -16,6 +16,7 @@ import { googleAvailable, account } from '../core/google.js';
 import { syncLine } from './google.js';
 import { reviewItems } from '../core/review.js';
 import { versionTaps, devUnlocked } from './developer.js';
+import { rowHTML, sectionHTML, sheetHead } from './parts.js';
 import { versionLabel, updateAvailable, checkUpdate, installUpdate, installDownloaded, autoUpdate, setAutoUpdate } from '../core/update.js';
 
 // le numéro de version en clair (D20 : une version porte sa date et son heure)
@@ -27,10 +28,10 @@ const VERSION = versionLabel(APP_VERSION);
  */
 export function openUpdateSheet(/** @type {any} */ preset = null) {
   const s = openSheet(`<div class="confirm upd">
-    <h2 class="sheet-title">Mises à jour</h2>
+    ${sheetHead({ title: 'Mises à jour' })}
     <p class="muted" data-u data-version>Tu as la version du ${esc(VERSION)}.</p>
     <p class="muted upd-note">Bougette regarde seulement s’il y a une version plus récente : rien n’est envoyé.</p>
-    <button class="row" data-auto><div class="main"><div class="t">Chercher tout seul</div><div class="s">Une fois par jour, à l’ouverture</div></div>${switchHTML(autoUpdate())}</button>
+    ${rowHTML({ attrs: 'data-auto', title: 'Chercher tout seul', sub: 'Une fois par jour, à l’ouverture', end: switchHTML(autoUpdate()) })}
     <button class="btn primary" data-go>Chercher une mise à jour</button>
     <button class="btn ghost" data-no>Fermer</button></div>`, { label: 'Mises à jour' });
   const msg = /** @type {HTMLElement} */ ($('[data-u]', s.el)), go = /** @type {HTMLButtonElement} */ ($('[data-go]', s.el));
@@ -83,8 +84,8 @@ export function openUpdateSheet(/** @type {any} */ preset = null) {
 export function render(app, { go }) {
   const st = settings();
   const cur = currency();
-  const row = (attr, ic, t, s) => `<button class="row" ${attr}><span class="pill acc">${icon(ic)}</span>
-    <div class="main"><div class="t">${t}</div><div class="s">${s}</div></div><span class="end">${icon('caret-right')}</span></button>`;
+  const caret = `<span class="end">${icon('caret-right')}</span>`;
+  const row = (attrs, ic, title, sub) => rowHTML({ attrs, pill: `<span class="pill acc">${icon(ic)}</span>`, title, sub, end: caret });
   const display = [uiStyle() === 'proto' ? 'Proto' : 'Carnet', st.haptics ? 'vibrations' : '', st.showVoided ? 'annulées visibles' : ''].filter(Boolean).join(' · ');
 
   // l'espace en tête (D19, revu le 2026-11-19, avec l'utilisateur : la ligne « Espace » était trop cachée) : sa tête, son
@@ -96,30 +97,30 @@ export function render(app, { go }) {
       <span class="me-ava" aria-hidden="true">${spaceAvatar(space)}</span>
       <span class="me-name">${esc(space.name)}${icon('caret-down')}</span>
     </button>
-    ${reviewItems().length ? `<section class="section me-sync-s"><div class="group"><button class="row rv-alert" data-go="#/a-revoir"><span class="pill">${icon('warning')}</span>
-      <div class="main"><div class="t">À revoir</div><div class="s">${reviewItems().length === 1 ? 'Un changement n’a pas été gardé' : `${reviewItems().length} changements n’ont pas été gardés`}</div></div><span class="end">${icon('caret-right')}</span></button></div></section>` : ''}
-    ${googleAvailable() ? `<section class="section me-sync-s"><div class="group">${row('data-go="#/reglages/google"', 'cloud-check', 'Google Drive', esc(account() ? syncLine() : 'Garde tes données, retrouve-les partout'))}</div></section>` : ''}
+    ${reviewItems().length ? sectionHTML({ cls: 'me-sync-s', body: `<div class="group">${rowHTML({ cls: 'rv-alert', attrs: 'data-go="#/a-revoir"', pill: `<span class="pill">${icon('warning')}</span>`, title: 'À revoir',
+      sub: reviewItems().length === 1 ? 'Un changement n’a pas été gardé' : `${reviewItems().length} changements n’ont pas été gardés`, end: caret })}</div>` }) : ''}
+    ${googleAvailable() ? sectionHTML({ cls: 'me-sync-s', body: `<div class="group">${row('data-go="#/reglages/google"', 'cloud-check', 'Google Drive', esc(account() ? syncLine() : 'Garde tes données, retrouve-les partout'))}</div>` }) : ''}
 
-    <section class="section"><div class="section-h"><span class="eyebrow">Mon argent</span></div>
+    ${sectionHTML({ title: 'Mon argent', body: `
       <div class="group">
         ${row('data-go="#/portefeuilles"', 'wallet', 'Portefeuilles', money(totalBalance()))}
         ${row('data-go="#/reglages/categories"', 'tag', 'Catégories', 'Ranger, créer, archiver')}
         ${row('data-start', 'calendar-blank', 'Début du mois', `${monthStartLabel(st.monthStart)} de chaque mois`)}
         ${row('data-go="#/reglages/monnaie"', 'coin', 'Monnaie et format', `${cur.long} · ${money(1234567)}`)}
-      </div></section>
+      </div>` })}
 
-    <section class="section"><div class="section-h"><span class="eyebrow">L’app</span></div>
+    ${sectionHTML({ title: 'L’app', body: `
       <div class="group">
         ${row('data-display', 'eye', 'Affichage', display)}
         ${row('data-go="#/reglages/verrou"', 'lock-simple', 'Verrouillage', !hasCode() ? 'Pas de code' : lockAtOpen() ? 'Code demandé à l’ouverture' : 'Code choisi')}
         ${row('data-go="#/reglages/donnees"', 'shield-check', 'Données et sauvegarde', 'Vérifier, exporter, repartir de zéro')}
         ${updateAvailable() ? row('data-update', 'download-simple', 'Mises à jour', `Version du ${esc(VERSION)}`) : ''}
-      </div></section>
+      </div>` })}
 
-    ${devUnlocked() ? `<section class="section"><div class="section-h"><span class="eyebrow">Outils</span></div>
+    ${devUnlocked() ? sectionHTML({ title: 'Outils', body: `
       <div class="group">
         ${row('data-go="#/reglages/dev"', 'code', 'Développeur', 'Démo, accueil guidé, messages, retour en arrière')}
-      </div></section>` : ''}
+      </div>` }) : ''}
 
     <div class="about">${icon('logo')}<b>Bougette</b><span data-version>Version du ${VERSION}</span> · marche sans internet<br>${account() ? 'Tes données restent sur ce téléphone et dans ton Google Drive.' : 'Tes données restent sur ce téléphone.'}</div>
   </div>`;

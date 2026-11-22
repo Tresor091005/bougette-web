@@ -15,9 +15,9 @@ import { today, money, num, esc, shortDate, approx, approxUp } from '../core/for
 import { icon } from '../core/icons.js';
 import { chip, buzz, fitText, menuSheet, afterSheets, fabHTML, $, $$ } from '../core/ui.js';
 import { openBudgetSheet } from './budget-sheet.js';
-import { emptyAddHTML } from './pickers.js';
 import { opsHref } from './transactions.js';
 import { budgetMonth, currentWindow, UNUSUAL, habitsLeft } from '../domain/budgets.js';
+import { topbarHTML, wireBack, endedHTML, listPageHTML, wireListPage, sectionHTML, emptyState } from './parts.js';
 
 /** @param {string} id */
 export const catHref = id => `#/mois/categorie?c=${encodeURIComponent(id)}`;
@@ -168,9 +168,9 @@ export function wireDone(root, ctx) {
  * de Plan en deux blocs. Tes budgets : tous les budgets en cours, la même ligne que dans Plan, ce qui dépasse en tête,
  * puis les plus entamés. Tes habitudes : ce que la Marge compte (habitRows). En tête, « Reste dans tes budgets » et ce
  * qui ira sans doute dans tes habitudes (sans budget : ce chiffre seul). Rien d'autre : les catégories sans rien, les
- * dépenses d'une fois et l'arbre vivent ailleurs (Moi › Catégories, le Journal par catégorie). En bas, « Catégories
- * archivées » : une ligne par catégorie archivée qui a eu des budgets, absente d'ici comme de Plan, le seul chemin vers
- * sa page (« 11 terminés · jusqu'au 31 oct » ; un seul : ce qu'il a dépensé et sa période).
+ * dépenses d'une fois et l'arbre vivent ailleurs (Moi › Catégories, le Journal par catégorie). En bas, « Budgets
+ * terminés » : une ligne par catégorie sans budget en cours ni à venir (ou archivée), absente d'ici comme de Plan, le
+ * seul chemin vers sa page (« 11 terminés · jusqu'au 31 oct » ; un seul : ce qu'il a dépensé et sa période).
  */
 export const allScreen = {
   /** @param {HTMLElement} app @param {any} ctx */
@@ -183,34 +183,24 @@ export const allScreen = {
     const habits = habitRows(board);
     const ahead = approx(habitsLeft(board));
     const done = finishedGroups();
-    const hero = buds.length ? `<div class="label">Reste dans tes budgets</div><div class="big">${money(r.inBudgets)}</div>
-        ${ahead ? `<div class="b-res">${money(ahead)} iront sans doute dans tes habitudes</div>` : ''}`
-      : ahead ? `<div class="label">Iront sans doute dans tes habitudes</div><div class="big">${money(ahead)}</div>` : '';
-    app.innerHTML = `<div class="screen month no-tabs has-fab">
-      <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
-        <h1 class="title sm">Tous les budgets</h1></div></div>
-      ${hero ? `<section class="hero b-hero b-all">${hero}</section>` : ''}
-      <section class="section">
-        <div class="section-h"><h2>Tes budgets</h2></div>
-        ${buds.length ? `<div class="group">${buds.map(x => catRowHTML(x)).join('')}</div>` : emptyAddHTML('Pas encore de budget', 'data-new', 'Créer un budget')}
-      </section>
-      ${habits.length ? `<section class="section"><div class="section-h"><h2>Tes habitudes</h2></div>
-        <div class="group">${habits.map(habitRowHTML).join('')}</div></section>` : ''}
-      ${done.length ? `<details class="section b-done"><summary>Budgets terminés <span class="muted">${done.length}</span></summary>
-        <div class="group">${done.map(g => {
-          const x = g.last, b = x.budget, c = category(g.category), cur = b.currency;
-          return `<div class="row mrow" style="--c:var(--${c?.color || 'c0'})">
+    const intro = buds.length ? { label: 'Reste dans tes budgets', big: money(r.inBudgets), sub: ahead ? `${money(ahead)} iront sans doute dans tes habitudes` : '' }
+      : ahead ? { label: 'Iront sans doute dans tes habitudes', big: money(ahead) } : null;
+    app.innerHTML = listPageHTML({ title: 'Tous les budgets', intro, fab: 'Créer un budget',
+      body: `${sectionHTML({ title: 'Tes budgets', body: `
+        ${buds.length ? `<div class="group">${buds.map(x => catRowHTML(x)).join('')}</div>` : emptyState('Pas encore de budget', { add: ['data-new', 'Créer un budget'] })}` })}
+      ${habits.length ? sectionHTML({ title: 'Tes habitudes', body: `
+        <div class="group">${habits.map(habitRowHTML).join('')}</div>` }) : ''}`,
+      ended: endedHTML('Budgets terminés', done.map(g => {
+        const x = g.last, b = x.budget, c = category(g.category), cur = b.currency;
+        return `<div class="row mrow" style="--c:var(--${c?.color || 'c0'})">
             <button type="button" class="mrow-go" data-done="${b.id}" data-count="${g.count}" aria-label="${esc(categoryLabel(g.category))} : son dernier budget terminé">${chip(c)}
             <span class="main"><span class="l1"><span class="t">${esc(c?.name || categoryLabel(g.category))}</span>${g.count > 1 ? '' : `<span class="v">${num(x.spent, { cur })} <small>/ ${money(b.amount, { cur })}</small></span>`}</span>
               <span class="l2"><span class="s">${g.count > 1 ? `${g.count} terminés · jusqu’au ${shortDate(b.end)}` : period(b.start, b.end)}${x.reconducted ? ' · reconduit' : ''}</span></span></span></button>
           </div>`;
-        }).join('')}</div></details>` : ''}
-    </div>${fabHTML('Créer un budget')}`;
-    $('[data-back]', app).onclick = () => ctx.back('#/mois');
+      })) });
+    wireListPage(app, ctx, () => openBudgetSheet());
     wireCatRows(app, ctx);
     wireDone(app, ctx);
-    $$('[data-new], [data-add]', app).forEach(b => (b.onclick = () => { buzz(6); openBudgetSheet(); }));
-    fitText(app, '.mrow .v', 13);
   },
 };
 
@@ -238,29 +228,25 @@ export const categoryScreen = {
     const cur = st.currency;
 
     app.innerHTML = `<div class="screen month bc no-tabs${budgets.length ? ' has-fab' : ''}">
-      <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
-        <h1 class="title sm bc-title" title="${esc(categoryLabel(id))}">${chip(c)}<span class="bc-name">${esc(nameOf(id))}</span></h1></div></div>
+      ${topbarHTML({ title: `${chip(c)}<span class="bc-name">${esc(nameOf(id))}</span>`, cls: 'bc-title', attrs: `title="${esc(categoryLabel(id))}"` })}
 
-      <section class="section">
-        <div class="section-h"><h2>Budgets</h2></div>
+      ${sectionHTML({ title: 'Budgets', body: `
         ${budgets.length ? `<div class="group">${budgets.map(s => `<div class="row mrow" style="--c:var(--${c.color || 'c0'})">
             <button type="button" class="mrow-go" data-bud="${s.budget.id}" aria-label="Ce budget : le modifier ou voir ses opérations">${budgetBlock(s)}${icon('caret-right')}</button></div>`).join('')}</div>`
-          : emptyAddHTML(x && x.byParent ? `Elle compte dans le budget de ${esc(category(c.parent)?.name || '')}.`
-            : x && x.average ? `Tu y dépenses ${money(approx(x.average, cur), { cur })} par mois en moyenne.` : 'Pas encore de budget', 'data-new', 'Créer un budget')}
-        ${aside ? `<p class="muted b-note">${money(aside, { cur })} payés depuis l’épargne ou un portefeuille hors du total ne comptent pas dans ce budget.</p>` : ''}
-      </section>
+          : emptyState(x && x.byParent ? `Elle compte dans le budget de ${esc(category(c.parent)?.name || '')}.`
+            : x && x.average ? `Tu y dépenses ${money(approx(x.average, cur), { cur })} par mois en moyenne.` : 'Pas encore de budget', { add: ['data-new', 'Créer un budget'] })}
+        ${aside ? `<p class="muted b-note">${money(aside, { cur })} payés depuis l’épargne ou un portefeuille hors du total ne comptent pas dans ce budget.</p>` : ''}` })}
 
-      ${done.length ? `<details class="section b-done"><summary>Budgets terminés <span class="muted">${done.length}</span></summary>
-        <div class="group">${done.map(d => {
-          const b = d.budget, bcur = b.currency;
-          return `<div class="row mrow">
+      ${endedHTML('Budgets terminés', done.map(d => {
+        const b = d.budget, bcur = b.currency;
+        return `<div class="row mrow">
             <button type="button" class="mrow-go" data-done="${b.id}" aria-label="Budget du ${shortDate(b.start)} au ${shortDate(b.end)}">
             <span class="main"><span class="l1"><span class="t">${period(b.start, b.end)}</span><span class="v">${num(d.spent, { cur: bcur })} <small>/ ${money(b.amount, { cur: bcur })}</small></span></span>
               ${d.reconducted ? '<span class="l2"><span class="s">reconduit</span></span>' : ''}</span></button></div>`;
-        }).join('')}</div></details>` : ''}
+      }))}
     </div>${budgets.length ? fabHTML('Créer un budget') : ''}`;
 
-    $('[data-back]', app).onclick = () => ctx.back('#/mois');
+    wireBack(app, () => ctx.back('#/mois'));
     $$('[data-new], [data-add]', app).forEach(b => (b.onclick = () => { buzz(6); openBudgetSheet({ category: id, amount: budgets.length ? 0 : suggest, fixed: true }); }));
     // un budget en cours : le modifier ou voir ses opérations (sa période en cours)
     $$('[data-bud]', app).forEach(btn => (btn.onclick = async () => {

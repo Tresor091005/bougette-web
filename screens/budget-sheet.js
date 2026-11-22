@@ -14,6 +14,7 @@ import { openSheet, keypad, exprHTML, buzz, chip, toast, fitText, switchHTML, no
 import { currentWindow, monthEnd } from '../domain/budgets.js';
 import { shiftDay } from '../domain/pace.js';
 import { pickCategory, pickDate } from './pickers.js';
+import { rowHTML, sheetHead } from './parts.js';
 
 /**
  * id : budget à modifier ; sinon un nouveau, prérempli avec category / amount (suggestion tirée de l'historique), ou
@@ -49,7 +50,7 @@ export function openBudgetSheet({ id = null, category: catIn = null, amount: amo
       <button type="button" class="mp" data-q="month">Fin du mois</button><button type="button" class="mp" data-q="7">7 jours</button>
       <button type="button" class="mp" data-q="30">30 jours</button><button type="button" class="mp" data-q="pick">Choisir</button>
     </div>
-    <button type="button" class="row bs-rep" data-rep><div class="main"><div class="t">Se répète</div></div>${switchHTML(f.repeat)}</button>
+    ${rowHTML({ cls: 'bs-rep', attrs: 'data-rep', title: 'Se répète', end: switchHTML(f.repeat) })}
     <div data-err></div>
     <div data-pad></div>
     <button type="button" class="btn primary" data-save>${icon('check')}${b ? 'Enregistrer' : 'Créer le budget'}</button>
@@ -61,8 +62,8 @@ export function openBudgetSheet({ id = null, category: catIn = null, amount: amo
   const paint = () => {
     const c = f.category ? category(f.category) : null;
     const caret = catFixed ? '' : icon('caret-down');
-    $('[data-cat]', el).innerHTML = c ? `${chip(c)}<h2 class="sheet-title">${esc(c.name)}</h2>${caret}`
-      : `<span class="pill acc">${icon('target')}</span><h2 class="sheet-title">Catégorie</h2>${caret}`;
+    $('[data-cat]', el).innerHTML = c ? `${chip(c)}${sheetHead({ title: esc(c.name) })}${caret}`
+      : `<span class="pill acc">${icon('target')}</span>${sheetHead({ title: 'Catégorie' })}${caret}`;
     $('[data-start]', el).innerHTML = `<span>${f.start === t ? 'Aujourd’hui' : `Du ${esc(shortDate(f.start))}`}</span>`;
     $('[data-end]', el).innerHTML = `<span>${f.end === t ? 'Aujourd’hui' : `Au ${esc(shortDate(f.end))}`}</span>`;
     const q = quick();
@@ -179,7 +180,7 @@ export function openBudgetSheet({ id = null, category: catIn = null, amount: amo
  */
 export function openIncomeSheet({ amount, cur, available, walletId, openEntry, openAccountSheet }) {
   const s = openSheet(`<div class="income-sheet">
-    <h2 class="sheet-title">${money(amount, { cur })} arrivés</h2>
+    ${sheetHead({ title: `${money(amount, { cur })} arrivés` })}
     <p class="in-say">Disponible passe à <b>${money(available)}</b></p>
     <div class="in-acts">
       <button type="button" class="btn primary" data-act="aside">${icon('hand-coins')}Mettre de côté</button>

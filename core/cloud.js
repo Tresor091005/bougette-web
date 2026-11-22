@@ -2,7 +2,7 @@
 // au retour dans l'app, au bouton), ce qu'on en dit (Moi › Compte Google, la cloche), et la liaison du compte.
 // La Démo ne se synchronise jamais. Les autres espaces se synchronisent quand on les ouvre, avec le compte auquel ils sont
 // attachés seulement : pas de transfert d'un compte à l'autre (2026-11-21, avec l'utilisateur).
-import { session, pref, transactions } from './store.js';
+import { session, pref, transactions, subscribe, openSpaceId } from './store.js';
 import { keepSafetyText } from './backup.js';
 import { notify, resolve, messages } from './inbox.js';
 import { spaces, currentSpace, isDemo, MAIN, applyCloud, useAccount, goneCids, claimSpaces } from './spaces.js';
@@ -34,12 +34,37 @@ function setStatus(s) {
   changed();
 }
 
-/** Cet espace se synchronise-t-il ? (compte lié, pas la Démo) */
-export const syncOn = () => !!account() && !isDemo() && googleAvailable();
+/** Cet espace se synchronise-t-il ? (compte lié, pas la Démo ; pas pendant le passage à un autre espace) */
+export const syncOn = () => !!account() && !isDemo() && googleAvailable() && !paused && currentSpace().id === openSpaceId();
 
 /** @type {Promise<any>|null} */
 let running = null;
 let again = false;
+// Passer d'un espace à l'autre sur place (D19) : la synchro en cours finit sur l'espace d'avant (sa session, ses copies,
+// son état), aucune autre ne part, puis la première synchro du nouvel espace, comme à l'ouverture. Si elle ne finit pas
+// en ms (réseau bloqué), pauseCloud renvoie false : l'appelant recharge alors la page, qui l'arrête, comme avant.
+let paused = false;
+/** @param {number} [ms] @returns {Promise<boolean>} */
+export async function pauseCloud(ms = 4000) {
+  paused = true;
+  clearTimeout(timer);
+  /** @type {any} */
+  let late = null;
+  const done = await Promise.race([
+    Promise.resolve(running).then(() => true, () => true),
+    new Promise(ok => { late = setTimeout(() => ok(false), ms); }),
+  ]);
+  clearTimeout(late);
+  clearTimeout(timer);
+  again = false;
+  return /** @type {boolean} */ (done);
+}
+export function resumeCloud() {
+  paused = false;
+  // comme à l'ouverture : un espace créé depuis est attaché au compte lié
+  if (account()) claimSpaces(/** @type {import('./google.js').Account} */ (account()).email);
+  firstSync();
+}
 
 /**
  * Synchronise l'espace ouvert maintenant. interactive : sur Android, la fenêtre de Google peut s'ouvrir (choisir le compte,
@@ -48,6 +73,7 @@ let again = false;
  * @returns {Promise<{ ok: boolean, error?: string, away?: boolean }>}
  */
 export function syncNow({ interactive = false } = {}) {
+  if (paused) return Promise.resolve({ ok: false, error: '' });
   if (!syncOn()) return Promise.resolve({ ok: false, error: isDemo() ? 'La Démo ne se synchronise pas.' : 'Aucun compte Google lié.' });
   if (running) { again = true; return running; }
   running = run(interactive).finally(() => {
@@ -74,12 +100,16 @@ async function checkWebAccount(drive) {
 
 /** @param {boolean} interactive */
 async function run(interactive) {
+  const ses = session; // la session de l'espace synchronisé, gardée jusqu'au bout
   try {
     if (interactive && android()) await getToken({ interactive: true });
     const drive = makeDrive(refresh => getToken({ refresh }));
     await checkWebAccount(drive);
     const email = /** @type {import('./google.js').Account} */ (account()).email;
-    const space = currentSpace();
+    // l'espace de la session ouverte, jamais un autre choisi entre-temps (son journal partirait sous le nom de celui-ci)
+    const here = openSpaceId();
+    const space = spaces().find(s => s.id === here);
+    if (!space || space.id !== currentSpace().id) return { ok: false, error: '' };
     // attaché à un autre compte (lié avant) : il ne part jamais sur celui-ci (pas de transfert d'un compte à l'autre)
     if (space.owner && space.owner !== email.toLowerCase()) {
       setStatus({ error: `« ${space.name} » appartient au compte ${space.owner}. Il ne se synchronise pas avec celui-ci.`, foreign: space.owner, needsAuth: false });
@@ -90,10 +120,10 @@ async function run(interactive) {
       setStatus({ error: 'Tes données ont un souci. Répare-les d’abord, depuis les notifications.', needsAuth: false });
       return { ok: false, error: 'integrity' };
     }
-    const schema = (await session.info()).schema;
+    const schema = (await ses.info()).schema;
     const r = await syncSpace({
-      drive, session, space, isMainSpace: space.id === MAIN, local: spaces(), gone: goneCids(),
-      safety: text => keepSafetyText(text), newCid: () => ulid().toLowerCase(), newEpoch: () => ulid().toLowerCase(),
+      drive, session: ses, space, isMainSpace: space.id === MAIN, local: spaces(), gone: goneCids(),
+      safety: text => keepSafetyText(text, here), newCid: () => ulid().toLowerCase(), newEpoch: () => ulid().toLowerCase(),
       newId: () => 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
       schema, linkedAt: /** @type {import('./google.js').Account} */ (account()).linkedAt,
       onCid: me => applyCloud({ email, me, added: [], renamed: [] }),
@@ -128,6 +158,7 @@ async function run(interactive) {
  * données ne sont que sur ce téléphone, jusqu'à ce qu'un compte soit lié. Pas dans la Démo, ni là où Google n'est pas.
  */
 export function checkLinkInvite() {
+  if (currentSpace().id !== openSpaceId()) return; // on passe à un autre espace : ses données ne sont pas encore là
   if (account() || isDemo() || !googleAvailable() || !transactions().length) { resolve('sync-invite'); return; }
   const title = 'Tes données sont seulement sur ce téléphone';
   // déjà là (une ancienne version du message comprise : son texte est remis à jour)
@@ -219,6 +250,15 @@ export async function unlinkAccount() {
 /** Navigateur : repasser par Google (le jeton a expiré et Google n'a pas pu le renouveler sans demander). */
 export const reconnect = () => goToGoogle({ purpose: 'sync' });
 
+/** La première synchro de l'espace ouvert. Renvoie true si la page part chez Google. */
+function firstSync() {
+  if (!syncOn()) return false;
+  if (android() || hasWebToken()) { clearTimeout(timer); timer = setTimeout(() => syncNow(), 1500); return false; }
+  if (trySilent()) return true;
+  setStatus({ needsAuth: true });
+  return false;
+}
+
 /**
  * Au démarrage : le retour de Google (navigateur), la première synchro, puis les synchros après un changement et au
  * retour dans l'app.
@@ -234,13 +274,9 @@ export function startCloud(ret, toast) {
   } else if (ret && ret.purpose === 'sync') {
     if (ret.ok) setTimeout(() => syncNow(), 800);
     else setStatus({ needsAuth: true, error: 'Google demande de te reconnecter.' });
-  } else if (syncOn()) {
-    if (android() || hasWebToken()) setTimeout(() => syncNow(), 1500);
-    else if (trySilent()) return;
-    else setStatus({ needsAuth: true });
-  }
+  } else if (firstSync()) return;
   // un changement pendant une synchro en relance une après elle (sinon il attendrait le prochain)
-  session.subscribe(() => { if (!syncOn()) return; if (running) again = true; else schedule(8000); });
+  subscribe(() => { if (!syncOn()) return; if (running) again = true; else schedule(8000); });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden || !syncOn()) return;
     const last = Date.parse(syncStatus().at || '') || 0;

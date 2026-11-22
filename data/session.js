@@ -320,6 +320,8 @@ export async function openSession({ db, clock = () => Date.now(), random = Math.
     },
     /** Le geste Restaurer a été envoyé (ou ne compte pas) : on l'oublie. */
     clearForce: () => serial(() => commit(tx => setMeta(tx, 'sync_force', ''))),
+    /** Referme la base, après les écritures en file (on passe à un autre espace, D19). Plus rien n'est prévenu. */
+    close: () => serial(async () => { listeners.clear(); await db.close(); }),
     /** @param {Record<string, any>|null} v */
     setSync: v => serial(() => commit(tx => { const { force, ...rest } = v || {}; setMeta(tx, 'sync', v ? JSON.stringify(rest) : ''); })),
 

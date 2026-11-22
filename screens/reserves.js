@@ -12,15 +12,16 @@ import {
   reserveReconducted, reserveDeletedUses, reserveUses, category, settings, accounts, scheduleById, openReserves,
 } from '../core/store.js';
 import { openDueSheet, dueHref, dayShort } from './due-page.js';
-import { money, esc, yearDate, today, parseAmount, tooPrecise, currencyOf, symbol, approx, approxUp, period } from '../core/format.js';
+import { money, esc, yearDate, today, readAmount, currencyOf, symbol, approx, approxUp, period } from '../core/format.js';
 import { icon } from '../core/icons.js';
 import { openSheet, seg, wireSeg, buzz, toast, switchHTML, noticeHTML, confirmSheet, menuSheet, afterSheets, fitText, chip, $, $$ } from '../core/ui.js';
-import { accountPill, pickDate, pickCategory, emptyAddHTML } from './pickers.js';
+import { accountPill, pickDate, pickCategory } from './pickers.js';
 import { openAccountSheet } from './accounts.js';
 import { opsHref } from './transactions.js';
 import { openOperation } from './history.js';
 import { addMonths, addDays, daysBetween } from '../domain/reserves.js';
 import { resolve } from '../core/inbox.js';
+import { topbarHTML, wireBack, rowHTML, sectionHTML, fieldHTML, sheetHead, sheetActions, emptyState } from './parts.js';
 
 /**
  * Ce que dit une réserve, en quelques mots (D17 revu le 2026-11-20, avec l'utilisateur : elle dit seulement si elle sera
@@ -62,8 +63,8 @@ function reserveLine(v) {
 }
 
 /** Ligne d'une réserve terminée : la toucher ouvre son petit menu (ses opérations, Reconduire, son portefeuille). @param {any} x */
-export const closedRowHTML = x => `<button type="button" class="row" data-res-done="${x.id}"><span class="pill">${icon('check-circle')}</span>
-  <div class="main"><div class="t">${esc(x.name)}</div><div class="s">${closedLine(x)}</div></div><span class="amt">${money(x.amount, { cur: x.currency })}</span></button>`;
+export const closedRowHTML = x => rowHTML({ attrs: `data-res-done="${x.id}"`, pill: `<span class="pill">${icon('check-circle')}</span>`,
+  title: esc(x.name), sub: closedLine(x), end: `<span class="amt">${money(x.amount, { cur: x.currency })}</span>` });
 
 /** Ce que dit une réserve terminée : utilisée (et combien) ou close, et si une opération d'utilisation a été supprimée. @param {any} r */
 function closedLine(r) {
@@ -92,6 +93,8 @@ export function reservesRing(rep) {
   const saved = rep.reserves.reduce((n, v) => n + v.saved, 0), target = rep.reserves.reduce((n, v) => n + v.target, 0);
   return { pct: target ? Math.floor((saved * 100) / target) : 100, saved, target, label: 'Mis de côté' };
 }
+/** « encore 165 000 F sur 230 000 F », ou « tout est de côté ». @param {any} ring reservesRing @param {string} cur */
+const restHTML = (ring, cur) => (ring.saved >= ring.target ? 'tout est de côté' : `encore ${money(ring.target - ring.saved, { cur })} sur ${money(ring.target, { cur })}`);
 export const goalRing = (pill, g) => (g ? `<span class="goal-ring${g.pct >= 100 ? ' done' : ''}" style="--p:${Math.min(100, g.pct)}" role="img" aria-label="${g.label || 'Objectif'} : ${Math.min(100, g.pct)} %">${pill}</span>` : pill);
 
 /**
@@ -99,9 +102,11 @@ export const goalRing = (pill, g) => (g ? `<span class="goal-ring${g.pct >= 100 
  * revu le 2026-11-20 : la plus proche servie d'abord, une réserve lointaine peut être à 0 % alors que le plan est tenu),
  * dessous « 10 500 F / 15 000 F · pour le 20 déc » (2026-11-20, avec l'utilisateur : sa date se lit à côté de « Prête 4 mois
  * trop tard » ou « Il manquera … »). Toujours touchable.
- * @param {any} v vue de la réserve (savingsReport) @param {{ wallet?: string }} [o] wallet : nom du portefeuille à rappeler
+ * Pas le nom de son portefeuille (2026-11-22, avec l'utilisateur : il faisait passer la ligne sur deux lignes ; son menu
+ * mène au portefeuille).
+ * @param {any} v vue de la réserve (savingsReport)
  */
-export function reserveRowHTML(v, { wallet = '' } = {}) {
+export function reserveRowHTML(v) {
   const rv = v.reserve, cur = rv.currency;
   // ce qu'elle dit sur sa propre ligne, dessous (2026-11-20, avec l'utilisateur : à droite du nom, coincé ; on lit de haut
   // en bas : quoi, où on en est, ce qui va se passer) ; à temps, pas de ligne
@@ -110,7 +115,7 @@ export function reserveRowHTML(v, { wallet = '' } = {}) {
     ${chip(rv.category ? category(rv.category) : null)}
     <span class="main"><span class="l1"><span class="t">${esc(rv.name)}</span></span>
       <span class="bar rs-bar${barTone(v)}"><i style="width:${v.pct}%"></i></span>
-      <span class="l2"><span class="s">${wallet ? `${esc(wallet)} · ` : ''}${money(v.saved, { cur })} / ${money(v.target, { cur })} · pour le ${dayShort(rv.due)}</span></span>
+      <span class="l2"><span class="s">${money(v.saved, { cur })} / ${money(v.target, { cur })} · pour le ${dayShort(rv.due)}</span></span>
       ${stage ? `<span class="l3 rs-stage">${stage}</span>` : ''}</span></button></div>`;
 }
 
@@ -307,22 +312,23 @@ function verdictHTML(a, rep) {
   // le manque (revu le 2026-11-20, avec l'utilisateur : « Il manque X par mois » ne disait ni d'où il venait ni que la
   // ligne se touche) : une seule ligne, le constat puis ce que fait le toucher, une flèche ; sans versement, la même ligne
   // le programme (prérempli au manque), plus de ligne « Programmer » à part
-  const program = !v.list.length && v.gap !== 0 && !short ? `<button type="button" class="row add-row" data-vers-new="${a.id}"><span class="pill">${icon('arrows-clockwise')}</span>
-      <div class="main"><div class="t wrap">Programmer le versement</div><div class="s wrap">Un virement chaque mois vers cette épargne</div></div></button>` : '';
+  const program = !v.list.length && v.gap !== 0 && !short ? rowHTML({ cls: 'add-row', attrs: `data-vers-new="${a.id}"`, pill: `<span class="pill">${icon('arrows-clockwise')}</span>`,
+    title: 'Programmer le versement', titleCls: 'wrap', sub: 'Un virement chaque mois vers cette épargne', subCls: 'wrap' }) : '';
   if (v.gap === null) return program ? `<div class="group plain rs-vers">${program}</div>` : '';
   if (short) {
     const attr = v.list.length ? `data-vers="${a.id}"` : `data-vers-new="${a.id}"`;
-    return `<div class="group rs-vers"><button type="button" class="row rs-verdict" ${attr}><span class="pill" style="--c:var(--c3)">${icon('warning')}</span>
-      <div class="main"><div class="t wrap rs-warn">Tes échéances ne suffisent pas : ${money(v.gap, { cur })} de plus par mois</div><div class="s wrap">${v.list.length ? 'Augmenter ton versement' : 'Programmer le versement'}</div></div>
-      <span class="end">${icon('caret-right')}</span></button></div>`;
+    return `<div class="group rs-vers">${rowHTML({ cls: 'rs-verdict', attrs: attr, pill: `<span class="pill" style="--c:var(--c3)">${icon('warning')}</span>`,
+      title: `Tes échéances ne suffisent pas : ${money(v.gap, { cur })} de plus par mois`, titleCls: 'wrap rs-warn',
+      sub: v.list.length ? 'Augmenter ton versement' : 'Programmer le versement', subCls: 'wrap', end: `<span class="end">${icon('caret-right')}</span>` })}</div>`;
   }
   // une réserve que le manque ne peut pas aider (trop proche, ou échue) et qui ne sera pas prête : on ne dit pas « tes réserves »
   const behind = rep.reserves.some((/** @type {any} */ x) => ['later', 'short', 'none', 'overdue'].includes(x.status));
   const sub = inflowLine(v.inflow, cur);
-  const inner = `<span class="pill">${icon('check')}</span>
-      <div class="main"><div class="t wrap">Tes échéances suffisent pour tes ${behind ? 'autres ' : ''}réserves</div>${sub ? `<div class="s wrap">${esc(sub)}</div>` : ''}</div>`;
+  const ok = { cls: 'rs-verdict', pill: `<span class="pill">${icon('check')}</span>`, title: `Tes échéances suffisent pour tes ${behind ? 'autres ' : ''}réserves`,
+    titleCls: 'wrap', sub: sub ? esc(sub) : '', subCls: 'wrap' };
   // une flèche quand elle se touche (2026-11-20, avec l'utilisateur : comme la ligne du manque)
-  return `<div class="group rs-vers">${v.list.length ? `<button type="button" class="row rs-verdict" data-vers="${a.id}">${inner}<span class="end">${icon('caret-right')}</span></button>` : `<div class="row rs-verdict" data-verdict>${inner}</div>`}${program}</div>`;
+  return `<div class="group rs-vers">${v.list.length ? rowHTML({ ...ok, attrs: `data-vers="${a.id}"`, end: `<span class="end">${icon('caret-right')}</span>` })
+    : rowHTML({ ...ok, tag: 'div', attrs: 'data-verdict' })}${program}</div>`;
 }
 
 /**
@@ -347,37 +353,34 @@ export function render(app, ctx) {
     const r = savingsReport(a.id);
     const cur = a.currency;
     const rows = r.reserves.map(v => reserveRowHTML(v)).join('');
-    return `<section class="section rs-wallet">
+    // sous « Solde », ce qui reste à mettre de côté pour les réserves (2026-11-22, avec l'utilisateur : « 65 000 F / 230 000 F »
+    // répétait le solde de droite dès que tout est dans les réserves ; le % seul, l'anneau le montre déjà)
+    return sectionHTML({ cls: 'rs-wallet', body: `
       <div class="rs-head">${a.emergency ? monthsRing(accountPill(a), coveredMonths(a)) : goalRing(accountPill(a), r.goal || reservesRing(r))}<div class="main"><div class="t">Solde</div>
-        <div class="s wrap">${a.emergency ? monthsLabel(coveredMonths(a)) : r.goal ? (r.goal.need && !r.goal.reached && !r.goal.passed ? `Objectif ${money(r.goal.amount, { cur })} : ` : '') + goalLine(r.goal, cur) : r.reserves.length ? `${r.reserves.length} réserve${r.reserves.length > 1 ? 's' : ''} · ${money(reservesRing(r)?.saved || 0, { cur })} / ${money(reservesRing(r)?.target || 0, { cur })}` : '<span class="b-aside">Fixer un objectif</span>'}</div></div>
+        <div class="s wrap">${a.emergency ? monthsLabel(coveredMonths(a)) : r.goal ? (r.goal.need && !r.goal.reached && !r.goal.passed ? `Objectif ${money(r.goal.amount, { cur })} : ` : '') + goalLine(r.goal, cur) : r.reserves.length ? `${r.reserves.length} réserve${r.reserves.length > 1 ? 's' : ''} · ${restHTML(reservesRing(r), cur)}` : '<span class="b-aside">Fixer un objectif</span>'}</div></div>
         <span class="amt">${money(r.balance, { cur })}</span>
         ${a.emergency || r.reserves.length ? '' : `<button type="button" class="iconbtn soft" data-goal="${a.id}" aria-label="Objectif de ${esc(a.name)}">${icon('pencil-simple')}</button>`}</div>
       ${a.emergency ? '' : verdictHTML(a, r)}
       ${a.emergency ? '' : `<div class="group" data-wallet="${a.id}">${rows}
-        <div class="row rs-free"><span class="pill">${icon('coin')}</span><div class="main"><div class="t">Épargne libre</div>${r.freeMonths !== null && r.free > 0 ? `<div class="s">${String(r.freeMonths).replace('.', ',')} mois de dépenses</div>` : ''}
-</div>
-          <span class="amt${r.free < 0 ? ' loss' : ''}">${money(r.free, { cur })}</span></div>
+        ${rowHTML({ tag: 'div', cls: 'rs-free', pill: `<span class="pill">${icon('coin')}</span>`, title: 'Épargne libre',
+          sub: r.freeMonths !== null && r.free > 0 ? `${String(r.freeMonths).replace('.', ',')} mois de dépenses` : '', end: `<span class="amt${r.free < 0 ? ' loss' : ''}">${money(r.free, { cur })}</span>` })}
       </div>`}
-      <div class="group plain rs-acts">${a.emergency ? '' : `<button type="button" class="row add-row" data-new="${a.id}"><span class="pill">${icon('plus')}</span><div class="main"><div class="t">Nouvelle réserve</div></div></button>`}
-        <button type="button" class="row add-row" data-aside="${a.id}"><span class="pill">${icon('hand-coins')}</span><div class="main"><div class="t">Mettre de côté</div></div></button></div>
+      <div class="group plain rs-acts">${a.emergency ? '' : rowHTML({ cls: 'add-row', attrs: `data-new="${a.id}"`, pill: `<span class="pill">${icon('plus')}</span>`, title: 'Nouvelle réserve' })}
+        ${rowHTML({ cls: 'add-row', attrs: `data-aside="${a.id}"`, pill: `<span class="pill">${icon('hand-coins')}</span>`, title: 'Mettre de côté' })}</div>
       ${a.emergency ? '<p class="muted b-note">Pour les coups durs. Il ne compte pas dans ton total et n’a pas de réserves. 3 mois de dépenses suffisent.</p>' : ''}
       ${(() => {
         const done = closedReserves(a.id).slice(0, 12);
         return done.length ? `<details class="rs-done"><summary>Réserves terminées <span class="muted">${done.length}</span></summary>
           <div class="group">${done.map(closedRowHTML).join('')}</div></details>` : '';
-      })()}
-    </section>`;
+      })()}` });
   };
 
   app.innerHTML = `<div class="screen reserves no-tabs">
-    <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
-      <h1 class="title sm">${list[0] ? esc(list[0].name) : 'Épargne'}</h1></div></div>
-    ${list.length ? list.map(walletHTML).join('') : `<section class="section">
-      ${emptyAddHTML('Pas encore de portefeuille d’épargne', 'data-create', 'Créer un portefeuille d’épargne')}
-      </section>`}
+    ${topbarHTML({ title: list[0] ? esc(list[0].name) : 'Épargne' })}
+    ${list.length ? list.map(walletHTML).join('') : sectionHTML({ body: emptyState('Pas encore de portefeuille d’épargne', { add: ['data-create', 'Créer un portefeuille d’épargne'] }) })}
   </div>`;
 
-  $('[data-back]', app).onclick = () => ctx.back('#/mois');
+  wireBack(app, () => ctx.back('#/mois'));
   const create = $('[data-create]', app);
   if (create) create.onclick = () => { buzz(6); openAccountSheet(null, { savings: true }); };
   $$('[data-goal]', app).forEach(b => (b.onclick = () => { buzz(6); openGoalSheet(b.dataset.goal); }));
@@ -419,13 +422,13 @@ export function openGoalSheet(walletId) {
   const f = { amount: a.goal ? a.goal.amount : 0, on: a.goal ? a.goal.on : null, emergency: !!a.emergency };
   const dec = currencyOf(cur).dec;
   const s = openSheet(`<div class="acc-sheet">
-    <h2 class="sheet-title">Objectif · ${esc(a.name)}</h2>
+    ${sheetHead({ title: `Objectif · ${esc(a.name)}` })}
     <p class="muted rs-say">Il ne bloque rien : il te montre où tu en es.</p>
-    <label class="field"><span>Montant visé (${symbol(cur)})</span><input data-amt inputmode="decimal" placeholder="0" autocomplete="off" value="${f.amount ? f.amount / 10 ** dec : ''}"></label>
-    <div class="field"><span>Date (facultative)</span><button type="button" class="field-btn" data-on><b data-onl></b>${icon('calendar-blank')}</button></div>
+    ${fieldHTML({ label: `Montant visé (${symbol(cur)})`, control: `<input data-amt inputmode="decimal" placeholder="0" autocomplete="off" value="${f.amount ? f.amount / 10 ** dec : ''}">` })}
+    ${fieldHTML({ label: 'Date (facultative)', control: `<button type="button" class="field-btn" data-on><b data-onl></b>${icon('calendar-blank')}</button>` })}
     <div data-err></div>
-    <div class="sheet-actions"><button class="btn primary" data-save>${icon('check')}Enregistrer</button>
-      ${a.goal ? `<button class="btn ghost" data-clear>Retirer l’objectif</button>` : ''}</div>
+    ${sheetActions(`<button class="btn primary" data-save>${icon('check')}Enregistrer</button>
+      ${a.goal ? `<button class="btn ghost" data-clear>Retirer l’objectif</button>` : ''}`)}
   </div>`, { label: 'Objectif' });
   const el = s.el, amt = /** @type {HTMLInputElement} */ ($('[data-amt]', el)), errEl = $('[data-err]', el);
   const paint = () => {
@@ -438,9 +441,9 @@ export function openGoalSheet(walletId) {
   };
   $('[data-save]', el).onclick = async () => {
     errEl.innerHTML = '';
-    const v = amt.value.trim() ? parseAmount(amt.value, cur) : null;
-    if (amt.value.trim() && (v === null || v <= 0 || tooPrecise(amt.value, cur))) { errEl.innerHTML = noticeHTML('Ce montant n’est pas lisible.'); buzz(14); return; }
-    const changes = { goal: v ? { amount: v, on: f.on } : null };
+    const v = readAmount(amt.value, cur);
+    if (v.error || (amt.value.trim() && /** @type {number} */ (v.amount) <= 0)) { errEl.innerHTML = noticeHTML(esc(v.error || 'Ce montant n’est pas lisible.')); buzz(14); return; }
+    const changes = { goal: v.amount ? { amount: v.amount, on: f.on } : null };
     const ok = await updateAccount(a.id, changes);
     if (ok) { buzz(12); s.close(); toast('Objectif enregistré'); }
   };
@@ -453,8 +456,8 @@ function historyHTML(id, self = false) {
   if (!id) return '';
   const chain = reserveChain(id).filter(x => (self || x.id !== id) && x.closed);
   if (!chain.length) return '';
-  return `<div class="rs-hist"><span class="eyebrow">Les fois d’avant</span><div class="group plain">${chain.reverse().map(x => `<div class="row"><div class="main">
-    <div class="t">${esc(x.name)} · ${money(x.amount, { cur: x.currency })}</div><div class="s">${closedLine(x)}</div></div></div>`).join('')}</div></div>`;
+  return `<div class="rs-hist"><span class="eyebrow">Les fois d’avant</span><div class="group plain">${chain.reverse().map(x => rowHTML({ tag: 'div',
+    title: `${esc(x.name)} · ${money(x.amount, { cur: x.currency })}`, sub: closedLine(x) })).join('')}</div></div>`;
 }
 
 /**
@@ -466,10 +469,10 @@ function historyHTML(id, self = false) {
 function openClosedSheet(r, openEntry) {
   const again = reserveReconducted(r.id);
   const s = openSheet(`<div class="acc-sheet rs-sheet">
-    <h2 class="sheet-title">${esc(r.name)}</h2>
+    ${sheetHead({ title: esc(r.name) })}
     <p class="rs-say"><b>${money(r.amount, { cur: r.currency })}</b> visés · ${r.mode === 'once' ? 'en une fois' : 'en plusieurs fois'} · échéance le ${yearDate(r.due)}<br><span class="muted">${closedLine(r)}</span></p>
     ${historyHTML(r.id)}
-    <div class="sheet-actions">${again ? '<p class="muted">Déjà reconduite.</p>' : `<button class="btn primary" data-again>${icon('arrow-counter-clockwise')}Reconduire</button>`}</div>
+    ${sheetActions(again ? '<p class="muted">Déjà reconduite.</p>' : `<button class="btn primary" data-again>${icon('arrow-counter-clockwise')}Reconduire</button>`)}
   </div>`, { label: 'Réserve terminée' });
   const b = $('[data-again]', s.el);
   if (b) b.onclick = () => { buzz(8); s.close(); afterSheets(() => openReserveSheet({ from: r.id, openEntry })); };
@@ -503,23 +506,22 @@ export function openReserveSheet({ id = null, wallet = null, from = null, openEn
   const src = r || prev;
   const f = { name: src?.name || '', amount: src?.amount || 0, due: r?.due || prevDue || addMonths(today(), 3), mode: src?.mode || 'once', category: src?.category || null };
   const s = openSheet(`<div class="acc-sheet rs-sheet">
-    <h2 class="sheet-title">${r ? esc(r.name) : prev ? 'Reconduire la réserve' : 'Nouvelle réserve'}</h2>
+    ${sheetHead({ title: r ? esc(r.name) : prev ? 'Reconduire la réserve' : 'Nouvelle réserve' })}
     ${view ? `<p class="rs-say"><b>${money(view.saved, { cur })}</b> sur ${money(view.target, { cur })}${r.used ? ` · ${money(r.used, { cur })} déjà utilisés` : ''}<br><span class="muted">${reserveLine(view)}</span>${reserveDeletedUses(r).length ? `<br><span class="muted">${reserveDeletedUses(r).length > 1 ? 'Des opérations faites avec elle ont été supprimées' : 'Une opération faite avec elle a été supprimée'} : son argent est revenu dans la réserve.</span>` : ''}</p>` : '<p class="muted rs-say">De l’argent mis de côté pour une dépense à venir.</p>'}
-    <div class="field"><span>Portefeuille d’épargne</span><button type="button" class="field-btn" data-wal${canMove ? '' : ' aria-disabled="true"'}><b data-wall></b>${canMove ? icon('caret-down') : ''}</button></div>
-    <label class="field"><span>Nom</span><input data-name maxlength="28" value="${esc(f.name)}" placeholder="Ex. Assurance, Rentrée, Téléphone" autocomplete="off"></label>
-    <label class="field"><span>Montant visé (${symbol(cur)})</span><input data-amt inputmode="decimal" placeholder="0" autocomplete="off" value="${f.amount ? f.amount / 10 ** dec : ''}"></label>
-    <div class="field"><span>Échéance</span><button type="button" class="field-btn" data-due><b data-duel></b>${icon('calendar-blank')}</button></div>
-    <div class="field"><span>Paiement</span>${seg([['once', 'En une fois'], ['gradual', 'En plusieurs fois']], f.mode, 'rs-use')}</div>
-    <div class="field"><span>Catégorie de la dépense</span><button type="button" class="field-btn" data-cat><b data-catl></b>${icon('caret-right')}</button>
-      <small class="field-note">Quand tu l’utilises, la dépense va dans cette catégorie.</small></div>
+    ${fieldHTML({ label: 'Portefeuille d’épargne', control: `<button type="button" class="field-btn" data-wal${canMove ? '' : ' aria-disabled="true"'}><b data-wall></b>${canMove ? icon('caret-down') : ''}</button>` })}
+    ${fieldHTML({ label: 'Nom', control: `<input data-name maxlength="28" value="${esc(f.name)}" placeholder="Ex. Assurance, Rentrée, Téléphone" autocomplete="off">` })}
+    ${fieldHTML({ label: `Montant visé (${symbol(cur)})`, control: `<input data-amt inputmode="decimal" placeholder="0" autocomplete="off" value="${f.amount ? f.amount / 10 ** dec : ''}">` })}
+    ${fieldHTML({ label: 'Échéance', control: `<button type="button" class="field-btn" data-due><b data-duel></b>${icon('calendar-blank')}</button>` })}
+    ${fieldHTML({ label: 'Paiement', control: seg([['once', 'En une fois'], ['gradual', 'En plusieurs fois']], f.mode, 'rs-use') })}
+    ${fieldHTML({ label: 'Catégorie de la dépense', control: `<button type="button" class="field-btn" data-cat><b data-catl></b>${icon('caret-right')}</button>`,
+      note: 'Quand tu l’utilises, la dépense va dans cette catégorie.' })}
     <div data-err></div>
     ${r ? historyHTML(r.id) : prev ? historyHTML(prev.id, true) : ''}
-    <div class="sheet-actions"><button class="btn primary" data-save>${icon('check')}${r ? 'Enregistrer' : 'Créer la réserve'}</button>
-      ${r ? `<button type="button" class="btn ghost" data-closeres>${icon('x-circle')}Clore la réserve</button>` : ''}</div>
+    ${sheetActions(`<button class="btn primary" data-save>${icon('check')}${r ? 'Enregistrer' : 'Créer la réserve'}</button>
+      ${r ? `<button type="button" class="btn ghost" data-closeres>${icon('x-circle')}Clore la réserve</button>` : ''}`)}
   </div>`, { label: 'Réserve' });
   const el = s.el, errEl = $('[data-err]', el), nameIn = /** @type {HTMLInputElement} */ ($('[data-name]', el)), amtIn = /** @type {HTMLInputElement} */ ($('[data-amt]', el));
   const showErr = msg => { errEl.innerHTML = noticeHTML(esc(msg)); buzz(14); };
-  const readAmount = () => (amtIn.value.trim() ? parseAmount(amtIn.value, cur) : 0);
   const paint = () => {
     $('[data-duel]', el).textContent = yearDate(f.due);
     const cl = f.category ? category(f.category)?.name || '' : ''; // le nom seul (unique, D13), comme partout
@@ -531,8 +533,8 @@ export function openReserveSheet({ id = null, wallet = null, from = null, openEn
   amtIn.oninput = () => { errEl.innerHTML = ''; paint(); };
   const wal = $('[data-wal]', el);
   if (wal && canMove) wal.onclick = () => {
-    const sh = openSheet(`<h2 class="sheet-title">Portefeuille d’épargne</h2><div class="group plain">${choices.map(x => `<button type="button" class="row" data-w="${x.id}">${accountPill(x)}
-      <div class="main"><div class="t">${esc(x.name)}</div></div>${x.id === walletId ? icon('check') : ''}</button>`).join('')}</div>`, { label: 'Portefeuille d’épargne' });
+    const sh = openSheet(`${sheetHead({ title: 'Portefeuille d’épargne' })}<div class="group plain">${choices.map(x => rowHTML({ attrs: `data-w="${x.id}"`, pill: accountPill(x),
+      title: esc(x.name), end: x.id === walletId ? icon('check') : '' })).join('')}</div>`, { label: 'Portefeuille d’épargne' });
     $$('[data-w]', sh.el).forEach(b => (b.onclick = () => { walletId = /** @type {HTMLElement} */ (b).dataset.w || walletId; buzz(6); sh.close(); paint(); }));
   };
   wireSeg($('.rs-use', el), v => { f.mode = v; paint(); });
@@ -550,8 +552,8 @@ export function openReserveSheet({ id = null, wallet = null, from = null, openEn
   if (closeBtn && r) closeBtn.onclick = () => { buzz(8); closeReserveAsk(r, () => s.close()); };
   $('[data-save]', el).onclick = async () => {
     errEl.innerHTML = '';
-    const amount = readAmount();
-    if (amount === null || tooPrecise(amtIn.value, cur)) return showErr('Ce montant n’est pas lisible.');
+    const { amount, error } = readAmount(amtIn.value, cur);
+    if (amount === undefined) return showErr(error);
     if (!f.category) return showErr('Choisis la catégorie de la dépense.');
     const data = { name: nameIn.value, amount, due: f.due, mode: f.mode, category: f.category };
     if (!r) {

@@ -4,10 +4,11 @@
 // suit ; « Confirmer N jours » (les décochés sont passés), tout décoché : « Passer cette semaine ». Un seul
 // enregistrement, tout ou rien.
 import { dueOccurrences, scheduleById, settleDues } from '../core/store.js';
-import { money, esc, parseAmount, today } from '../core/format.js';
+import { money, esc, readAmount, today } from '../core/format.js';
 import { icon } from '../core/icons.js';
 import { openSheet, buzz, toast, noticeHTML, promptSheet, fromMinor, afterSheets, $, $$ } from '../core/ui.js';
 import { addDays } from '../domain/dues.js';
+import { sheetHead, sheetActions } from './parts.js';
 
 const DAY = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'short' });
 const cap = (/** @type {string} */ t) => t.charAt(0).toUpperCase() + t.slice(1);
@@ -42,12 +43,12 @@ function openWeekSheet(list) {
   const rows = list.map(o => ({ o, on: true, amount: o.amount }));
   const name = list[0].note || 'Échéance';
   const s = openSheet(`<div class="wk">
-    <h2 class="sheet-title">${esc(name)} · la semaine</h2>
+    ${sheetHead({ title: `${esc(name)} · la semaine` })}
     <p class="muted wk-help">Décoche le jour qui n’a pas eu lieu. Touche un montant pour le changer.</p>
     <div class="group wk-list" data-list></div>
     <p class="wk-total" data-total></p>
     <div data-err></div>
-    <div class="sheet-actions"><button class="btn primary" data-go></button></div>
+    ${sheetActions('<button class="btn primary" data-go></button>')}
   </div>`, { label: `${name} · la semaine` });
   const listEl = /** @type {HTMLElement} */ ($('[data-list]', s.el));
   const paint = () => {
@@ -68,9 +69,9 @@ function openWeekSheet(list) {
     if (!a || a.disabled) return;
     const x = rows[Number(a.dataset.a)];
     const v = await promptSheet({ title: cap(DAY.format(new Date(`${x.o.date}T12:00:00`))), label: 'Montant', value: String(fromMinor(x.amount, cur)), mode: 'decimal', max: 15,
-      check: v => (parseAmount(v, cur) > 0 ? null : 'Indique un montant.') });
+      check: v => { const r = readAmount(v, cur); return r.error || (/** @type {number} */ (r.amount) > 0 ? null : 'Indique un montant.'); } });
     if (v == null) return;
-    x.amount = parseAmount(v, cur);
+    x.amount = /** @type {number} */ (readAmount(v, cur).amount);
     paint();
   };
   $('[data-go]', s.el).onclick = async () => {

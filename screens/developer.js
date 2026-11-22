@@ -4,11 +4,11 @@
 import { pref } from '../core/store.js';
 import { askIdentity } from './lock.js';
 import { isDemo, demoSpace, chooseSpace, reopen, DEMO } from '../core/spaces.js';
-import { icon } from '../core/icons.js';
 import { toast, confirmSheet, $ } from '../core/ui.js';
 import { loadDemo, replayOnboarding } from '../core/devtools.js';
 import { fillSamples, clearSamples } from '../core/inbox-samples.js';
 import { mountGoBack } from './backup.js';
+import { topbarHTML, wireBack, rowHTML, sectionHTML } from './parts.js';
 
 const TAPS = 7;
 /** La page Développeur est-elle ouverte sur ce téléphone ? */
@@ -37,23 +37,22 @@ export function versionTaps(el, before) {
 
 export function render(app, { back, go }) {
   app.innerHTML = `<div class="screen dev-screen no-tabs">
-    <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
-      <h1 class="title sm">Développeur</h1></div></div>
+    ${topbarHTML({ title: 'Développeur' })}
     <p class="screen-help">Pour faire des essais.</p>
 
-    <section class="section"><div class="section-h"><span class="eyebrow">Essais</span></div><div class="group">
-      <button class="row" data-demo><div class="main"><div class="t">${isDemo() ? 'Recharger la démo' : 'Ouvrir l’espace Démo'}</div><div class="s">${isDemo() ? '90 jours d’exemple, dans l’espace Démo seulement' : '90 jours d’exemple, à part de tes données'}</div></div></button>
-      <button class="row" data-onb><div class="main"><div class="t">Relancer l’accueil guidé</div><div class="s">Sans effacer les données</div></div></button>
-      <button class="row" data-samples><div class="main"><div class="t">Tous les messages dans la cloche</div><div class="s">Un exemple de chacun, pour revoir leur dessin</div></div></button>
-      <button class="row" data-clear-samples><div class="main"><div class="t">Retirer les exemples de la cloche</div><div class="s">Les vrais messages restent</div></div></button>
-    </div></section>
+    ${sectionHTML({ title: 'Essais', body: `<div class="group">
+      ${rowHTML({ attrs: 'data-demo', title: isDemo() ? 'Recharger la démo' : 'Ouvrir l’espace Démo', sub: isDemo() ? '90 jours d’exemple, dans l’espace Démo seulement' : '90 jours d’exemple, à part de tes données' })}
+      ${rowHTML({ attrs: 'data-onb', title: 'Relancer l’accueil guidé', sub: 'Sans effacer les données' })}
+      ${rowHTML({ attrs: 'data-samples', title: 'Tous les messages dans la cloche', sub: 'Un exemple de chacun, pour revoir leur dessin' })}
+      ${rowHTML({ attrs: 'data-clear-samples', title: 'Retirer les exemples de la cloche', sub: 'Les vrais messages restent' })}
+    </div>` })}
 
-    <section class="section"><div class="section-h"><span class="eyebrow">Revenir en arrière</span></div>
-      <div class="group" data-goback></div></section>
+    ${sectionHTML({ title: 'Revenir en arrière', body: `
+      <div class="group" data-goback></div>` })}
 
   </div>`;
 
-  $('[data-back]', app).onclick = () => back('#/reglages');
+  wireBack(app, () => back('#/reglages'));
   mountGoBack($('[data-goback]', app));
   $('[data-demo]', app).onclick = async () => {
     // D19 : la démo vit dans son espace ; depuis un autre espace, on l'ouvre (l'app s'y rouvre et la remplit)

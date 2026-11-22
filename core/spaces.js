@@ -1,7 +1,8 @@
 // Espaces de données (D19, 2026-11-17) : plusieurs espaces sur un téléphone, chacun avec sa base, ses copies (D15), ses
 // réglages et ses petites préférences, qui ne se mélangent jamais. Le premier espace garde les noms d'avant (bougette.db,
 // bougette-copies.db, le préfixe « cauri: ») : rien n'est converti. La liste des espaces vit dans localStorage, hors de
-// tout espace. Changer d'espace rouvre l'app (la session est ouverte une fois, au démarrage).
+// tout espace. Changer d'espace se fait sur place (2026-11-22) : la session de l'espace d'avant se referme, celle du
+// nouveau s'ouvre, sans recharger la page.
 // Archiver (2026-11-21, avec l'utilisateur) : un espace archivé sort de la liste principale, garde ses fichiers, ses
 // copies et son compte Google, et se rouvre à tout moment. L'espace ouvert ne s'archive pas directement : seulement par
 // « Repartir de zéro », qui ouvre un nouvel espace vide et archive l'ancien d'un coup. Il reste donc toujours un espace
@@ -144,7 +145,7 @@ export function claimSpaces(email) {
 /** Les espaces retirés de la liste sur ce téléphone avant le 2026-11-21 (leur identifiant de compte) : la synchro ne les rajoute pas. */
 export const goneCids = () => new Set(load().gone || []);
 
-/** Ouvre un espace au prochain démarrage (l'appelant rouvre l'app). @param {string} id */
+/** Choisit l'espace à ouvrir (l'appelant rouvre l'app dessus : reopen). @param {string} id */
 export function chooseSpace(id) {
   const v = load();
   if (!v.list.some(s => s.id === id)) throw new Error('Espace introuvable.');
@@ -191,11 +192,32 @@ export function startOver(name, now = new Date()) {
   return s;
 }
 
-/** Rouvre l'app sur l'espace choisi, à l'accueil (une action à faire au démarrage peut être passée). @param {string} [then] */
-export function reopen(then = '') {
-  try { if (then) sessionStorage.setItem('bougette:then', then); } catch (e) { /* sans action */ }
-  location.hash = '#/';
-  location.reload();
+/** @type {((then: string) => Promise<void>)|null} */
+let inPlace = null;
+/** @type {Promise<void>|null} */
+let opening = null;
+/** L'app sait passer d'un espace à l'autre sur place (core/app.js). @param {(then: string) => Promise<void>} fn */
+export function reopenWith(fn) { inPlace = fn; }
+/**
+ * Rouvre l'app sur l'espace choisi, à l'accueil (une action à faire à l'ouverture peut être passée : 'demo'), sur place.
+ * from : la feuille d'où l'on vient, qui monte jusqu'à devenir l'écran d'ouverture. Si le passage sur place échoue, la
+ * page se recharge sur l'espace choisi (l'action passe par sessionStorage, takeThen).
+ * @param {string} [then] @param {{ from?: Element|null }} [o]
+ */
+export function reopen(then = '', { from = null } = {}) {
+  if (opening) return opening; // déjà en train de changer, sous l'écran d'ouverture (rien ne se touche) : le même passage
+  // la tête du nouvel espace tout de suite, par-dessus tout (feuilles comprises), le temps d'ouvrir ses données
+  opening = import('./splash.js').then(S => S.showSplash({ from })).catch(() => {})
+    .then(() => { if (!inPlace) throw new Error('pas encore prête'); return inPlace(then); })
+    .catch(e => {
+      console.error('Changement d’espace sur place impossible, rechargement', e);
+      try { if (then) sessionStorage.setItem('bougette:then', then); } catch (e2) { /* sans action */ }
+      location.hash = '#/';
+      location.reload();
+      return new Promise(() => {}); // la page part
+    })
+    .finally(() => { opening = null; });
+  return opening;
 }
 /** L'action laissée par reopen, lue une fois. */
 export function takeThen() {

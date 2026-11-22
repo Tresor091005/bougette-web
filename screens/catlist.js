@@ -10,6 +10,7 @@ import { esc } from '../core/format.js';
 import { icon } from '../core/icons.js';
 import { chip, $, $$ } from '../core/ui.js';
 import { fold } from '../domain/suggest.js';
+import { rowHTML } from './parts.js';
 
 /** @typedef {{ id: string, name: string, icon?: string, color?: string, parent?: string|null }} Cat */
 
@@ -25,8 +26,8 @@ export function catTreeHTML({ type, current = null, exclude = null, withSubs = t
   const grip = `<span class="handle" aria-label="Glisser pour ranger">${icon('dots-six-vertical')}</span>`;
   const line = (/** @type {Cat} */ x, q, isSub, first) => {
     const on = x.id === current;
-    return `<button type="button" class="row cl-row${isSub ? ' cl-sub' : ''}${first ? '' : ' rule'}${on ? ' on' : ''}" data-cat="${x.id}" data-q="${esc(q)}"${isSub && handle ? ` data-rid="${x.id}"` : ''}>
-      ${chip(x, isSub ? 'sm' : '')}<div class="main"><div class="t">${esc(x.name)}</div></div>${on ? `<span class="end">${icon('check')}</span>` : ''}${handle ? grip : ''}</button>`;
+    return rowHTML({ cls: `cl-row${isSub ? ' cl-sub' : ''}${first ? '' : ' rule'}${on ? ' on' : ''}`, attrs: `data-cat="${x.id}" data-q="${esc(q)}"${isSub && handle ? ` data-rid="${x.id}"` : ''}`,
+      pill: chip(x, isSub ? 'sm' : ''), title: esc(x.name), end: `${on ? `<span class="end">${icon('check')}</span>` : ''}${handle ? grip : ''}` });
   };
   return groups.map(({ c, subs }, i) => `<div class="group cl-g" data-g${handle ? ` data-rid="${c.id}"` : ''}>${line(c, fold(c.name), false, i === 0)}${subs.map(x => line(x, fold(`${x.name} ${c.name}`), true, false)).join('')}</div>`).join('');
 }

@@ -6,12 +6,12 @@
 // Réparer (depuis la cloche ou Vérifier) et, dans la page Développeur, revenir à une date (mountGoBack). Avant toute
 // restauration, l'état repris est relu et rejoué, et la feuille dit ce qu'il contient.
 // La cloche (D15) : « À faire » puis « Pour info », une ligne par message.
-import { toCSV } from '../core/store.js';
+import { toCSV, openSpaceId } from '../core/store.js';
 import { askIdentity } from './lock.js';
 import { confirmSheet, menuSheet, openSheet, buzz, toast, $, $$ } from '../core/ui.js';
 import { icon } from '../core/icons.js';
 import { esc, shortDate, iso, dayLabel, today, addDays } from '../core/format.js';
-import { inspect, restore, verifyData, healPlan, heal, stateAt, firstDay, lastReturn } from '../core/backup.js';
+import { inspect, restore, verifyData, healPlan, heal, stateAt, firstDay, lastReturn, stay } from '../core/backup.js';
 import { pickDate } from './pickers.js';
 import { driveJournal } from '../core/cloud.js';
 import { messages, markAllRead } from '../core/inbox.js';
@@ -19,6 +19,7 @@ import { googleAvailable, account } from '../core/google.js';
 import { syncLine } from './google.js';
 import { startOverFlow } from './spaces.js';
 import { chooseSpace, reopen, spaces } from '../core/spaces.js';
+import { topbarHTML, wireBack, rowHTML, sectionHTML, sheetHead } from './parts.js';
 
 const fmtTime = new Intl.DateTimeFormat('fr-FR', { hour: 'numeric', minute: '2-digit' });
 /** « Aujourd'hui, 9 h 17 », « Hier, 8 h 05 », « 3 nov., 18 h 00 » @param {string} at */
@@ -58,8 +59,9 @@ const PLAIN = {
 function checksHTML(checks) {
   const ok = checks.every(c => c.ok);
   const head = ok
-    ? `<div class="row rule"><span class="pill acc" style="color:var(--gain)">${icon('check-circle')}</span><div class="main"><div class="t">Tout concorde</div><div class="s wrap">Tes données sont saines.</div></div></div>`
-    : `<div class="row rule"><span class="pill acc" style="color:var(--loss)">${icon('warning')}</span><div class="main"><div class="t">Un problème a été trouvé</div><div class="s wrap">Rien n’est changé tant que tu ne répares pas.</div></div><button class="btn secondary sm" data-heal>Réparer</button></div>`;
+    ? rowHTML({ tag: 'div', cls: 'rule', pill: `<span class="pill acc" style="color:var(--gain)">${icon('check-circle')}</span>`, title: 'Tout concorde', sub: 'Tes données sont saines.', subCls: 'wrap' })
+    : rowHTML({ tag: 'div', cls: 'rule', pill: `<span class="pill acc" style="color:var(--loss)">${icon('warning')}</span>`, title: 'Un problème a été trouvé',
+      sub: 'Rien n’est changé tant que tu ne répares pas.', subCls: 'wrap', end: '<button class="btn secondary sm" data-heal>Réparer</button>' });
   return head + checks.map(c => {
     const [good, bad] = /** @type {Record<string, string[]>} */ (PLAIN)[c.name] || [c.name, c.name];
     return `<div class="row" data-check="${c.ok ? 'ok' : 'ko'}"><span class="pill acc" style="color:var(--${c.ok ? 'gain' : 'loss'})">${icon(c.ok ? 'check' : 'warning')}</span><div class="main"><div class="s wrap">${esc(c.ok ? good : bad)}</div></div></div>`;
@@ -71,16 +73,19 @@ function checksHTML(checks) {
  * healPlan) ; la feuille dit d'où vient l'état repris et ce qui serait à refaire. @returns {Promise<boolean>}
  */
 export async function healFlow() {
+  const id = openSpaceId(); // commencé dans cet espace, il s'arrête si un autre s'ouvre entre-temps (D19)
   if (!(await askIdentity('Réparer mes données'))) return false;
   toast('Recherche d’une version saine…');
   let plan;
-  try { plan = await healPlan(await driveJournal()); } catch (e) { console.error(e); }
+  try { const drive = await driveJournal(); stay(id); plan = await healPlan(drive); } catch (e) { console.error(e); }
+  if (openSpaceId() !== id) return false;
   if (!plan) { toast('Aucune version saine à reprendre.'); return false; }
   const from = plan.from === 'drive' ? 'tes données de Google Drive' : plan.from === 'copy' ? `la copie ${when(/** @type {string} */ (plan.at)).toLowerCase()}` : 'ce qui est sur ce téléphone';
   const lost = plan.lost
     ? `${plan.lost} changement${plan.lost > 1 ? 's' : ''} noté${plan.lost > 1 ? 's' : ''} depuis ${when(/** @type {string} */ (plan.since)).toLowerCase()} ${plan.lost > 1 ? 'seront' : 'sera'} à refaire.`
     : 'Rien de ce que tu as noté n’est perdu.';
   if (!(await confirmSheet({ title: 'Réparer tes données ?', text: `On repart de ${from}. ${lost}`, yes: 'Réparer', danger: plan.lost > 0 }))) return false;
+  if (openSpaceId() !== id) return false;
   try { await heal(plan); } catch (e) { toast(/** @type {Error} */ (e).message || 'Réparation impossible.'); return false; }
   buzz(12);
   toast('Réparé');
@@ -89,15 +94,17 @@ export async function healFlow() {
 
 /** Relit puis restaure un journal, après confirmation. @param {string} text @param {string} what */
 async function askRestore(text, what) {
+  const id = openSpaceId(); // comme Réparer : rien dans un autre espace ouvert entre-temps
   if (!(await askIdentity('Restaurer'))) return false;
   let info;
   try { info = await inspect(text); } catch (e) { toast(/** @type {Error} */ (e).message || 'Copie illisible.'); return false; }
+  if (openSpaceId() !== id) return false;
   const ok = await confirmSheet({
     title: `Restaurer ${what} ?`,
     text: `${opsLabel(info.ops)}${info.last ? `, dernier changement ${when(info.last).toLowerCase()}` : ''}. Ce qui a été noté depuis sera remplacé.`,
     yes: 'Restaurer', danger: true,
   });
-  if (!ok) return false;
+  if (!ok || openSpaceId() !== id) return false;
   try { await restore(text); } catch (e) { toast(/** @type {Error} */ (e).message || 'Restauration impossible.'); return false; }
   buzz(12);
   toast('Restauré');
@@ -107,29 +114,27 @@ async function askRestore(text, what) {
 export function render(app, { back }) {
   const google = googleAvailable();
   app.innerHTML = `<div class="screen data-screen no-tabs">
-    <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
-      <h1 class="title sm">Données et sauvegarde</h1></div></div>
+    ${topbarHTML({ title: 'Données et sauvegarde' })}
     <p class="screen-help">Chaque jour où tu ouvres Bougette, tes données sont vérifiées et copiées sur ce téléphone. ${google ? 'Avec un compte Google, elles sont aussi sur Google Drive et sur tes autres appareils.' : ''}</p>
 
-    ${google ? `<section class="section" data-part="save"><div class="section-h"><span class="eyebrow">Sauvegarde</span></div>
-      <div class="group">
-        ${google ? `<button class="row" data-google><span class="pill acc">${icon('cloud-check')}</span><div class="main"><div class="t">Google Drive</div><div class="s wrap">${esc(account() ? syncLine() : 'Garde tes données, retrouve-les partout')}</div></div><span class="end">${icon('caret-right')}</span></button>` : ''}
-      </div></section>` : ''}
+    ${google ? sectionHTML({ title: 'Sauvegarde', attrs: 'data-part="save"', body: `<div class="group">
+        ${rowHTML({ attrs: 'data-google', pill: `<span class="pill acc">${icon('cloud-check')}</span>`, title: 'Google Drive',
+          sub: esc(account() ? syncLine() : 'Garde tes données, retrouve-les partout'), subCls: 'wrap', end: `<span class="end">${icon('caret-right')}</span>` })}
+      </div>` }) : ''}
 
-
-    <section class="section" data-part="data"><div class="section-h"><span class="eyebrow">Données</span></div>
-      <div class="group">
-        <button class="row" data-verify><span class="pill acc">${icon('check-circle')}</span><div class="main"><div class="t">Vérifier mes données</div><div class="s">Historique, opérations, soldes</div></div></button>
+    ${sectionHTML({ title: 'Données', attrs: 'data-part="data"', body: `<div class="group">
+        ${rowHTML({ attrs: 'data-verify', pill: `<span class="pill acc">${icon('check-circle')}</span>`, title: 'Vérifier mes données', sub: 'Historique, opérations, soldes' })}
         <div data-checks></div>
-        <button class="row rule" data-csv><span class="pill acc">${icon('download-simple')}</span><div class="main"><div class="t">Exporter en CSV</div><div class="s">Un fichier lisible dans un tableur</div></div></button>
-        <button class="row" data-fresh><span class="pill acc">${icon('arrow-counter-clockwise')}</span><div class="main"><div class="t">Repartir de zéro</div><div class="s wrap">Un nouvel espace vide. Celui-ci est archivé, rien n’est effacé</div></div></button>
-      </div></section>
+        ${rowHTML({ cls: 'rule', attrs: 'data-csv', pill: `<span class="pill acc">${icon('download-simple')}</span>`, title: 'Exporter en CSV', sub: 'Un fichier lisible dans un tableur' })}
+        ${rowHTML({ attrs: 'data-fresh', pill: `<span class="pill acc">${icon('arrow-counter-clockwise')}</span>`, title: 'Repartir de zéro',
+          sub: 'Un nouvel espace vide. Celui-ci est archivé, rien n’est effacé', subCls: 'wrap' })}
+      </div>` })}
   </div>`;
 
   // un résultat de « Vérifier mes données » ne vaut que pour les données vérifiées : il s'efface quand elles changent
   const clearChecks = () => { const h = $('[data-checks]', app); if (h) h.innerHTML = ''; };
 
-  $('[data-back]', app).onclick = () => back('#/reglages');
+  wireBack(app, () => back('#/reglages'));
   const googleRow = $('[data-google]', app);
   if (googleRow) googleRow.onclick = () => { buzz(6); location.hash = '#/reglages/google'; };
   $('[data-verify]', app).onclick = async () => {
@@ -161,8 +166,10 @@ export async function mountGoBack(host) {
   const paint = () => mountGoBack(host);
   // une date au choix, pas de liste (trop de lignes) ; juste après un retour, de quoi l'annuler
   const undo = await lastReturn().catch(() => null);
-  host.innerHTML = `<button class="row" data-pick-day><span class="pill acc">${icon('clock-counter-clockwise')}</span><div class="main"><div class="t">Revenir à une date</div><div class="s">Tes données comme à la fin de ce jour-là</div></div><span class="end">${icon('caret-right')}</span></button>
-    ${undo ? `<button class="row" data-undo><span class="pill acc">${icon('arrow-counter-clockwise')}</span><div class="main"><div class="t">Annuler le dernier retour</div><div class="s">Comme avant le retour ${esc(when(undo.at).toLowerCase())}</div></div><span class="end">${icon('caret-right')}</span></button>` : ''}`;
+  const caret = `<span class="end">${icon('caret-right')}</span>`;
+  host.innerHTML = `${rowHTML({ attrs: 'data-pick-day', pill: `<span class="pill acc">${icon('clock-counter-clockwise')}</span>`, title: 'Revenir à une date', sub: 'Tes données comme à la fin de ce jour-là', end: caret })}
+    ${undo ? rowHTML({ attrs: 'data-undo', pill: `<span class="pill acc">${icon('arrow-counter-clockwise')}</span>`, title: 'Annuler le dernier retour',
+      sub: `Comme avant le retour ${esc(when(undo.at).toLowerCase())}`, end: caret }) : ''}`;
   $('[data-pick-day]', host).onclick = async () => {
     buzz(6);
     const first = await firstDay();
@@ -190,14 +197,14 @@ export function openInboxSheet() {
   const todo = items.filter(({ m }) => m.kind === 'error' || m.kind === 'warn' || (m.kind === 'ok' && m.action))
     .sort((a, b) => Number(b.m.kind === 'error') - Number(a.m.kind === 'error'));
   const info = items.filter(x => !todo.includes(x));
-  const rowHTML = (/** @type {{ m: import('../core/inbox.js').Message, i: number }} */ { m, i }) =>
+  const msgHTML = (/** @type {{ m: import('../core/inbox.js').Message, i: number }} */ { m, i }) =>
     `<div class="im-row${m.read ? '' : ' new'}"><span class="im-dot" style="--c:${DOT[m.kind] || DOT.info}"></span>
       <div class="im-main"><div class="im-t">${esc(m.title)}</div>${m.body ? `<div class="im-s">${esc(m.body)}</div>` : ''}
       ${m.action ? `<button type="button" class="im-go" data-act="${i}" aria-label="${esc(m.action.label)} : ${esc(m.title)}">${esc(m.action.label)}${icon('caret-right')}</button>` : ''}</div></div>`;
-  const s = openSheet(`<h2 class="sheet-title">Notifications</h2>
-    ${list.length ? `${todo.length ? `<h3 class="im-h">À faire</h3><div class="im-list">${todo.map(rowHTML).join('')}</div>` : ''}
-      ${info.length ? `<h3 class="im-h">Pour info</h3><div class="im-list">${info.map(rowHTML).join('')}</div>` : ''}`
-      : '<p class="muted" style="margin:6px 0 14px">Rien de nouveau.</p>'}`, { label: 'Notifications' });
+  const s = openSheet(`${sheetHead({ title: 'Notifications' })}
+    ${list.length ? `${todo.length ? `<h3 class="im-h">À faire</h3><div class="im-list">${todo.map(msgHTML).join('')}</div>` : ''}
+      ${info.length ? `<h3 class="im-h">Pour info</h3><div class="im-list">${info.map(msgHTML).join('')}</div>` : ''}`
+      : '<p class="muted im-none">Rien de nouveau.</p>'}`, { label: 'Notifications' });
   markAllRead();
   $$('[data-act]', s.el).forEach(b => (b.onclick = async () => {
     const m = list[Number(b.dataset.act)];

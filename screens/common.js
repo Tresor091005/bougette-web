@@ -1,9 +1,11 @@
-// Morceaux d'écran partagés : ligne d'opération et son origine, état vide.
+// Morceaux d'écran partagés : ligne d'opération et son origine.
 import { account, accounts, category, accCur, checkBalance, deleteTx, restoreTx, reserveOfEntry, txById, savingsReport, scheduleById } from '../core/store.js';
 import { UNTRACKED } from '../domain/defaults.js';
+import { balanceMessage } from '../domain/entry-rules.js';
 import { chip, confirmSheet, toast } from '../core/ui.js';
 import { openOperation } from './history.js';
 import { accountPill } from './pickers.js';
+import { rowHTML } from './parts.js';
 import { icon, catIcon } from '../core/icons.js';
 /** L'icône d'où vient une opération : une réserve prend celle de sa catégorie (2026-11-18 : la tirelire, c'est l'épargne). @param {any} o */
 export const originIcon = o => (o.cat && category(o.cat) ? catIcon(/** @type {any} */ (category(o.cat)).icon) : icon(o.icon));
@@ -86,27 +88,7 @@ export function txRow(t, opts = {}) {
   const amt = t.type === 'income' ? `<span class="amt in">${money(t.amount, { sign: true, cur })}${small}</span>`
     : t.type === 'transfer' ? `<span class="amt move">${opts.acc === t.toAccountId ? money(t.amount, { sign: true, cur }) : opts.acc === t.accountId ? money(-t.amount, { cur }) : money(t.amount, { cur })}</span>`
       : `<span class="amt out">${money(-t.amount, { cur })}${small}</span>`;
-  const row = `<button type="button" class="row${t.planned ? ' planned' : ''}${t.void ? ' void' : ''}" data-tx="${t.id}">${pill}
-    <div class="main"><div class="t">${title}</div>${sub ? `<div class="s">${sub}</div>` : ''}</div>${amt}</button>`;
-  return row;
-}
-
-// Explication d'un solde qui deviendrait négatif (résultat de checkBalance) : { text, sub }.
-export function balanceMessage(chk, { editing = false, deleting = false } = {}) {
-  const a = account(chk.accountId);
-  const name = esc(a?.name || '?');
-  const m = v => money(v, { cur: a?.currency });
-  // rentrée réduite, déplacée ou supprimée : on dit simplement où tomberait le solde
-  if (!chk.debit) {
-    const when = chk.kind === 'past' ? ` le ${shortDate(chk.date)}` : '';
-    return { text: `${name} passerait à ${m(chk.after)}${when}.`, sub: 'Le solde ne peut pas passer sous zéro.' };
-  }
-  if (chk.kind === 'already') return { text: `${name} est déjà à ${m(chk.avail)}.`, sub: 'Note d’abord l’argent qui y est entré.' };
-  if (chk.kind === 'now') return { text: chk.avail > 0 ? `Il ne reste que ${m(chk.avail)} dans ${name}.` : `Il n’y a plus rien dans ${name}.`, sub: deleting ? 'Le solde ne peut pas passer sous zéro.' : '' };
-  return {
-    text: `Le ${shortDate(chk.date)}, ${name} passerait à ${m(chk.after)}.`,
-    sub: `Il ne restait que ${m(chk.avail)} ce jour-là.`,
-  };
+  return rowHTML({ cls: [t.planned ? 'planned' : '', t.void ? 'void' : ''].filter(Boolean).join(' '), attrs: `data-tx="${t.id}"`, pill, title, sub, end: amt });
 }
 
 // « Annuler l'opération » (D6 : pas de « Supprimer » pour les opérations). Refusée (avec explication) si
@@ -115,7 +97,7 @@ export function balanceMessage(chk, { editing = false, deleting = false } = {}) 
 export async function voidOperation(t) {
   const chk = checkBalance(t, null);
   if (chk) {
-    const m = balanceMessage(chk, { deleting: true });
+    const m = balanceMessage(chk, account(chk.accountId), { deleting: true });
     await confirmSheet({ title: 'Annulation impossible', text: `${m.text} ${m.sub}`, yes: 'Compris', cancel: false });
     return false;
   }
@@ -133,11 +115,6 @@ export async function voidOperation(t) {
 export async function restoreOperation(id) {
   return !!(await restoreTx(id));
 }
-
-export function emptyState(text, action = '', ic = 'logo') {
-  return `<div class="empty"><div class="illu">${icon(ic)}</div><p>${text}</p>${action}</div>`;
-}
-
 
 // Gestion commune des listes d'opérations : appui → fiche de l'opération (D6). Annuler se fait depuis la fiche.
 export function wireTxList(root) {

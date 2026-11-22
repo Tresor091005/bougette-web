@@ -3,7 +3,8 @@
 // réserve en une fois prête (une fois : « Tu la dépenses quand ? ») ; un objectif atteint (une fois). Au-delà de trois
 // du même genre, un seul message qui les compte. Chaque message part de lui-même quand la situation est réglée. Lu à
 // l'ouverture et après chaque changement des données.
-import { savingsAccounts, savingsReport, pref } from './store.js';
+import { savingsAccounts, savingsReport, pref, openSpaceId } from './store.js';
+import { currentSpace } from './spaces.js';
 import { money } from './format.js';
 import { notify, resolve, messages } from './inbox.js';
 
@@ -16,6 +17,7 @@ const MANY = {
 };
 
 export function checkReserves() {
+  if (currentSpace().id !== openSpaceId()) return; // on passe à un autre espace : ses données ne sont pas encore là
   /** @type {Set<string>} */
   const live = new Set();
   // les messages de chaque genre, envoyés à la fin : un par un, ou un seul qui les compte

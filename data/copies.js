@@ -13,7 +13,7 @@ import { replayStored } from '../domain/engine.js';
 import { stateHash } from '../domain/projection.js';
 
 /** @typedef {{ id: string, at: string, events: number, ops: number, state: string, bytes: number, text: string }} Copy */
-/** @typedef {{ list: () => Promise<Copy[]>, put: (c: Copy) => Promise<void>, remove: (id: string) => Promise<void> }} CopyStore */
+/** @typedef {{ list: () => Promise<Copy[]>, put: (c: Copy) => Promise<void>, remove: (id: string) => Promise<void>, close?: () => Promise<void> }} CopyStore */
 
 export const KEEP = 5;
 /** Copies de sécurité gardées (avant « Restaurer », avant une synchronisation). */
@@ -45,22 +45,29 @@ export async function checkJournalText(text, opts = {}) {
  * Copie du jour, si elle est due.
  * - 'recent' : une copie a moins de MIN_HOURS heures ; 'same' : rien n'a changé depuis la dernière copie ;
  * - 'broken' : l'intégrité de la base est atteinte (rien n'est copié, les copies saines restent) ;
- * - 'done' : nouvelle copie gardée, les plus vieilles au-delà de KEEP retirées.
- * @param {{ session: any, store: CopyStore, now?: Date, force?: boolean }} o
+ * - 'done' : nouvelle copie gardée, les plus vieilles au-delà de KEEP retirées ;
+ * - 'stopped' : stop() a répondu oui entre deux étapes (on change d'espace), rien n'est écrit.
+ * @param {{ session: any, store: CopyStore, now?: Date, force?: boolean, stop?: () => boolean }} o
  */
-export async function autoCopy({ session, store, now = new Date(), force = false }) {
+export async function autoCopy({ session, store, now = new Date(), force = false, stop = () => false }) {
+  const stopped = { status: /** @type {const} */ ('stopped') };
   const list = (await store.list()).filter(c => !isSafety(c)); // les copies de sécurité ne comptent pas ici
   const last = list[0] || null;
   if (!force && last && now.getTime() - Date.parse(last.at) < MIN_HOURS * 3600e3) return { status: 'recent', last };
+  if (stop()) return stopped;
   const checks = await session.verify();
+  if (stop()) return stopped;
   const bad = checks.filter((/** @type {{ ok: boolean }} */ c) => !c.ok);
   if (bad.length) return { status: 'broken', problems: bad, last };
   const current = await session.stateHash();
   if (last && last.state === current) return { status: 'same', last };
+  if (stop()) return stopped;
   const text = await session.exportJournal();
+  if (stop()) return stopped;
   let info;
   try { info = await checkJournalText(text); } catch (e) { return { status: 'broken', problems: [{ name: 'Copie', ok: false, detail: /** @type {Error} */ (e).message }], last }; }
   if (info.state !== current) return { status: 'broken', problems: [{ name: 'Copie', ok: false, detail: 'La copie ne redonne pas l’état de l’app.' }], last };
+  if (stop()) return stopped;
   /** @type {Copy} */
   const copy = { id: now.toISOString(), at: now.toISOString(), events: info.events, ops: info.ops, state: info.state, bytes: text.length, text };
   await store.put(copy);
@@ -194,6 +201,7 @@ function idbStore(name) {
     list: async () => /** @type {Copy[]} */ (await req('readonly', s => s.getAll())).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)),
     put: async c => { await req('readwrite', s => s.put(c)); },
     remove: async id => { await req('readwrite', s => s.delete(id)); },
+    close: async () => { (await db).close(); },
   };
 }
 
@@ -212,6 +220,7 @@ async function tauriStore(URL_) {
     list: async () => (await select('SELECT id, at, events, ops, state, bytes, text FROM copies ORDER BY at DESC')).map((/** @type {any} */ r) => ({ ...r, events: Number(r.events), ops: Number(r.ops), bytes: Number(r.bytes) })),
     put: async c => { await exec(`INSERT OR REPLACE INTO copies (id, at, events, ops, state, bytes, text) VALUES (${[c.id, c.at, c.events, c.ops, c.state, c.bytes, c.text].map(literal).join(', ')})`); },
     remove: async id => { await exec(`DELETE FROM copies WHERE id = ${literal(id)}`); },
+    close: async () => { await invoke('plugin:sql|close', { db: URL_ }); },
   };
 }
 

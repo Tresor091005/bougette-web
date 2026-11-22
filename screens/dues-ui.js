@@ -10,11 +10,11 @@
 // Budget, celles qui n'ont plus rien à régler ni à venir, pour les relire (leur page, en lecture seule).
 import { account, category, dueItems, endedDues, budgetReport, duesUntil, settings } from '../core/store.js';
 import { esc, today, money, period } from '../core/format.js';
-import { icon } from '../core/icons.js';
-import { chip, buzz, fitText, fabHTML, $, $$ } from '../core/ui.js';
+import { chip, buzz, $, $$ } from '../core/ui.js';
 import { accountPill, fillsHTML } from './pickers.js';
 import { openDueSheet, dueHref, endedLabel, dueMoney, dueTitle, dayShort } from './due-page.js';
 import { openOperation } from './history.js';
+import { titleLink, endedHTML, listPageHTML, wireListPage, sectionHTML, emptyState } from './parts.js';
 
 /** @typedef {import('../domain/dues.js').DueItem} DueItem */
 /** @typedef {import('../domain/dues.js').EndedDue} EndedDue */
@@ -51,8 +51,8 @@ export const dueRowsHTML = items => items.map(d => rowHTML(d)).join('');
  */
 export function duesSectionHTML(items, { shown, any }) {
   const body = items.length ? `<div class="group">${items.filter((_, i) => shown[i]).map(d => rowHTML(d)).join('')}</div>`
-    : `<div class="w-none"><p>${any ? 'Rien à régler pour l’instant' : 'Pas encore d’échéance'}</p><button type="button" class="iconbtn" data-new-due aria-label="Nouvelle échéance">${icon('plus')}</button></div>`;
-  return `<section class="section b-dues"><div class="section-h"><h2><button type="button" class="sh-link" data-all-dues>Échéances${icon('caret-right')}</button></h2></div>${body}</section>`;
+    : emptyState(any ? 'Rien à régler pour l’instant' : 'Pas encore d’échéance', { add: ['data-new-due', 'Nouvelle échéance'] });
+  return sectionHTML({ cls: 'b-dues', head: titleLink('Échéances', 'data-all-dues'), body });
 }
 
 /**
@@ -62,15 +62,13 @@ export function duesSectionHTML(items, { shown, any }) {
  * Toucher ouvre sa page, en lecture seule. Rien quand il n'y en a pas.
  * @param {EndedDue[]} list
  */
-export function endedSectionHTML(list) {
-  if (!list.length) return '';
-  return `<details class="section b-done"><summary>Échéances terminées <span class="muted">${list.length}</span></summary>
-    <div class="group">${list.map(x => {
-      const pill = x.kind === 'transfer' ? accountPill(account(x.to || '') || { kind: 'cash' }, 'sm') : chip(x.category ? category(x.category) : null);
-      return `<div class="row mrow"><button type="button" class="mrow-go" data-due-done="${esc(x.head)}" aria-label="${esc(dueTitle(x))} : ses fois">${pill}
+function endedSectionHTML(list) {
+  return endedHTML('Échéances terminées', list.map(x => {
+    const pill = x.kind === 'transfer' ? accountPill(account(x.to || '') || { kind: 'cash' }, 'sm') : chip(x.category ? category(x.category) : null);
+    return `<div class="row mrow"><button type="button" class="mrow-go" data-due-done="${esc(x.head)}" aria-label="${esc(dueTitle(x))} : ses fois">${pill}
         <span class="main"><span class="l1"><span class="t">${esc(dueTitle(x))}</span><span class="v${x.kind === 'income' ? ' in' : ''}">${x.paidCount && !x.mixed ? dueMoney({ kind: x.kind, amount: x.paid, currency: x.currency }) : ''}</span></span>
           <span class="l2"><span class="s">${endedLabel(x)}${x.paidCount ? ` · ${x.paidCount} fois` : ''}</span></span></span></button></div>`;
-    }).join('')}</div></details>`;
+  }));
 }
 
 /** Branche la section. @param {HTMLElement} root @param {DueItem[]} items @param {any} ctx */
@@ -106,19 +104,11 @@ export const allDuesScreen = {
     const end = period(today(), settings().monthStart).end;
     const inflow = duesUntil(end).filter(d => d.kind === 'income' && !d.paused && d.currency === cur).reduce((n, d) => n + d.amount, 0);
     const sub = [late ? `<span class="loss">dont ${late} en retard</span>` : '', inflow ? `${money(inflow, { cur })} à recevoir` : ''].filter(Boolean).join(' · ');
-    app.innerHTML = `<div class="screen month no-tabs has-fab">
-      <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
-        <h1 class="title sm">Toutes les échéances</h1></div></div>
-      ${items.length ? `<section class="hero b-hero b-all"><div class="label">Encore à payer ce mois-ci</div><div class="big">${money(rep.toPay, { cur })}</div>
-        ${sub ? `<div class="b-res">${sub}</div>` : ''}</section>` : ''}
-      <section class="section b-dues">${items.length ? `<div class="group">${items.map(d => rowHTML(d)).join('')}</div>`
-        : '<div class="w-none"><p>Rien à régler pour l’instant</p></div>'}</section>
-      ${endedSectionHTML(endedDues())}
-    </div>${fabHTML('Nouvelle échéance')}`;
-    $('[data-back]', app).onclick = () => ctx.back('#/mois');
+    app.innerHTML = listPageHTML({ title: 'Toutes les échéances', fab: 'Nouvelle échéance',
+      intro: items.length ? { label: 'Encore à payer ce mois-ci', big: money(rep.toPay, { cur }), sub } : null,
+      body: sectionHTML({ cls: 'b-dues', body: items.length ? `<div class="group">${items.map(d => rowHTML(d)).join('')}</div>` : emptyState('Rien à régler pour l’instant') }),
+      ended: endedSectionHTML(endedDues()) });
+    wireListPage(app, ctx, () => openDueSheet({ openEntry: ctx.openEntry }));
     wireDues(app, items, ctx);
-    const add = $('[data-add]', app);
-    if (add) add.onclick = () => { buzz(6); openDueSheet({ openEntry: ctx.openEntry }); };
-    fitText(app, '.mrow .v', 13);
   },
 };

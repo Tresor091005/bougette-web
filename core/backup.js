@@ -1,25 +1,61 @@
 // Sauvegarde (ROADMAP 1b, 2026-11-09) : copies automatiques vérifiées sur le téléphone (src/data/copies.js), copies de
 // sécurité, restauration depuis une copie, le message de la cloche quand l'intégrité est atteinte ; « Vérifier mes
 // données ». Hors du téléphone, c'est la synchro Google Drive (D21) qui garde le journal.
-import { session, migrateIcons, refuseNegatives } from './store.js';
+import { session, migrateIcons, refuseNegatives, openSpaceId } from './store.js';
 import { today, iso } from './format.js';
 import { autoCopy, safetyCopy, safetyCopyText, openCopyStore, checkJournalText, pickHeal, keepUntil, isSafety, safetyReason } from '../data/copies.js';
-import { currentStorage, currentSpace, spaces, storageOf } from './spaces.js';
+import { spaces, storageOf } from './spaces.js';
 import { openDb } from '../data/db.js';
 import { openSession } from '../data/session.js';
 import { notify, resolve } from './inbox.js';
 
 // Remplace toutes les données par celles du journal, après vérification de la chaîne et de l'empreinte d'état.
 // Les icônes d'un journal ancien sont ensuite migrées (D7) par une commande, visible dans le journal.
-/** @param {string} text */
-async function importText(text) { const { hash } = await session.importJournal(text); await migrateIcons(); await refuseNegatives(); return hash; }
+/** @param {string} text @param {string} [id] l'espace visé : rien ne se fait s'il n'est plus ouvert */
+async function importText(text, id = openSpaceId()) {
+  stay(id);
+  const { hash } = await session.importJournal(text);
+  stay(id);
+  await migrateIcons();
+  await refuseNegatives();
+  return hash;
+}
+// Un geste commencé dans un espace (Restaurer, Réparer) s'arrête si on en a ouvert un autre entre-temps (D19).
+/** @param {string} id */
+export function stay(id) { if (openSpaceId() !== id) throw new Error('Tu as changé d’espace : rien n’est fait.'); }
 
 /** « Vérifier mes données » (2026-11-21) : chaîne d'empreintes, partie double, devises, soldes, projections = rejeu. */
 export const verifyData = () => session.verify();
 
-/** @type {Promise<import('../data/copies.js').CopyStore>|null} */
+/** @typedef {import('../data/copies.js').CopyStore} CopyStore */
+/** @type {Promise<CopyStore>|null} */
 let storeP = null;
-const store = () => (storeP ||= openCopyStore(currentStorage())); // les copies de l'espace ouvert (D19)
+let storeOf = '';
+// les copies de l'espace de la session ouverte (D19), pas d'un espace choisi mais pas encore ouvert ; un autre espace
+// ouvert, ce sont les siennes (celles d'avant se referment)
+const store = () => {
+  const id = openSpaceId();
+  if (storeP && storeOf === id) return storeP;
+  const old = storeP;
+  storeOf = id;
+  storeP = openCopyStore(storageOf(id));
+  old?.then(s => s.close?.()).catch(() => {});
+  return storeP;
+};
+
+// Passer d'un espace à l'autre sur place (D19) : les copies en cours de l'espace d'avant s'arrêtent à la prochaine étape
+// (celles des autres espaces entre deux espaces) avant que sa base ne se referme ; rien ne part tant que le nouvel espace
+// n'est pas ouvert.
+let paused = false;
+/** @type {Set<Promise<any>>} */
+const busy = new Set();
+/** @template T @param {Promise<T>} p @returns {Promise<T>} */
+const track = p => { busy.add(p); p.finally(() => busy.delete(p)).catch(() => {}); return p; };
+export async function pauseCopies() {
+  paused = true;
+  await Promise.allSettled([...busy]);
+}
+export function resumeCopies() { paused = false; }
 
 /** Les copies sur ce téléphone, la plus récente d'abord. */
 export const listCopies = async () => (await store()).list();
@@ -28,9 +64,15 @@ export const listCopies = async () => (await store()).list();
  * Copie du jour si elle est due, puis le message d'intégrité (ou sa disparition).
  * @param {{ force?: boolean }} [o] force : copie tout de suite (avant une mise à jour)
  */
-export async function dailyCopy({ force = false } = {}) {
+export function dailyCopy({ force = false } = {}) {
+  if (paused) return Promise.resolve({ status: 'error' });
+  return track(copyNow(force));
+}
+/** @param {boolean} force */
+async function copyNow(force) {
   let r;
-  try { r = await autoCopy({ session, store: await store(), force }); } catch (e) { console.error('Copie automatique impossible', e); return { status: 'error' }; }
+  try { r = await autoCopy({ session, store: await store(), force, stop: () => paused }); } catch (e) { console.error('Copie automatique impossible', e); return { status: 'error' }; }
+  if (r.status === 'stopped') return r; // on change d'espace : elle repart à la prochaine ouverture
   if (r.status === 'broken') {
     notify({
       key: 'integrity', kind: 'error', title: 'Tes données ont un souci', body: 'Répare-les : on te dit avant ce qui serait perdu.',
@@ -47,19 +89,24 @@ export async function dailyCopy({ force = false } = {}) {
  * autre espace est ouvert en arrière-plan, vérifié et copié comme lui (rien de nouveau : rien n'est écrit), puis
  * refermé. Un espace fermé dont la base s'abîme se voit ainsi tout de suite (la cloche le nomme). Ne bloque rien.
  */
-export async function copyOtherSpaces() {
+export function copyOtherSpaces() { return paused ? Promise.resolve() : track(copyOthers()); }
+async function copyOthers() {
   const KEY = 'bougette:spacesCopiedAt';
   try { if (Date.now() - (Date.parse(localStorage.getItem(KEY) || '') || 0) < 20 * 3600e3) return; } catch (e) { /* sans stockage : on vérifie */ }
-  const here = currentSpace().id;
+  const here = openSpaceId();
   for (const sp of spaces()) {
+    if (paused) return; // on change d'espace : la suite au prochain jour (la date n'est pas posée)
     if (sp.id === here) continue;
     const st = storageOf(sp.id);
     /** @type {any} */
     let db = null;
+    /** @type {CopyStore|null} */
+    let copies = null;
     try {
       db = await openDb({ url: st.db, idbName: st.idb });
       const ses = await openSession({ db, today });
-      const r = await autoCopy({ session: ses, store: await openCopyStore(st) });
+      copies = await openCopyStore(st);
+      const r = await autoCopy({ session: ses, store: copies });
       if (r.status === 'broken') {
         notify({ key: `integrity:${sp.id}`, kind: 'error', title: `Problème dans « ${sp.name} »`,
           body: 'Ouvre-le pour le réparer.', action: { label: 'Ouvrir', id: `space:${sp.id}` } });
@@ -70,6 +117,7 @@ export async function copyOtherSpaces() {
       console.error(`Copie de l’espace ${sp.name} impossible`, e);
     } finally {
       try { await db?.close(); } catch (e) { /* déjà fermée */ }
+      try { await copies?.close?.(); } catch (e) { /* déjà fermé */ }
     }
   }
   try { localStorage.setItem(KEY, new Date().toISOString()); } catch (e) { /* rien */ }
@@ -83,8 +131,16 @@ export const inspect = async text => checkJournalText(text);
  * @param {'restore'|'sync'} reason sync : avant de refaire les changements du téléphone par-dessus ceux d'un autre appareil (D21)
  */
 const keepSafety = async reason => safetyCopy({ session, store: await store(), reason });
-/** Copie de sécurité d'un journal donné (la synchro, juste avant de réécrire celui du téléphone, D21). @param {string} text */
-export const keepSafetyText = async text => safetyCopyText({ store: await store(), reason: 'sync', text });
+/**
+ * Copie de sécurité d'un journal donné (la synchro, juste avant de réécrire celui du téléphone, D21), dans les copies de
+ * l'espace id : celui de la synchro, même si un autre s'est ouvert entre-temps.
+ * @param {string} text @param {string} [id]
+ */
+export async function keepSafetyText(text, id = openSpaceId()) {
+  if (id === openSpaceId()) return safetyCopyText({ store: await store(), reason: 'sync', text });
+  const copies = await openCopyStore(storageOf(id));
+  try { return await safetyCopyText({ store: copies, reason: 'sync', text }); } finally { try { await copies.close?.(); } catch (e) { /* déjà fermé */ } }
+}
 
 /**
  * Restaure exactement l'état d'un journal (une copie), après vérification, et après une
@@ -93,9 +149,11 @@ export const keepSafetyText = async text => safetyCopyText({ store: await store(
  * @param {string} text
  */
 export async function restore(text) {
+  const id = openSpaceId();
   // l'état présent d'abord ; abîmé, il ne se recopie pas (une copie fausse ne se restaurerait pas) : on passe
   await keepSafety('restore').catch(async e => { if ((await session.verify()).every((/** @type {{ ok: boolean }} */ c) => c.ok)) throw e; });
-  const hash = await importText(text);
+  const hash = await importText(text, id);
+  stay(id);
   resolve('integrity');
   return hash;
 }
@@ -106,7 +164,10 @@ export async function restore(text) {
  * @param {string|null} [driveText] le journal du Drive en clair (D21), s'il y en a un
  */
 export async function healPlan(driveText = null) {
-  return pickHeal({ events: await session.events(), journalText: session.journalText, copies: await listCopies(), driveText });
+  const id = openSpaceId(), ses = session;
+  const events = await ses.events(), copies = await listCopies();
+  stay(id);
+  return pickHeal({ events, journalText: ses.journalText, copies, driveText });
 }
 
 /**
@@ -115,11 +176,14 @@ export async function healPlan(driveText = null) {
  * @param {import('../data/copies.js').Heal} plan
  */
 export async function heal(plan) {
+  const id = openSpaceId();
   if (plan.from === 'journal' && !plan.lost) await session.rebuild();
   else {
-    await importText(plan.text);
+    await importText(plan.text, id);
+    stay(id);
     if (plan.from === 'drive') await session.clearForce();
   }
+  stay(id);
   resolve('integrity');
 }
 

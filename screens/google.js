@@ -8,6 +8,7 @@ import { account, googleAvailable } from '../core/google.js';
 import { syncNow, syncStatus, onSync, linkAccount, unlinkAccount, reconnect } from '../core/cloud.js';
 import { isDemo, currentSpace } from '../core/spaces.js';
 import { askIdentity } from './lock.js';
+import { topbarHTML, wireBack, rowHTML, sectionHTML } from './parts.js';
 
 const g = /** @type {any} */ (globalThis);
 
@@ -50,10 +51,10 @@ export function render(app, { back }) {
       ? `<p class="screen-help">Tes espaces sont gardés dans ton Google Drive. Tu les retrouves à jour sur tes autres appareils.</p>
           <button class="btn primary" data-link>${icon('cloud-check')} Lier un compte Google</button>
           <p class="hint left">Bougette ne voit que son dossier caché dans ton Drive : ni tes fichiers, ni ton mot de passe. Tes données vont droit chez Google, sans autre serveur.</p>`
-      : `<section class="section"><div class="group plain">
-          <div class="row static"><span class="pill acc">${icon('cloud-check')}</span><div class="main"><div class="t">${esc(a.name || a.email)}</div><div class="s">${esc(a.email)}</div></div></div>
-          <div class="row static"><div class="main"><div class="t">${isDemo() ? 'La Démo ne se synchronise pas' : st.running ? 'Synchronisation…' : st.needsAuth ? 'À reconnecter' : st.error ? 'Pas synchronisé' : st.at ? `Synchronisé ${ago(st.at)}` : 'Pas encore synchronisé'}</div>
-            ${!isDemo() && st.error && !st.running ? `<div class="s wrap">${esc(st.error)}</div>` : ''}</div></div>
+      : `${sectionHTML({ body: `<div class="group plain">
+          ${rowHTML({ tag: 'div', cls: 'static', pill: `<span class="pill acc">${icon('cloud-check')}</span>`, title: esc(a.name || a.email), sub: esc(a.email) })}
+          ${rowHTML({ tag: 'div', cls: 'static', title: isDemo() ? 'La Démo ne se synchronise pas' : st.running ? 'Synchronisation…' : st.needsAuth ? 'À reconnecter' : st.error ? 'Pas synchronisé' : st.at ? `Synchronisé ${ago(st.at)}` : 'Pas encore synchronisé',
+            sub: !isDemo() && st.error && !st.running ? esc(st.error) : '', subCls: 'wrap' })}
         </div>
         ${foreign ? `<div class="rv-item gg-foreign"><div class="rv-t">« ${esc(sp.name)} » est attaché à un autre compte</div>
           <div class="rv-s">${esc(sp.owner || '')}</div>
@@ -61,15 +62,13 @@ export function render(app, { back }) {
         : isDemo() ? '' : st.needsAuth && web
           ? `<button class="btn primary" data-reconnect>Reconnecter</button>`
           : `<button class="btn secondary" data-sync ${st.running ? 'disabled' : ''}>Synchroniser maintenant</button>`}
-        <p class="hint left">Chaque espace (sauf la Démo) se synchronise quand il est ouvert. Sur un autre appareil, lie le même compte pour y retrouver tes espaces.</p>
-        </section>
-        <section class="section"><button class="btn ghost danger" data-unlink>Délier cet appareil</button></section>`;
+        <p class="hint left">Chaque espace (sauf la Démo) se synchronise quand il est ouvert. Sur un autre appareil, lie le même compte pour y retrouver tes espaces.</p>` })}
+        ${sectionHTML({ body: '<button class="btn ghost danger" data-unlink>Délier cet appareil</button>' })}`;
   app.innerHTML = `<div class="screen settings no-tabs">
-    <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
-      <h1 class="title sm">Compte Google</h1></div></div>
+    ${topbarHTML({ title: 'Compte Google' })}
     ${body}
   </div>`;
-  $('[data-back]', app).onclick = () => back('#/reglages');
+  wireBack(app, () => back('#/reglages'));
   const link = $('[data-link]', app);
   if (link) link.onclick = async () => {
     buzz(8);

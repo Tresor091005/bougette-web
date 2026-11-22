@@ -6,6 +6,7 @@
 import { icon } from '../core/icons.js';
 import { buzz, openSheet, confirmSheet, closeAllSheets, shake, toast, $, $$ } from '../core/ui.js';
 import { esc } from '../core/format.js';
+import { sheetHead } from './parts.js';
 import { hasCode, lockAtOpen, checkCode, waitMs, phoneUnlock, canAskPhone, validCode, setCode, codeLength } from '../core/lock.js';
 
 /**
@@ -138,7 +139,7 @@ export async function askIdentity(what) {
   }
   return new Promise(resolve => {
     let done = false;
-    const s = openSheet(`<div class="lk-sheet"><h2 class="sheet-title">${esc(what)}</h2>
+    const s = openSheet(`<div class="lk-sheet">${sheetHead({ title: esc(what) })}
       <p class="muted" data-s>Entre ton code pour continuer</p><div data-pad></div>
       ${canAskPhone() ? `<button type="button" class="btn secondary sm" data-phone>${icon('fingerprint')}Utiliser le téléphone</button>` : ''}</div>`,
       { label: 'Confirmer avec ton code', onClose: () => { if (!done) resolve(false); } });
@@ -174,7 +175,7 @@ export async function askIdentity(what) {
 export function askNewCode({ title = 'Choisis un code', intro = '4 à 6 chiffres' } = {}) {
   return new Promise(resolve => {
     let first = null, done = false;
-    const s = openSheet(`<div class="lk-sheet lk-new"><h2 class="sheet-title" data-t>${esc(title)}</h2>
+    const s = openSheet(`<div class="lk-sheet lk-new">${sheetHead({ title: esc(title), attrs: 'data-t' })}
       <p class="muted" data-s>${esc(intro)}</p><div data-pad></div></div>`, { label: 'Choisir un code', onClose: () => { if (!done) resolve(false); } });
     const t = $('[data-t]', s.el), sub = $('[data-s]', s.el);
     codePad($('[data-pad]', s.el), {

@@ -2,13 +2,13 @@
 // Moi #/portefeuilles, #/reglages/monnaie, #/reglages/categories ; #/bienvenue ; les anciennes #/budgets et #/analyses
 // mènent à #/mois),
 // dock flottant (D9) avec bouton + central, rendu à chaque changement des données.
-import { settings, subscribe, setErrorHandler, storageProblem, budgetReport, uiStyle, syncAppIcon, applyLook, savingsAccounts, savingsReport, duesToLook } from './store.js';
+import { settings, subscribe, setErrorHandler, storageProblem, budgetReport, uiStyle, syncAppIcon, applyLook, savingsAccounts, savingsReport, duesToLook, openSpace } from './store.js';
 import { icon } from './icons.js';
 import { spaceHead } from './avatar.js';
 import { currentSpace } from './spaces.js';
-import { closeAllSheets, closeTopSheet, sheetOpen, buzz, toast, dockTip, paintDockTip } from './ui.js';
+import { closeAllSheets, closeTopSheet, sheetOpen, buzz, toast, dockTip, paintDockTip, afterSheets } from './ui.js';
 import { openEntry } from '../screens/entry.js';
-import { dailyCopy, copyOtherSpaces } from './backup.js';
+import { dailyCopy, copyOtherSpaces, pauseCopies, resumeCopies } from './backup.js';
 import { checkReserves } from './reserve-alerts.js';
 import { onInbox, unread } from './inbox.js';
 import * as home from '../screens/home.js';
@@ -27,17 +27,18 @@ import * as displayScreen from '../screens/display.js';
 import * as googleScreen from '../screens/google.js';
 import * as reviewScreen from '../screens/review.js';
 import { takeGoogleReturn } from './google.js';
-import { startCloud, checkLinkInvite } from './cloud.js';
+import { startCloud, checkLinkInvite, pauseCloud, resumeCloud } from './cloud.js';
 import * as categoriesScreen from '../screens/categories.js';
 import * as onboarding from '../screens/onboarding.js';
 import * as dataScreen from '../screens/backup.js';
 import * as devScreen from '../screens/developer.js';
 import * as lockScreen from '../screens/lockpage.js';
 import * as spacesScreen from '../screens/spaces.js';
-import { takeThen, isDemo } from './spaces.js';
+import { takeThen, isDemo, reopenWith } from './spaces.js';
 import { loadDemo } from './devtools.js';
 import { showLock, isLocked } from '../screens/lock.js';
 import { AWAY_MS } from './lock.js';
+import { hideSplash, keepSplash } from './splash.js';
 
 const app = document.getElementById('app');
 // Refus du domaine ou écriture impossible : le cache n'a pas changé, on dit pourquoi.
@@ -164,7 +165,7 @@ function renderTabbar(active) {
     const on = a.dataset.tab === active;
     const t = TABS.find(x => x && x.id === a.dataset.tab);
     // l'icône change avec l'onglet actif et avec le style (Proto : Solar, D1)
-    const key = `${on}:${document.documentElement.dataset.style}`;
+    const key = `${on}:${document.documentElement.dataset.style}:${currentSpace().id}`;
     // l'onglet Moi porte la tête de l'espace ouvert, en couleur, sans rien autour (D19, revu le 2026-11-21) : on sait
     // toujours dans quel espace on est ; fermé, elle s'atténue comme les autres icônes
     if (a.dataset.on !== key) { a.innerHTML = t.id === 'me' ? `<span class="tab-ava">${spaceHead(currentSpace())}</span>` : icon(t.icon, '', on ? 'fill' : 'regular'); a.dataset.on = key; }
@@ -234,12 +235,68 @@ window.addEventListener('bougette:reserve', e => {
   const d = /** @type {CustomEvent} */ (e).detail || {};
   import('../screens/reserves.js').then(R => R.askWhen(d.id, openEntry));
 });
-// « Charger la démo » depuis un autre espace (D19) : l'app s'est rouverte sur l'espace Démo, on le remplit ici
+/**
+ * « Charger la démo » depuis un autre espace (D19) : l'app s'est rouverte sur l'espace Démo, on le remplit ici.
+ * @param {string} then
+ */
+async function fillDemo(then) {
+  if (then !== 'demo' || !isDemo()) return;
+  try { await loadDemo(); toast('Espace Démo prêt'); } catch (e) { console.error(e); toast('La démo n’a pas pu se charger.'); }
+}
+// la copie du jour (puis les autres espaces) et ce que les réserves ont à dire, un peu après l'ouverture (l'écran d'abord) ;
+// changer d'espace annule ceux de l'ouverture d'avant
+/** @type {any[]} */
+let soon = [];
+function soonAfterOpen() {
+  soon.forEach(clearTimeout);
+  soon = [
+    setTimeout(() => { if (settings().onboarded) dailyCopy().finally(() => copyOtherSpaces()); }, 1500),
+    setTimeout(() => { if (settings().onboarded) { try { checkReserves(); checkLinkInvite(); } catch (e) { console.error(e); } } }, 1200),
+  ];
+}
+
+/**
+ * Passer à un autre espace sur place (D19, 2026-11-22, avec l'utilisateur : le rechargement laissait une image vide) :
+ * sous l'écran d'ouverture, la synchro et les copies de l'espace d'avant finissent, les feuilles se ferment, sa base se
+ * referme, celle du nouvel espace s'ouvre, l'accueil est dessiné, puis l'écran d'ouverture sort. Le verrou n'est pas
+ * redemandé : c'est la même ouverture de l'app. Une erreur fait recharger la page (spaces.js reopen).
+ * @param {string} then
+ */
+async function switchSpace(then) {
+  soon.forEach(clearTimeout);
+  // la synchro d'abord (elle peut encore faire une copie de sécurité), puis les copies
+  if (!(await pauseCloud())) throw new Error('La synchro de l’espace d’avant ne finit pas.');
+  await pauseCopies();
+  closeAllSheets();
+  // l'historique a fini de reculer (sinon un retour tardif ramènerait une adresse de l'espace d'avant : on recharge)
+  const backed = await new Promise(ok => { afterSheets(() => ok(true)); setTimeout(() => ok(false), 2000); });
+  if (!backed) throw new Error('L’historique ne recule pas.');
+  if (current && current.cleanup) current.cleanup();
+  current = null;
+  app.innerHTML = '';
+  await openSpace();
+  resumeCopies();
+  window.dispatchEvent(new Event('bougette:space'));
+  depth = 0;
+  // l'adresse du premier écran tout de suite (l'accueil guidé pour un espace neuf) : rendu sans détour
+  history.replaceState(null, '', location.pathname + location.search + (settings().onboarded ? '#/' : '#/bienvenue'));
+  await fillDemo(then);
+  render();
+  hideSplash();
+  keepSplash();
+  resumeCloud();
+  soonAfterOpen();
+  if (storageProblem()) setTimeout(() => toast(storageProblem()), 600);
+}
+reopenWith(switchSpace);
+
 // Compte Google (D21) : le retour de la page de Google (navigateur) est lu avant le premier écran
 const googleReturn = takeGoogleReturn();
-if (takeThen() === 'demo' && isDemo()) { try { await loadDemo(); toast('Espace Démo prêt'); } catch (e) { console.error(e); toast('La démo n’a pas pu se charger.'); } }
+await fillDemo(takeThen());
 render();
 document.documentElement.classList.add('ready');
+hideSplash();
+keepSplash();
 // synchro avec le Drive (D21) : à l'ouverture, après un changement, au retour dans l'app
 startCloud(googleReturn, toast);
 // Sauvegarde (ROADMAP 1b) : copie du jour vérifiée, un peu après l'ouverture (l'écran d'abord) ; la cloche de
@@ -252,10 +309,9 @@ onInbox(() => {
   if (n) bell.insertAdjacentHTML('beforeend', '<i class="dot" aria-hidden="true"></i>');
   bell.setAttribute('aria-label', n ? `Notifications (${n} nouvelle${n > 1 ? 's' : ''})` : 'Notifications');
 });
-// puis les autres espaces, en arrière-plan (2026-11-19) : vérifiés et copiés eux aussi, une fois par jour
-setTimeout(() => { if (settings().onboarded) dailyCopy().finally(() => copyOtherSpaces()); }, 1500);
-// Réserves et objectifs (D17) : ce qu'ils ont à dire va dans la cloche
-setTimeout(() => { if (settings().onboarded) { try { checkReserves(); checkLinkInvite(); } catch (e) { console.error(e); } } }, 1200);
+// puis les autres espaces, en arrière-plan (2026-11-19) : vérifiés et copiés eux aussi, une fois par jour. Réserves et
+// objectifs (D17) : ce qu'ils ont à dire va dans la cloche
+soonAfterOpen();
 // Verrouillage (ROADMAP étape 2) : si « Verrouiller à l'ouverture » est choisi (2026-11-21), à l'ouverture, et au retour
 // dans l'app après plus d'une minute ailleurs. MainActivity
 // appelle appPaused / appResumed ; le navigateur passe par visibilitychange. Le verrou protège tous les espaces (D19) :

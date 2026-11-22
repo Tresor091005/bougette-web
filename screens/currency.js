@@ -9,6 +9,7 @@ import { money, esc, currency, currencyOf, DEFAULT_FMT, stepChoices, stepOf, app
 import { icon } from '../core/icons.js';
 import { seg, wireSeg, buzz, toast, fitText, $ } from '../core/ui.js';
 import { pickCurrency } from './pickers.js';
+import { topbarHTML, wireBack, rowHTML, sectionHTML } from './parts.js';
 
 // Milliers et décimales vont ensemble : espace et virgule (français), point et virgule, virgule et point (anglais).
 const FORMAT_SEG = [['space', '1 234,50'], ['dot', '1.234,50'], ['comma', '1,234.50']];
@@ -18,8 +19,7 @@ export function render(app, { back, refresh }) {
   const st = settings();
   const c = currency();
   app.innerHTML = `<div class="screen fmt-screen no-tabs">
-    <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
-      <h1 class="title sm">Monnaie et format</h1></div></div>
+    ${topbarHTML({ title: 'Monnaie et format' })}
     <p class="screen-help">Comment s’affichent tes montants. Tes données ne changent pas.</p>
 
     <div class="card preview-card" aria-live="polite">
@@ -29,32 +29,28 @@ export function render(app, { back, refresh }) {
       <div class="pv3" data-pv3></div>
     </div>
 
-    <section class="section"><div class="section-h"><span class="eyebrow">Monnaie principale</span></div>
+    ${sectionHTML({ title: 'Monnaie principale', body: `
       <div class="group">
-        <button class="row" data-cur><span class="pill acc cur-pill">${esc(c.sym)}</span>
-          <div class="main"><div class="t">${esc(c.name)}</div><div class="s">${c.code}</div></div><span class="end">${icon('caret-right')}</span></button>
+        ${rowHTML({ attrs: 'data-cur', pill: `<span class="pill acc cur-pill">${esc(c.sym)}</span>`, title: esc(c.name), sub: c.code, end: `<span class="end">${icon('caret-right')}</span>` })}
       </div>
-      <p class="hint left">Elle sert pour Disponible, les budgets et les totaux. Elle est proposée pour un nouveau portefeuille. Chaque portefeuille garde sa devise.</p>
-    </section>
+      <p class="hint left">Elle sert pour Disponible, les budgets et les totaux. Elle est proposée pour un nouveau portefeuille. Chaque portefeuille garde sa devise.</p>` })}
 
-    <section class="section"><div class="section-h"><span class="eyebrow">Estimations</span></div>
+    ${sectionHTML({ title: 'Estimations', body: `
       <div class="group plain">
         <div class="row stack"><div class="t">Arrondir à</div>${seg(stepChoices(c.code).map(n => [String(n), money(n, { cur: c.code })]), String(stepOf(c.code)), 's-seg')}</div>
       </div>
-      <p class="hint left">Ce que Bougette estime (tes habitudes, la Marge) est arrondi à ce pas. Ce qu’elle te propose (un budget, ce qu’il faut mettre de côté) est arrondi au-dessus, à un pas plus grand. Tes opérations et tes soldes restent exacts.</p>
-    </section>
+      <p class="hint left">Ce que Bougette estime (tes habitudes, la Marge) est arrondi à ce pas. Ce qu’elle te propose (un budget, ce qu’il faut mettre de côté) est arrondi au-dessus, à un pas plus grand. Tes opérations et tes soldes restent exacts.</p>` })}
 
-    <section class="section"><div class="section-h"><span class="eyebrow">Format</span></div>
+    ${sectionHTML({ title: 'Format', body: `
       <div class="group plain">
         <div class="row stack"><div class="t">Nombres</div>${seg(FORMAT_SEG, FORMAT_SEG.some(f => f[0] === st.fmt.group) ? st.fmt.group : null, 'g-seg')}</div>
         <div class="row stack"><div class="t">Symbole</div>${seg(POS_SEG, st.fmt.pos, 'p-seg')}</div>
       </div>
-      <button class="link reset-fmt" data-reset>Revenir au format par défaut</button>
-    </section>
+      <button class="link reset-fmt" data-reset>Revenir au format par défaut</button>` })}
   </div>`;
 
   paint(app);
-  $('[data-back]', app).onclick = () => back('#/reglages');
+  wireBack(app, () => back('#/reglages'));
   const set = patch => setSettings({ fmt: { ...settings().fmt, ...patch } });
   wireSeg($('.g-seg', app), v => set({ group: v }));
   wireSeg($('.p-seg', app), v => set({ pos: v }));

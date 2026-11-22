@@ -6,6 +6,7 @@ import { monthStartLabel as msLabel } from '../domain/month-start.js';
 import { icon } from '../core/icons.js';
 import { money, esc, ordinal, maskId, CURRENCIES, COMMON, currencyOf, today, approx, shortDate, yearDate } from '../core/format.js';
 import { catTreeHTML, catSearchHTML, wireCatSearch, paintTree, NONE_ILLU } from './catlist.js';
+import { rowHTML, fieldHTML, sheetHead, emptyState } from './parts.js';
 
 export const ACCOUNT_ICON = { cash: 'money', emoney: 'device-mobile', bank: 'bank' };
 // Pastille de portefeuille : icône du type, teinte choisie ; sans choix, teinte du type comme dans les maquettes
@@ -60,11 +61,11 @@ export function pickCategory({ type = 'expense', current = null, title = 'Catég
     let picked = null;
     // la liste partagée (catlist.js) ; type 'any' : dépenses puis revenus ; all : « Toutes les catégories » en tête
     const types = type === 'any' ? [['expense', 'Dépenses'], ['income', 'Revenus']] : [[type, '']];
-    const allRow = all ? `<div class="group cl-g"><button type="button" class="row cl-row${current === '*' ? ' on' : ''}" data-cat="*"><span class="pill">${icon('squares-four')}</span>
-      <div class="main"><div class="t">Toutes les catégories</div></div>${current === '*' ? `<span class="end">${icon('check')}</span>` : ''}</button></div>` : '';
-    const s = openSheet(`<h2 class="sheet-title">${title}</h2>
+    const allRow = all ? `<div class="group cl-g">${rowHTML({ cls: `cl-row${current === '*' ? ' on' : ''}`, attrs: 'data-cat="*"', pill: `<span class="pill">${icon('squares-four')}</span>`,
+      title: 'Toutes les catégories', end: current === '*' ? `<span class="end">${icon('check')}</span>` : '' })}</div>` : '';
+    const s = openSheet(`${sheetHead({ title })}
       ${catSearchHTML()}
-      <div class="cl" data-tree>${allRow}${types.map(([t, label]) => `${label ? `<div class="section-h cl-h"><span class="eyebrow">${label}</span></div>` : ''}<div data-part>${catTreeHTML({ type: t, current })}</div>`).join('')}</div>
+      <div class="cl" data-tree>${allRow}${types.map(([t, label]) => `${label ? `<div class="section-h cl-h"><h2>${label}</h2></div>` : ''}<div data-part>${catTreeHTML({ type: t, current })}</div>`).join('')}</div>
       <div class="cl-none" data-none hidden>${NONE_ILLU}<p class="cl-none-t">Aucune catégorie trouvée.</p></div>`, {
       cls: 'pick-sheet', label: title, onClose: () => resolve(picked),
     });
@@ -84,12 +85,7 @@ export function pickCategory({ type = 'expense', current = null, title = 'Catég
 
 // Aucun portefeuille (D10) : une phrase et un +, partout où l'on montre les portefeuilles. Rien n'est proposé d'avance :
 // le + ouvre la fiche de création, qui parle d'elle-même. Le + porte data-new-wallet (à brancher par l'écran).
-export const noWalletsHTML = (text = 'Pas encore de portefeuille') => emptyAddHTML(text, 'data-new-wallet', 'Nouveau portefeuille');
-
-// Rien encore (portefeuilles, budgets d'une catégorie, épargne) : partout la même ligne, une phrase et un + rond à droite.
-// attr : l'attribut que l'écran branche sur le +.
-export const emptyAddHTML = (text, attr, label) => `<div class="w-none"><p>${text}</p>
-  <button type="button" class="iconbtn" ${attr} aria-label="${label}">${icon('plus')}</button></div>`;
+export const noWalletsHTML = (text = 'Pas encore de portefeuille') => emptyState(text, { add: ['data-new-wallet', 'Nouveau portefeuille'] });
 
 // Liste de portefeuilles avec solde. exclude : portefeuille à masquer ; currency : seuls ceux de cette devise sont
 // proposés (virement : jamais entre deux devises, et on ne montre pas ce qu'on ne peut pas choisir).
@@ -99,16 +95,15 @@ export function pickAccount({ current = null, exclude = null, currency = null, t
     let picked = null;
     const bal = balances();
     const list = accounts().filter(a => a.id !== exclude && (!currency || a.currency === currency) && !(spending && a.savings && !a.spendOk));
-    const rows = (all ? [`<button type="button" class="row" data-id="*"><span class="pill acc">${icon('wallet')}</span><div class="main"><div class="t">Tous les portefeuilles</div></div>${current === null ? icon('check', 'check') : ''}</button>`] : [])
+    const rows = (all ? [rowHTML({ attrs: 'data-id="*"', pill: `<span class="pill acc">${icon('wallet')}</span>`, title: 'Tous les portefeuilles', end: current === null ? icon('check', 'check') : '' })] : [])
       .concat(list.map(a => {
         const b = bal[a.id] || 0;
-        return `<button type="button" class="row" data-id="${a.id}">${accountPill(a)}
-        <div class="main"><div class="t">${esc(a.name)}${negBadge(a, b)}</div><div class="s${b < 0 ? ' loss' : ''}">${money(b, { cur: a.currency })}</div></div>
-        ${a.id === current ? icon('check', 'check') : ''}</button>`;
+        return rowHTML({ attrs: `data-id="${a.id}"`, pill: accountPill(a), title: `${esc(a.name)}${negBadge(a, b)}`,
+          sub: money(b, { cur: a.currency }), subCls: b < 0 ? 'loss' : '', end: a.id === current ? icon('check', 'check') : '' });
       }));
     const none = currency ? `Aucun autre portefeuille en ${esc(currencyOf(currency).long)}.` : 'Pas encore de portefeuille.';
-    const s = openSheet(`<h2 class="sheet-title">${title}</h2>${rows.length
-      ? `<div class="group list-pick" style="margin-bottom:6px">${rows.join('')}</div>`
+    const s = openSheet(`${sheetHead({ title })}${rows.length
+      ? `<div class="group list-pick pick-end">${rows.join('')}</div>`
       : `<p class="muted pick-none">${none}</p>`}`, {
       label: title, onClose: () => resolve(picked),
     });
@@ -125,15 +120,14 @@ export function pickCurrency({ current, title = 'Devise' } = {}) {
     const byName = (a, b) => a.name.localeCompare(b.name, 'fr');
     const common = COMMON.map(code => currencyOf(code));
     const rest = CURRENCIES.filter(c => !COMMON.includes(c.code)).sort(byName);
-    const row = c => `<button type="button" class="row" data-c="${c.code}" data-q="${esc(fold(`${c.code} ${c.name} ${c.long}`))}">
-        <span class="pill acc cur-pill">${esc(c.sym)}</span>
-        <div class="main"><div class="t">${esc(c.name)}</div><div class="s">${c.code}${c.sym !== c.code ? ` · ${esc(c.sym)}` : ''}</div></div>${c.code === current ? icon('check', 'check') : ''}</button>`;
-    const s = openSheet(`<h2 class="sheet-title">${title}</h2>
+    const row = c => rowHTML({ attrs: `data-c="${c.code}" data-q="${esc(fold(`${c.code} ${c.name} ${c.long}`))}"`, pill: `<span class="pill acc cur-pill">${esc(c.sym)}</span>`,
+      title: esc(c.name), sub: `${c.code}${c.sym !== c.code ? ` · ${esc(c.sym)}` : ''}`, end: c.code === current ? icon('check', 'check') : '' });
+    const s = openSheet(`${sheetHead({ title })}
       <label class="search cat-find">${icon('magnifying-glass')}<span class="sr">Rechercher une devise</span><input data-q type="search" placeholder="Nom ou code (ex. euro, KES)" autocomplete="off" enterkeyhint="search"></label>
       <div class="eyebrow cur-h" data-h>Courantes</div>
       <div class="group list-pick" data-common>${common.map(row).join('')}</div>
       <div class="eyebrow cur-h" data-h>Toutes les devises</div>
-      <div class="group list-pick" data-rest style="margin-bottom:6px">${rest.map(row).join('')}</div>
+      <div class="group list-pick pick-end" data-rest>${rest.map(row).join('')}</div>
       <p class="muted pick-none" data-none hidden>Aucune devise trouvée.</p>`, {
       label: title, onClose: () => resolve(picked),
     });
@@ -171,7 +165,7 @@ export function pickDate({ current, title = 'Date', future = false, min = null }
     let picked = null;
     const t0 = today(), y0 = Number(t0.slice(0, 4));
     let view = current.slice(0, 7), months = false;
-    const s = openSheet(`<h2 class="sheet-title">${title}</h2>
+    const s = openSheet(`${sheetHead({ title })}
       <div class="dq"><button type="button" class="sc${t0 === current ? ' on' : ''}" data-d="${t0}">Aujourd’hui</button></div>
       <div class="cal">
         <div class="cal-h"><button type="button" class="iconbtn" data-m="-1">${icon('caret-left')}</button>
@@ -248,18 +242,18 @@ export function pickMonthStart(current) {
     const wk = typeof current === 'string' && current.startsWith('w:') ? current.split(':') : ['w', '1', '1'];
     let mode = typeof current === 'number' ? 'day' : current === 'last' || current === 'work' ? 'end' : 'week';
     let rank = wk[1], day = wk[2];
-    const s = openSheet(`<h2 class="sheet-title">Début du mois</h2>
+    const s = openSheet(`${sheetHead({ title: 'Début du mois' })}
       <p class="screen-help">Le jour où ton mois commence, par exemple le jour de la paie.</p>
       ${seg([['day', 'Un jour'], ['week', 'Jour de semaine'], ['end', 'Fin de mois']], mode, 'ms-mode')}
       <div data-p="day" class="ms-p"><div class="daynum-grid">${Array.from({ length: 28 }, (_, i) => i + 1).map(d => `<button type="button" data-d="${d}" class="${d === current ? 'on' : ''}">${d}</button>`).join('')}</div></div>
       <div data-p="week" class="ms-p">
-        <div class="field"><span>Lequel</span>${seg([['1', '1er'], ['2', '2e'], ['3', '3e'], ['4', '4e'], ['L', 'Dernier']], rank, 'ms-rank')}</div>
-        <div class="field"><span>Jour</span>${seg([['1', 'Lun'], ['2', 'Mar'], ['3', 'Mer'], ['4', 'Jeu'], ['5', 'Ven'], ['6', 'Sam'], ['7', 'Dim']], day, 'ms-day')}</div>
+        ${fieldHTML({ label: 'Lequel', control: seg([['1', '1er'], ['2', '2e'], ['3', '3e'], ['4', '4e'], ['L', 'Dernier']], rank, 'ms-rank') })}
+        ${fieldHTML({ label: 'Jour', control: seg([['1', 'Lun'], ['2', 'Mar'], ['3', 'Mer'], ['4', 'Jeu'], ['5', 'Ven'], ['6', 'Sam'], ['7', 'Dim']], day, 'ms-day') })}
         <p class="ms-say" data-say></p>
         <button type="button" class="btn primary" data-week>${icon('check')}Valider</button></div>
       <div data-p="end" class="ms-p"><div class="group plain">
-        <button type="button" class="row" data-end="last"><div class="main"><div class="t">Le dernier jour du mois</div></div>${current === 'last' ? icon('check') : ''}</button>
-        <button type="button" class="row" data-end="work"><div class="main"><div class="t">Le dernier jour ouvré</div><div class="s">Du lundi au vendredi</div></div>${current === 'work' ? icon('check') : ''}</button>
+        ${rowHTML({ attrs: 'data-end="last"', title: 'Le dernier jour du mois', end: current === 'last' ? icon('check') : '' })}
+        ${rowHTML({ attrs: 'data-end="work"', title: 'Le dernier jour ouvré', sub: 'Du lundi au vendredi', end: current === 'work' ? icon('check') : '' })}
       </div></div>`, {
       label: 'Début du mois', onClose: () => resolve(picked),
     });
@@ -289,7 +283,7 @@ export const COLOR_NAMES = { c1: 'Olive', c2: 'Moutarde', c3: 'Ocre', c4: 'Terre
 export function pickColor({ current, none = false, title = 'Couleur' }) {
   return new Promise(resolve => {
     let picked;
-    const s = openSheet(`<h2 class="sheet-title">${title}</h2>${swatches(current, { none })}`, { label: title, onClose: () => resolve(picked) });
+    const s = openSheet(`${sheetHead({ title })}${swatches(current, { none })}`, { label: title, onClose: () => resolve(picked) });
     s.el.querySelectorAll('[data-color]').forEach(b => (b.onclick = () => { picked = /** @type {HTMLElement} */ (b).dataset.color || ''; buzz(8); s.close(); }));
   });
 }

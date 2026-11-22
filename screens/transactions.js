@@ -20,13 +20,16 @@ import { dueRowsHTML, wireDues } from './dues-ui.js';
 import { money, esc, today, period, parse, windowOf, shiftWindow, windowFor, tabLabel, dayLabel, shortDate, addDays, yearDate } from '../core/format.js';
 import { icon, catIcon } from '../core/icons.js';
 import { fitText, buzz, reducedMotion, afterSheets, openSheet, seg, wireSeg, chip, splitAmount, $, $$ } from '../core/ui.js';
-import { txRow, emptyState, wireTxList } from './common.js';
+import { txRow, wireTxList } from './common.js';
 import { pickAccount, pickCategory, pickDate } from './pickers.js';
+import { topbarHTML, sheetHead } from './parts.js';
 
 // état gardé d'un rendu à l'autre (filtres et période, eux, vivent dans l'adresse)
 // mois montrés à la fois quand la liste va par mois (« Afficher les mois d'avant » en ajoute autant)
 const MONTHS = 12;
 const f = { q: '', find: false, months: MONTHS, unit: 'month', group: 'day' };
+// un autre espace (D19) : sa recherche et sa période repartent de zéro
+if (typeof window !== 'undefined') window.addEventListener('bougette:space', () => Object.assign(f, { q: '', find: false, months: MONTHS, unit: 'month', group: 'day' }));
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const TYPES = { expense: 'Dépenses', income: 'Revenus', transfer: 'Virements' };
 const UNITS = [['day', 'Jour'], ['week', 'Semaine'], ['month', 'Mois'], ['quarter', 'Trimestre'], ['year', 'Année'], ['all', 'Tout'], ['custom', 'Personnalisé']];
@@ -168,6 +171,8 @@ function daysHTML(list, cur, acc, rowOpts) {
   }).join('');
 }
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+/** Un Journal vide : un dessin, la phrase, et ce qui en sort (« Retirer les filtres »). @param {string} text @param {string} action @param {string} ic */
+const emptyPeriod = (text, action, ic) => `<div class="empty"><div class="illu">${icon(ic)}</div><p>${text}</p>${action}</div>`;
 
 // Par catégorie (telle que saisie, sous-catégorie comprise) : les plus gros montants d'abord, à égalité dans l'ordre
 // choisi des catégories, les virements en dernier. Chaque bloc : la catégorie (pastille, nom, nombre d'opérations,
@@ -361,11 +366,8 @@ export function render(app, ctx) {
   const several = accounts().length > 1;
 
   app.innerHTML = `<div class="screen ops">
-    <div class="topbar"><h1 class="title sm">Journal</h1>
-      <div class="right">
-        <button type="button" class="iconbtn" data-find aria-label="Rechercher une opération" aria-pressed="${f.find}">${icon('magnifying-glass')}</button>
-        <button type="button" class="iconbtn ops-flt${nFilters ? ' on' : ''}" data-flt aria-label="Période et filtres${nFilters ? ` (${nFilters} actif${nFilters > 1 ? 's' : ''})` : ''}">${icon('sliders-horizontal')}</button>
-      </div></div>
+    ${topbarHTML({ title: 'Journal', back: false, right: `<button type="button" class="iconbtn" data-find aria-label="Rechercher une opération" aria-pressed="${f.find}">${icon('magnifying-glass')}</button>
+        <button type="button" class="iconbtn ops-flt${nFilters ? ' on' : ''}" data-flt aria-label="Période et filtres${nFilters ? ` (${nFilters} actif${nFilters > 1 ? 's' : ''})` : ''}">${icon('sliders-horizontal')}</button>` })}
     <div class="search ops-find" data-findbox ${f.find ? '' : 'hidden'}>${icon('magnifying-glass')}<input type="search" data-q placeholder="Note, catégorie, montant…" value="${esc(f.q)}" enterkeyhint="search" autocomplete="off" aria-label="Rechercher une opération"></div>
     <section class="ops-bal">
       <div class="eyebrow">Solde</div>
@@ -456,10 +458,10 @@ export function render(app, ctx) {
     let body;
     if (!list.length) {
       const clearBtn = nFilters || res ? '<button class="btn secondary sm" data-clear>Retirer les filtres</button>' : '';
-      if (gap) body = emptyState(`Aucune opération${acc ? ` dans ${esc(acc.name)}` : ''} du ${esc(yearDate(gap.w.start))} au ${esc(yearDate(gap.w.end))}${nFilters || res ? ' avec ces filtres' : ''}.`, '', 'calendar-blank');
-      else if (searching) body = emptyState('Aucune opération ne correspond.', '', 'magnifying-glass');
-      else if (!moves().some(x => !x.void)) body = emptyState('Pas encore d’opération.', '', 'list-bullets'); // le + du bas suffit
-      else body = emptyState(`Aucune opération sur cette période${acc ? ` dans ${esc(acc.name)}` : ''}${nFilters || res ? ' avec ces filtres' : ''}.`, clearBtn, 'calendar-blank');
+      if (gap) body = emptyPeriod(`Aucune opération${acc ? ` dans ${esc(acc.name)}` : ''} du ${esc(yearDate(gap.w.start))} au ${esc(yearDate(gap.w.end))}${nFilters || res ? ' avec ces filtres' : ''}.`, '', 'calendar-blank');
+      else if (searching) body = emptyPeriod('Aucune opération ne correspond.', '', 'magnifying-glass');
+      else if (!moves().some(x => !x.void)) body = emptyPeriod('Pas encore d’opération.', '', 'list-bullets'); // le + du bas suffit
+      else body = emptyPeriod(`Aucune opération sur cette période${acc ? ` dans ${esc(acc.name)}` : ''}${nFilters || res ? ' avec ces filtres' : ''}.`, clearBtn, 'calendar-blank');
     } else if (soonDues) body = `<div class="group ops-dues">${dueRowsHTML(soonDues)}</div>`; // les mêmes lignes que Plan, ses styles compris
     else if (searching) body = monthsHTML(list, cur, fl.acc, rowOpts);
     else if (f.group === 'cat') body = byCategoryHTML(list, cur, fl.acc, rowOpts);
@@ -498,7 +500,7 @@ export function render(app, ctx) {
     if (further) Object.assign(pick, { unit: 'custom', from: null, to: null });
     const DEF = { unit: 'month', group: 'day', type: null, cat: null };
     const s = openSheet(`<div class="flt">
-      <div class="e-head"><h2 class="sheet-title">Période et filtres</h2>
+      <div class="e-head">${sheetHead({ title: 'Période et filtres' })}
         <button type="button" class="iconbtn soft close" data-close aria-label="Fermer">${icon('x')}</button></div>
       <div class="flt-sec"><div class="eyebrow">Période</div><div class="flt-opts">${UNITS.map(([k, l]) => `<button type="button" class="fchip" data-u="${k}">${l}</button>`).join('')}</div>
         <div class="flt-dates" data-range hidden>

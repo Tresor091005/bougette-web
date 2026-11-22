@@ -9,16 +9,16 @@ import { session } from '../core/store.js';
 import { reviewItems, dropReview, onReview } from '../core/review.js';
 import { describeReview } from '../data/review.js';
 import { openEntry } from './entry.js';
+import { topbarHTML, wireBack, sectionHTML } from './parts.js';
 
 /** @param {HTMLElement} app @param {{ back: (fallback?: string) => void }} ctx */
 export function render(app, { back }) {
   const items = reviewItems();
   const views = items.map(it => ({ it, v: describeReview(it, session.state, (a, cur) => money(a, { cur })) }));
   app.innerHTML = `<div class="screen settings no-tabs">
-    <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
-      <h1 class="title sm">À revoir</h1></div></div>
+    ${topbarHTML({ title: 'À revoir' })}
     ${views.length ? `<p class="rv-lead">${views.length === 1 ? 'Ce changement fait sur ce téléphone n’a pas été gardé' : 'Ces changements faits sur ce téléphone n’ont pas été gardés'}. Un autre appareil avait déjà supprimé ou changé la même chose. Refais ce qui compte, laisse tomber le reste.</p>
-    <section class="section"><div class="rv-list">
+    ${sectionHTML({ body: `<div class="rv-list">
       ${views.map(({ it, v }) => `<div class="rv-item">
         <div class="rv-t">${esc(v.title)}</div>
         <div class="rv-s">${esc(v.sub)}</div>
@@ -28,10 +28,10 @@ export function render(app, { back }) {
             : `<button class="btn secondary sm" data-drop="${esc(it.id)}">Compris</button>`}
         </div>
       </div>`).join('')}
-    </div></section>`
+    </div>` })}`
     : `<p class="rv-lead">Rien à revoir.</p>`}
   </div>`;
-  $('[data-back]', app).onclick = () => back('#/reglages');
+  wireBack(app, () => back('#/reglages'));
   $$('[data-drop]', app).forEach(b => (b.onclick = () => { buzz(8); dropReview(/** @type {string} */ (b.dataset.drop)); }));
   $$('[data-redo]', app).forEach(b => (b.onclick = () => {
     const found = views.find(x => x.it.id === b.dataset.redo);

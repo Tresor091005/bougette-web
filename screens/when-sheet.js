@@ -6,6 +6,7 @@
 import { today, shortDate, esc } from '../core/format.js';
 import { openSheet, buzz, onSwipe, menuSheet, noticeHTML, $ } from '../core/ui.js';
 import { icon } from '../core/icons.js';
+import { sheetHead, sheetActions } from './parts.js';
 import { DAYS, dt, list, dayNum, datesOfWhen, whenPhrase, guessRepeat, whenOf, selectedOf } from '../domain/when.js';
 
 export { whenPhrase };
@@ -33,7 +34,7 @@ export function pickWhen({ when, title = 'Quand ?', busy = new Map(), prefer = n
     let auto = !when; // une règle qui existe garde sa répétition ; une nouvelle suit ce que l'app propose
     let view = ([...sel].sort()[0] || t0).slice(0, 7);
     const s = openSheet(`<div class="when">
-      <h2 class="sheet-title">${title}</h2>
+      ${sheetHead({ title })}
       <p class="muted when-help">Touche les jours où ça arrive.${busy.size ? ' Un point : une autre échéance tombe ce jour-là.' : ''}</p>
       <div class="cal">
         <div class="cal-h"><button type="button" class="iconbtn" data-m="-1" aria-label="Mois précédent">${icon('caret-left')}</button>
@@ -46,7 +47,7 @@ export function pickWhen({ when, title = 'Quand ?', busy = new Map(), prefer = n
       <p class="when-say" data-say></p>
       <div class="when-also" data-also></div>
       <div data-err></div>
-      <div class="sheet-actions"><button class="btn primary" data-ok>${icon('check')}Valider</button></div>
+      ${sheetActions(`<button class="btn primary" data-ok>${icon('check')}Valider</button>`)}
     </div>`, { label: title, onClose: () => resolve(out) });
     const grid = /** @type {HTMLElement} */ ($('[data-grid]', s.el)), prev = /** @type {HTMLButtonElement} */ ($('[data-m="-1"]', s.el));
     const repEl = /** @type {HTMLElement} */ ($('[data-rep]', s.el)), sayEl = /** @type {HTMLElement} */ ($('[data-say]', s.el)), errEl = /** @type {HTMLElement} */ ($('[data-err]', s.el));

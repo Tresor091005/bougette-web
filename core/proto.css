@@ -21,78 +21,77 @@ html[data-style="proto"] {
   --brand: #506385; --brand-ink: #F1F0E1;
   --dock: #16161B; --dock-ink: #F1F0E1; --dock-ring: #26262D;
   --stone: #BDBCB0; --on-stone: #101015;
+  --tile-gap: var(--sp-3); /* coins carrés : les tuiles de l'accueil se serrent */
   --mono: 'ShareTechMono', ui-monospace, 'Roboto Mono', monospace; }
 html[data-style="proto"] .eyebrow,
 html[data-style="proto"] .label,
 html[data-style="proto"] .section-h h2,
 html[data-style="proto"] .dock .lbl,
-html[data-style="proto"] .tab-label,
-html[data-style="proto"] .axis,
 html[data-style="proto"] :is(.pf-l, .pf-d, .pf-s, .pf-top, .pf-ring span) {
   font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; }
 /* un titre de section qui est un lien (Plan : Échéances, Budgets…) : le bouton remet la casse à zéro, il suit son h2 */
 html[data-style="proto"] .section-h .sh-link { text-transform: inherit; letter-spacing: inherit; }
 /* les capitales espacées de Proto paraissent plus grandes : une taille en dessous (titres de section 13 px au lieu de 17,
    étiquettes des tuiles 11 au lieu de 13, serrées pour tenir sur une ligne dans une demi-tuile) */
-html[data-style="proto"] :is(.section-h .eyebrow, .section-h h2) { font-size: 13px; }
+html[data-style="proto"] .section-h h2 { font-size: var(--fs-2nd); }
 html[data-style="proto"] .big,
 html[data-style="proto"] .amt,
 html[data-style="proto"] .mrow .v,
 html[data-style="proto"] .hero .big,
 html[data-style="proto"] :is(.pf-v, .pf-ring b, .pf-wl span:last-child) {
   font-family: var(--mono); font-weight: 400 !important; letter-spacing: -.01em; }
-html[data-radius="square"] *:not(.pill):not(.dot):not(.switch):not(.switch *):not(.round):not(.fab-add):not(.knob):not(.pf-arr):not(.goal-ring) { border-radius: 2px !important; }
+html[data-radius="square"] *:not(.pill):not(.dot):not(.switch):not(.switch *):not(.round):not(.fab-add):not(.pf-arr):not(.goal-ring) { border-radius: var(--r-xs) !important; }
 
 /* l'accueil en tuiles (D1, D3) : la structure, commune aux deux styles ; le Carnet a Geist, l'écriture normale et des
    coins ronds, Proto la monospace en capitales (règles ci-dessus) et ses coins carrés (data-radius) */
-.pf-home { padding-top: calc(var(--sat) + 14px); }
-.pf-top { display: flex; align-items: center; gap: 10px; margin: 0 2px 12px; font-size: 13px; color: var(--ink-2); }
-.pf-brand { display: flex; align-items: center; gap: 6px; color: var(--ink); }
+.pf-home { padding-top: calc(var(--sat) + var(--sp-7)); }
+.pf-top { display: flex; align-items: center; gap: var(--sp-5); margin: 0 var(--sp-1) var(--sp-6); font-size: var(--fs-2nd); color: var(--ink-2); }
+.pf-brand { display: flex; align-items: center; gap: var(--sp-3); color: var(--ink); }
 .pf-brand .ic { width: 15px; height: 15px; }
 .pf-date { margin-left: auto; }
 .pf-top .bell { width: 34px; height: 34px; }
-.pf-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
-html[data-style="proto"] .pf-grid { gap: 6px; } /* coins carrés : les tuiles se serrent */
-.pf-t { position: relative; display: flex; flex-direction: column; min-height: 104px; padding: 12px; border: 0; border-radius: 18px; background: var(--card); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.pf-top .bell::before { content: ''; position: absolute; inset: -5px; } /* l'appui de 44 px */
+.pf-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--tile-gap); }
+.pf-t { position: relative; display: flex; flex-direction: column; min-height: 104px; padding: var(--sp-6); border: 0; border-radius: var(--r-2xl); background: var(--card); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
 .pf-t.w { grid-column: 1 / 3; }
 .pf-t.tall { min-height: 132px; }
 .pf-t.blue { background: var(--accent); color: var(--on-accent); }
 .pf-t.stone { background: var(--stone); color: var(--on-stone); min-height: 84px; }
-.pf-l { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.pf-l { display: flex; justify-content: space-between; gap: var(--sp-4); font-size: var(--fs-2nd); color: var(--ink-2); }
 .pf-t.blue .pf-l, .pf-t.list .pf-l { color: inherit; }
-html[data-style="proto"] .pf-l { font-size: 11px; letter-spacing: .04em; color: inherit; }
+html[data-style="proto"] .pf-l { font-size: 11px; letter-spacing: .04em; color: inherit; } /* hors échelle : capitales mono dans une demi-tuile */
 .pf-l i { font-style: normal; color: var(--ink-2); }
 .pf-t.blue .pf-l i { color: inherit; }
 .pf-l em { font-style: normal; }
 .pf-l em.on { color: var(--ink); font-weight: 600; }
 html[data-style="proto"] .pf-l em.on { font-weight: 400; }
-.pf-row { display: flex; align-items: flex-end; gap: 8px; margin-top: auto; }
+.pf-row { display: flex; align-items: flex-end; gap: var(--sp-4); margin-top: auto; }
 .pf-col { display: flex; flex-direction: column; }
-.pf-v { font-size: 40px; font-weight: 600; line-height: .95; letter-spacing: -.04em; white-space: nowrap; }
-.pf-v.sm { font-size: 30px; }
+.pf-v { font-size: 40px; font-weight: 600; line-height: .95; letter-spacing: -.04em; white-space: nowrap; } /* hors échelle : chiffre */
+.pf-v.sm { font-size: 30px; } /* hors échelle : chiffre */
 /* la monospace pose ses grands chiffres 3 px plus haut dans leur ligne : ramenés sur la ligne de ce qui les suit (« / 30 nov », barres) */
-html[data-font-num="mono"] .pf-v:not(.sm, .md) { margin-bottom: -3px; }
-html .pf-grid .pf-t .pf-v.md { font-family: var(--sans); font-weight: 500 !important; font-size: 22px; line-height: 1.1; letter-spacing: -.01em; }
+html[data-font-num="mono"] .pf-v:not(.sm, .md) { margin-bottom: -3px; } /* hors échelle : chiffre */
+html .pf-grid .pf-t .pf-v.md { font-family: var(--sans); font-weight: 500 !important; font-size: 22px; line-height: 1.1; letter-spacing: -.01em; } /* hors échelle : chiffre */
 .pf-v.loss { color: var(--loss); }
-.pf-d { margin-left: auto; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.pf-d { margin-left: auto; font-size: var(--fs-meta); color: var(--ink-2); white-space: nowrap; }
 .pf-t.blue .pf-d { color: inherit; opacity: .8; }
 .pf-t.stone .pf-d { color: inherit; opacity: .7; }
-.pf-s { font-size: 12px; color: var(--ink-2); }
+.pf-s { font-size: var(--fs-meta); color: var(--ink-2); }
 /* html .pf-t : passe devant la règle Proto des petites étiquettes (:is() compte son sélecteur le plus lourd) */
-html .pf-t .pf-s.pf-next { font-family: var(--sans); text-transform: none; letter-spacing: 0; font-size: 12px; margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pf-bars { display: flex; align-items: flex-end; gap: 6px; height: 64px; margin: 0 0 4px auto; } /* posées sur la ligne du chiffre, pas sur le bord */
-.pf-bars i { width: 18px; border-radius: 4px; background: var(--stone); }
+html .pf-t .pf-s.pf-next { font-family: var(--sans); text-transform: none; letter-spacing: 0; font-size: var(--fs-meta); margin-top: var(--sp-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pf-bars { display: flex; align-items: flex-end; gap: var(--sp-3); height: 64px; margin: 0 0 var(--sp-2) auto; } /* posées sur la ligne du chiffre, pas sur le bord */
+.pf-bars i { width: 18px; border-radius: var(--r-sm); background: var(--stone); }
 .pf-bars i.on { background: var(--accent); }
 .pf-t.ring { align-items: center; justify-content: center; min-height: 140px; cursor: default; }
 .pf-t.ring svg { width: 112px; height: 112px; }
 .pf-t.ring .trk { fill: none; stroke: var(--line); stroke-width: 3; }
 .pf-t.ring .arc { fill: none; stroke: var(--accent); stroke-width: 3; }
 .pf-ring { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.pf-ring b { font-size: 24px; font-weight: 600; letter-spacing: -.03em; }
-.pf-ring span { font-size: 12px; color: var(--ink-2); }
+.pf-ring b { font-size: 24px; font-weight: 600; letter-spacing: -.03em; } /* hors échelle : chiffre */
+.pf-ring span { font-size: var(--fs-meta); color: var(--ink-2); }
 .pf-t.list { min-height: auto; gap: 0; }
-.pf-t.list .pf-l { margin-bottom: 6px; }
-.pf-wl { display: flex; justify-content: space-between; padding: 6px 0; border-top: 1px solid var(--line); font-size: 15px; }
+.pf-t.list .pf-l { margin-bottom: var(--sp-3); }
+.pf-wl { display: flex; justify-content: space-between; padding: var(--sp-3) 0; border-top: 1px solid var(--line); font-size: var(--fs-body); }
 .pf-wl:last-child { padding-bottom: 0; } /* le bas de la tuile comme son haut */
 .pf-wl span:last-child { font-weight: 500; font-variant-numeric: tabular-nums; }
 .pf-arr { position: absolute; top: 10px; right: 10px; width: 26px; height: 26px; border-radius: 50% !important; background: var(--on-stone); color: var(--stone); display: flex; align-items: center; justify-content: center; }

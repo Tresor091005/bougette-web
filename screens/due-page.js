@@ -26,7 +26,7 @@ import {
   available, endedDues, dueChainIds, transactions, dueMerge, mergeDues, twinOfNew, addToDue,
 } from '../core/store.js';
 import { assigned } from '../core/assign.js';
-import { money, esc, shortDate, yearDate, dayLabel, today, parseAmount, currencyOf, symbol } from '../core/format.js';
+import { money, esc, shortDate, yearDate, dayLabel, today, readAmount, currencyOf, symbol } from '../core/format.js';
 import { icon } from '../core/icons.js';
 import { openSheet, seg, wireSeg, setSeg, buzz, toast, noticeHTML, chip, confirmSheet, menuSheet, afterSheets, reducedMotion, fitText, $, $$ } from '../core/ui.js';
 import { pickAccount, pickDate, pickCategory, fillsHTML, openFillOf } from './pickers.js';
@@ -37,6 +37,7 @@ import { renewalOf, addDays } from '../domain/dues.js';
 import { openIncomeSheet } from './budget-sheet.js';
 import { openAccountSheet } from './accounts.js';
 import { openOperation } from './history.js';
+import { topbarHTML, wireBack, rowHTML, fieldHTML, sheetHead, sheetActions } from './parts.js';
 
 /** @typedef {import('../domain/dues.js').DueView} DueView */
 /** @typedef {import('../domain/dues.js').Schedule} Schedule */
@@ -151,7 +152,7 @@ export async function skipNow(d) {
  */
 export function openDueSheet({ preset = null, openEntry = () => {}, onCreated = () => {} } = {}) {
   const c = dueContent({ r: null, preset, openEntry });
-  const s = openSheet(`<div class="acc-sheet due-sheet editing"><h2 class="sheet-title" data-title>${preset?.again ? 'Reconduire l’échéance' : 'Nouvelle échéance'}</h2>${c.html}</div>`, { label: 'Échéance' });
+  const s = openSheet(`<div class="acc-sheet due-sheet editing">${sheetHead({ title: preset?.again ? 'Reconduire l’échéance' : 'Nouvelle échéance', attrs: 'data-title' })}${c.html}</div>`, { label: 'Échéance' });
   c.mount(s.el, { done: (_, made) => { s.close(); if (made) afterSheets(() => onCreated(made)); } });
   return s;
 }
@@ -194,15 +195,14 @@ export const duePage = {
     const at = (page && page.keep && page.root === root && page.api.at()) || q.get('at');
     const c = dueContent({ r: head, at, openEntry: ctx.openEntry, ended: end, renew: () => renewDue(head, end?.last || null, ctx) });
     app.innerHTML = `<div class="screen due-page no-tabs">
-      <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
-        <h1 class="title sm due-title" data-title>${esc(c.title)}</h1></div></div>
+      ${topbarHTML({ title: esc(c.title), cls: 'due-title', attrs: 'data-title' })}
       <div class="due-sheet">${c.html}</div>
     </div>`;
     const redraw = () => { if (page) page.keep = true; ctx.refresh(); };
     // supprimée : onData revient à Budget (elle n'existe plus) ; sinon la page se redessine (en lecture, sa nouvelle tête)
     const api = c.mount(app, { done: what => { if (what !== 'deleted') redraw(); } });
     page = { head: head.id, root, editable: c.editable, ended: !!end, keep: false, api, ctx };
-    $('[data-back]', app).onclick = () => { if (!api.leaveEdit()) ctx.back('#/mois'); };
+    wireBack(app, () => { if (!api.leaveEdit()) ctx.back('#/mois'); });
     fitText(app, '.due-title', 18);
   },
   /** Une donnée a changé : ses fois se repeignent (le formulaire reste) ; changée en profondeur, la page se redessine. */
@@ -294,15 +294,15 @@ function dueContent({ r, preset = null, at = null, openEntry, ended = null, rene
       ${fill ? `<div class="group plain rs-more">
         <button type="button" class="row" data-goreserve>${chip(category(fill.category || ''))}<div class="main"><div class="t">Aller à la réserve</div>${fillsHTML(fill.id)}</div></button></div>` : ''}
       ${editable ? `<div class="group plain rs-more">
-        <button type="button" class="row" data-edit-go><span class="pill acc">${icon('pencil-simple')}</span><div class="main"><div class="t">Modifier</div><div class="s">Ce qui est déjà réglé ne change pas</div></div></button>
-        <button type="button" class="row" data-stop><span class="pill">${icon('pause')}</span><div class="main"><div class="t">Arrêter</div><div class="s">Plus de dates à partir d’aujourd’hui</div></div></button>
+        ${rowHTML({ attrs: 'data-edit-go', pill: `<span class="pill acc">${icon('pencil-simple')}</span>`, title: 'Modifier', sub: 'Ce qui est déjà réglé ne change pas' })}
+        ${rowHTML({ attrs: 'data-stop', pill: `<span class="pill">${icon('pause')}</span>`, title: 'Arrêter', sub: 'Plus de dates à partir d’aujourd’hui' })}
       </div>` : ''}
       ${merge ? `<div class="group plain rs-more">
-        <button type="button" class="row" data-merge><span class="pill">${icon('copy')}</span><div class="main"><div class="t wrap">Regrouper avec ${esc(mates.length > 1 ? `${mates.length} échéances jumelles` : dueTitle(mates[0]))}</div>
-          <div class="s wrap">Les mêmes jours : une seule échéance de ${money(merge.amount, { cur: merge.keep.currency })}</div></div></button>
+        ${rowHTML({ attrs: 'data-merge', pill: `<span class="pill">${icon('copy')}</span>`, title: `Regrouper avec ${esc(mates.length > 1 ? `${mates.length} échéances jumelles` : dueTitle(mates[0]))}`,
+          titleCls: 'wrap', sub: `Les mêmes jours : une seule échéance de ${money(merge.amount, { cur: merge.keep.currency })}`, subCls: 'wrap' })}
       </div>` : ''}
       ${canRenew ? `<div class="group plain rs-more">
-        <button type="button" class="row" data-again><span class="pill acc">${icon('arrows-clockwise')}</span><div class="main"><div class="t">Reconduire</div><div class="s">Une nouvelle, pareille, dès sa prochaine date</div></div></button>
+        ${rowHTML({ attrs: 'data-again', pill: `<span class="pill acc">${icon('arrows-clockwise')}</span>`, title: 'Reconduire', sub: 'Une nouvelle, pareille, dès sa prochaine date' })}
       </div>` : ''}
     </div>` : ''}
     ${editable ? `<div class="dv-edit" data-edit tabindex="-1"${editing ? '' : ' hidden'}>
@@ -311,20 +311,20 @@ function dueContent({ r, preset = null, at = null, openEntry, ended = null, rene
         : !r ? '<p class="muted rs-say">Ce qui revient : un loyer, un abonnement, un salaire. Rien n’est noté tout seul : le jour venu, tu confirmes.</p>'
         : started ? '<p class="muted rs-say">Les changements valent à partir d’aujourd’hui. Les fois réglées et les retards ne changent pas.</p>' : ''}
       <fieldset class="due-fields">
-      <div class="field"><span>Type</span>${seg(TYPES, f.kind, `due-kind${settled || again ? ' locked' : ''}`)}<small class="field-note" data-kindnote${settled ? '' : ' hidden'}>Une fois est déjà réglée : le type ne change plus.</small></div>
-      <label class="field"><span>Nom</span><input data-note maxlength="40" value="${esc(f.note)}" placeholder="Ex. Loyer, Canal Box, Salaire" autocomplete="off"></label>
-      <label class="field"><span data-amtl>Montant</span><input data-amt inputmode="decimal" placeholder="0" autocomplete="off" value="${amt0}"></label>
-      <div class="field" data-catf><span>Catégorie</span><button type="button" class="field-btn" data-cat${again ? ' aria-disabled="true"' : ''}><b data-catl></b>${icon(again ? 'lock-simple' : 'caret-right')}</button></div>
-      <div class="field"><span data-wall-l>Portefeuille</span><button type="button" class="field-btn" data-wal><b data-wall></b>${icon('caret-right')}</button></div>
-      <div class="field" data-tof><span>Vers</span><button type="button" class="field-btn" data-to><b data-tol></b>${icon('caret-right')}</button></div>
-      <div class="field"><span>Quand ?</span><button type="button" class="field-btn when-btn" data-when><b data-whenl></b>${icon('calendar-blank')}</button></div>
-      <div class="field" data-endf><span>Fin</span>${seg(ENDS, endMode, 'due-end')}
+      ${fieldHTML({ label: 'Type', control: `${seg(TYPES, f.kind, `due-kind${settled || again ? ' locked' : ''}`)}<small class="field-note" data-kindnote${settled ? '' : ' hidden'}>Une fois est déjà réglée : le type ne change plus.</small>` })}
+      ${fieldHTML({ label: 'Nom', control: `<input data-note maxlength="40" value="${esc(f.note)}" placeholder="Ex. Loyer, Canal Box, Salaire" autocomplete="off">` })}
+      ${fieldHTML({ label: 'Montant', labelAttrs: 'data-amtl', control: `<input data-amt inputmode="decimal" placeholder="0" autocomplete="off" value="${amt0}">` })}
+      ${fieldHTML({ label: 'Catégorie', attrs: 'data-catf', control: `<button type="button" class="field-btn" data-cat${again ? ' aria-disabled="true"' : ''}><b data-catl></b>${icon(again ? 'lock-simple' : 'caret-right')}</button>` })}
+      ${fieldHTML({ label: 'Portefeuille', labelAttrs: 'data-wall-l', control: `<button type="button" class="field-btn" data-wal><b data-wall></b>${icon('caret-right')}</button>` })}
+      ${fieldHTML({ label: 'Vers', attrs: 'data-tof', control: `<button type="button" class="field-btn" data-to><b data-tol></b>${icon('caret-right')}</button>` })}
+      ${fieldHTML({ label: 'Quand ?', control: `<button type="button" class="field-btn when-btn" data-when><b data-whenl></b>${icon('calendar-blank')}</button>` })}
+      ${fieldHTML({ label: 'Fin', attrs: 'data-endf', control: `${seg(ENDS, endMode, 'due-end')}
         <button type="button" class="field-btn due-endd" data-endd><b data-enddl></b>${icon('calendar-blank')}</button>
-        <input class="due-times" data-times inputmode="numeric" placeholder="Nombre de fois, ex. 4" value="${f.times || ''}" autocomplete="off"></div>
+        <input class="due-times" data-times inputmode="numeric" placeholder="Nombre de fois, ex. 4" value="${f.times || ''}" autocomplete="off">` })}
       </fieldset>
       <div data-err></div>
       ${r ? '<div class="dv-sum" data-sum hidden></div><button type="button" class="link dv-undo" data-undo hidden>Annuler les changements</button>' : ''}
-      <div class="sheet-actions"><button class="btn primary" data-save>${icon('check')}${r ? 'Enregistrer' : 'Créer l’échéance'}</button></div>
+      ${sheetActions(`<button class="btn primary" data-save>${icon('check')}${r ? 'Enregistrer' : 'Créer l’échéance'}</button>`)}
     </div>` : ''}`;
 
   return { html, title: r ? titleOf() : 'Nouvelle échéance', editable, mount };
@@ -399,7 +399,8 @@ function dueContent({ r, preset = null, at = null, openEntry, ended = null, rene
 
       /** Les valeurs du formulaire, ou ce qui manque. @returns {{ data?: Record<string, any>, error?: string }} */
       const read = () => {
-        const amount = amtIn.value.trim() ? parseAmount(amtIn.value, cur()) : 0;
+        const { amount, error } = readAmount(amtIn.value, cur());
+        if (error) return { error };
         if (!amount || amount <= 0) return { error: 'Indique un montant.' };
         if (f.kind !== 'transfer' && !f.category) return { error: 'Choisis une catégorie.' };
         if (f.kind === 'transfer' && !f.to) return { error: 'Choisis le portefeuille d’arrivée.' };
@@ -430,7 +431,7 @@ function dueContent({ r, preset = null, at = null, openEntry, ended = null, rene
       };
       /** Le formulaire a-t-il changé depuis les valeurs enregistrées (le montant lu, le nom sans espaces autour) ? */
       const dirty = () => !!picked || endMode !== endMode0 || noteIn.value.trim() !== f0.note.trim()
-        || (amtIn.value.trim() ? parseAmount(amtIn.value, cur()) : 0) !== f0.amount
+        || readAmount(amtIn.value, cur()).amount !== f0.amount
         || (endMode === 'times' && Number(timesIn.value || 0) !== (f0.times || 0))
         || /** @type {(keyof typeof f)[]} */ (['kind', 'wallet', 'to', 'category', 'every', 'interval', 'end']).some(k => (f[k] ?? null) !== (f0[k] ?? null));
       /** Le résumé avant d'enregistrer : à partir de quand, ce qui change, ce qui reste. @param {Record<string, any>} ch @param {DueView[]} preview @param {DueView[]} current */

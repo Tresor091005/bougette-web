@@ -32,11 +32,12 @@ import { reserveRowHTML, closedRowHTML, openReserveSheet, coveredMonths, monthsR
 import { today, money, esc, approx } from '../core/format.js';
 import { habitsLeft } from '../domain/budgets.js';
 import { icon } from '../core/icons.js';
-import { buzz, fitText, splitAmount, countUp, fabHTML, $, $$ } from '../core/ui.js';
-import { accountPill, emptyAddHTML } from './pickers.js';
+import { buzz, fitText, splitAmount, countUp, $, $$ } from '../core/ui.js';
+import { accountPill } from './pickers.js';
 import { openBudgetSheet } from './budget-sheet.js';
 import { openAccountSheet } from './accounts.js';
 import { listHTML, wireCatRows } from './budget-cats.js';
+import { titleLink, endedHTML, listPageHTML, wireListPage, rowHTML, sectionHTML, emptyState } from './parts.js';
 
 const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
 // Sections courtes (2026-11-10, règle commune le 2026-11-12) : ce qui va mal s'affiche toujours (budget dépassé, réserve
@@ -51,11 +52,11 @@ function shortList(list, bad) {
 }
 /**
  * Les réserves ouvertes de tous les portefeuilles d'épargne, ce qui va mal d'abord (échues, rien de prévu, puis celles
- * qui ne seront pas prêtes à temps), puis par échéance (le nom du portefeuille rappelé s'il y en a plusieurs).
- * @param {any[]} savings @param {{ a: any, rep: any }[]} reports
+ * qui ne seront pas prêtes à temps), puis par échéance.
+ * @param {{ a: any, rep: any }[]} reports
  */
-function openReserves(savings, reports) {
-  return reports.flatMap(x => x.rep.reserves.map((/** @type {any} */ v) => ({ v, wallet: savings.length > 1 ? x.a.name : '' })))
+function openReserves(reports) {
+  return reports.flatMap(x => x.rep.reserves.map((/** @type {any} */ v) => ({ v })))
     .sort((p, q) => {
       const u = (/** @type {any} */ x) => (x.v.status === 'overdue' ? 0 : x.v.status === 'none' ? 1 : x.v.status === 'short' || x.v.status === 'later' ? 2 : 3);
       return u(p) - u(q) || (p.v.reserve.due < q.v.reserve.due ? -1 : p.v.reserve.due > q.v.reserve.due ? 1 : 0);
@@ -76,17 +77,13 @@ const savingsReports = savings => savings.map(a => ({ a, rep: savingsReport(a.id
 function savingsRowHTML({ a, rep }) {
   const due = rep.reserves.filter((/** @type {any} */ v) => v.status === 'overdue').length;
   const none = rep.reserves.some((/** @type {any} */ v) => v.status === 'none');
-  if (a.emergency) {
-    return `<button type="button" class="row" data-sav="${a.id}">${monthsRing(accountPill(a), coveredMonths(a))}
-    <div class="main"><div class="t">${esc(a.name)}</div><div class="s wrap">${monthsLabel(coveredMonths(a))}</div></div>
-    <span class="amt">${money(rep.balance, { cur: a.currency })}</span></button>`;
-  }
+  const row = (/** @type {string} */ pill, /** @type {string} */ sub) => rowHTML({ attrs: `data-sav="${a.id}"`, pill, title: esc(a.name), sub, subCls: 'wrap',
+    end: `<span class="amt">${money(rep.balance, { cur: a.currency })}</span>` });
+  if (a.emergency) return row(monthsRing(accountPill(a), coveredMonths(a)), monthsLabel(coveredMonths(a)));
   const sub = [rep.goal ? `${rep.goal.pct} % de l’objectif` : '',
     rep.reserves.length ? `${plural(rep.reserves.length, 'réserve', 'réserves')} · ${reservesRing(rep)?.pct} %` : '', due ? `<span class="loss">${plural(due, 'échue', 'échues')}</span>` : '',
     none ? '<span class="loss">Rien de prévu</span>' : ''].filter(Boolean).join(' · ') || 'Aucune réserve';
-  return `<button type="button" class="row" data-sav="${a.id}">${goalRing(accountPill(a), rep.goal || reservesRing(rep))}
-    <div class="main"><div class="t">${esc(a.name)}</div><div class="s wrap">${sub}</div></div>
-    <span class="amt">${money(rep.balance, { cur: a.currency })}</span></button>`;
+  return row(goalRing(accountPill(a), rep.goal || reservesRing(rep)), sub);
 }
 /**
  * Les actions de l'épargne, toujours visibles (comme le « + » des autres sections, 2026-11-12) : l'invitation « Fonds
@@ -95,13 +92,13 @@ function savingsRowHTML({ a, rep }) {
  */
 /** aside : « Mettre de côté » (pas dans Toutes les épargnes, 2026-11-20 : on n'y sait pas vers quelle épargne). @param {any[]} savings @param {{ aside?: boolean }} [o] */
 function savingsActionsHTML(savings, { aside = true } = {}) {
-  if (!savings.length) return `<div class="group"><button type="button" class="row" data-create-sav><span class="pill acc">${icon('piggy-bank')}</span>
-    <div class="main"><div class="t">Mettre ton épargne à part</div><div class="s">Un portefeuille pour ton épargne et tes réserves</div></div></button></div>`;
+  if (!savings.length) return `<div class="group">${rowHTML({ attrs: 'data-create-sav', pill: `<span class="pill acc">${icon('piggy-bank')}</span>`,
+    title: 'Mettre ton épargne à part', sub: 'Un portefeuille pour ton épargne et tes réserves' })}</div>`;
   const invite = !emergencyAccount() && !pref('emergencyDismissed');
   // l'invitation suit les épargnes : le même trait qu'entre deux d'entre elles (« Mettre de côté », une action, a le trait plein)
-  return `<div class="group plain">${invite ? `<button type="button" class="row rule" data-emergency>${accountPill({ kind: 'bank', savings: true, emergency: true })}
-    <div class="main"><div class="t">Fonds d’urgence</div><div class="s">De quoi tenir dans un coup dur : 3 mois de dépenses</div></div></button>` : ''}
-    ${aside ? `<button type="button" class="row add-row" data-aside><span class="pill">${icon('hand-coins')}</span><div class="main"><div class="t b-aside">Mettre de côté</div></div></button>` : ''}</div>`;
+  return `<div class="group plain">${invite ? rowHTML({ cls: 'rule', attrs: 'data-emergency', pill: accountPill({ kind: 'bank', savings: true, emergency: true }),
+    title: 'Fonds d’urgence', sub: 'De quoi tenir dans un coup dur : 3 mois de dépenses' }) : ''}
+    ${aside ? rowHTML({ cls: 'add-row', attrs: 'data-aside', pill: `<span class="pill">${icon('hand-coins')}</span>`, title: 'Mettre de côté', titleCls: 'b-aside' }) : ''}</div>`;
 }
 /** Branche les lignes et les actions de l'épargne. @param {HTMLElement} app @param {any} ctx @param {any[]} savings */
 function wireSavings(app, ctx, savings) {
@@ -133,7 +130,7 @@ export function render(app, ctx) {
   const reports = savingsReports(savings);
   const savShown = shortList(reports, savingsBad);
   // toutes les réserves ouvertes, ce qui va mal d'abord ; 3 au plus ici, toutes dans « Toutes les réserves »
-  const allRes = openReserves(savings, reports);
+  const allRes = openReserves(reports);
   const resShown = shortList(allRes, x => ['overdue', 'none', 'short', 'later'].includes(x.v.status));
   // liste simple, les plus importantes d'abord : ce qui va mal toujours (budgets dépassés, du plus dépassé au moins
   // dépassé, puis dépenses inhabituelles, de la plus forte à la plus faible), puis jusqu'à 3 lignes — les budgets les
@@ -153,7 +150,7 @@ export function render(app, ctx) {
   const duesShown = shortList(dues, d => d.state === 'late' || d.state === 'today');
 
   app.innerHTML = `<div class="screen month">
-    <div class="topbar m-top"><h1 class="title sm">Plan</h1></div>
+    <div class="topbar m-top"><h1 class="title">Plan</h1></div>
 
     <section class="hero b-hero">
       <div class="label">Disponible</div>
@@ -163,22 +160,16 @@ export function render(app, ctx) {
 
     ${duesSectionHTML(dues, { shown: duesShown, any: schedules().length > 0 })}
 
-    <section class="section">
-      <div class="section-h">${titleLink('Budgets', 'data-all')}</div>
-      ${r.list.length ? '' : emptyAddHTML('Fixe un montant pour une catégorie : il ne compte plus dans Disponible.', 'data-new', 'Créer un budget')}
-      ${catItems.length ? `<div class="group" data-budgets>${listHTML(catItems)}</div>` : ''}
-    </section>
+    ${sectionHTML({ head: titleLink('Budgets', 'data-all'), body: `
+      ${r.list.length ? '' : emptyState('Fixe un montant pour une catégorie : il ne compte plus dans Disponible.', { add: ['data-new', 'Créer un budget'] })}
+      ${catItems.length ? `<div class="group" data-budgets>${listHTML(catItems)}</div>` : ''}` })}
 
-    ${savings.some(a => !a.emergency) ? `<section class="section">
-      <div class="section-h">${titleLink('Réserves', 'data-all-res')}</div>
-      ${allRes.length ? `<div class="group">${allRes.filter((_, i) => resShown[i]).map(x => reserveRowHTML(x.v, { wallet: x.wallet })).join('')}</div>` : emptyAddHTML('Prépare à l’avance une dépense à venir : l’assurance, la rentrée, un téléphone.', 'data-newres', 'Nouvelle réserve')}
-    </section>` : ''}
+    ${savings.some(a => !a.emergency) ? sectionHTML({ head: titleLink('Réserves', 'data-all-res'), body: `
+      ${allRes.length ? `<div class="group">${allRes.filter((_, i) => resShown[i]).map(x => reserveRowHTML(x.v)).join('')}</div>` : emptyState('Prépare à l’avance une dépense à venir : l’assurance, la rentrée, un téléphone.', { add: ['data-newres', 'Nouvelle réserve'] })}` }) : ''}
 
-    <section class="section">
-      <div class="section-h">${titleLink('Épargnes', 'data-all-sav')}</div>
+    ${sectionHTML({ head: titleLink('Épargnes', 'data-all-sav'), body: `
       ${reports.length ? `<div class="group">${reports.filter((_, i) => savShown[i]).map(savingsRowHTML).join('')}</div>` : ''}
-      ${savingsActionsHTML(savings)}
-    </section>
+      ${savingsActionsHTML(savings)}` })}
 
 
   </div>`;
@@ -227,13 +218,6 @@ function splitHTML(r, ahead = 0) {
 }
 
 /**
- * Titre d'une section de Plan (2026-11-13, avec l'utilisateur) : il ouvre sa page (« Toutes les échéances »…), toujours,
- * même avec peu de lignes ; on y crée par le + flottant. Plus de + dans les titres ni de lien « Toutes les … » en bas.
- * @param {string} text @param {string} attr
- */
-export const titleLink = (text, attr) => `<h2><button type="button" class="sh-link" ${attr}>${text}${icon('caret-right')}</button></h2>`;
-
-/**
  * « Mettre de côté » (D17) : la saisie s'ouvre en virement vers un portefeuille d'épargne, depuis le premier portefeuille
  * courant compté de la même devise (s'il y en a un ; sinon la saisie le fait choisir).
  * @param {(o: any) => any} openEntry @param {{ id: string, currency: string }} to
@@ -253,28 +237,21 @@ export const allReservesScreen = {
   /** @param {HTMLElement} app @param {any} ctx */
   render(app, ctx) {
     const savings = savingsAccounts().filter(a => !a.archived);
-    const list = openReserves(savings, savingsReports(savings));
+    const list = openReserves(savingsReports(savings));
     const closed = closedReserves(); // les plus récemment terminées d'abord
     // l'intro (2026-11-20, avec l'utilisateur) : ce qui manque encore à toutes les réserves, et combien ne seront pas prêtes
     const main = settings().currency;
     const mine = list.filter(x => x.v.reserve.currency === main);
     const missing = mine.reduce((n, x) => n + Math.max(0, x.v.target - x.v.saved), 0);
     const bad = list.filter(x => ['overdue', 'none', 'short', 'later'].includes(x.v.status)).length;
-    app.innerHTML = `<div class="screen month no-tabs has-fab">
-      <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
-        <h1 class="title sm">Toutes les réserves</h1></div></div>
-      ${list.length ? `<section class="hero b-hero b-all"><div class="label">Encore à mettre de côté</div><div class="big">${money(missing, { cur: main })}</div>
-        <div class="b-res">pour ${plural(list.length, 'réserve', 'réserves')} · ${bad ? `<span class="rs-warn">${bad > 1 ? `${bad} pas prêtes à temps` : '1 pas prête à temps'}</span>` : list.length > 1 ? 'toutes prêtes à temps' : 'prête à temps'}</div></section>` : ''}
-      <section class="section">${list.length ? `<div class="group">${list.map(x => reserveRowHTML(x.v, { wallet: x.wallet })).join('')}</div>`
-        : '<div class="w-none"><p>Aucune réserve en cours</p></div>'}</section>
-      ${closed.length ? `<details class="section b-done"><summary>Réserves terminées <span class="muted">${closed.length}</span></summary>
-        <div class="group">${closed.map(closedRowHTML).join('')}</div></details>` : ''}
-    </div>${fabHTML('Nouvelle réserve')}`;
-    $('[data-back]', app).onclick = () => ctx.back('#/mois');
+    app.innerHTML = listPageHTML({ title: 'Toutes les réserves', fab: 'Nouvelle réserve',
+      intro: list.length ? { label: 'Encore à mettre de côté', big: money(missing, { cur: main }),
+        sub: `pour ${plural(list.length, 'réserve', 'réserves')} · ${bad ? `<span class="rs-warn">${bad > 1 ? `${bad} pas prêtes à temps` : '1 pas prête à temps'}</span>` : list.length > 1 ? 'toutes prêtes à temps' : 'prête à temps'}` } : null,
+      body: sectionHTML({ body: list.length ? `<div class="group">${list.map(x => reserveRowHTML(x.v)).join('')}</div>`
+        : emptyState('Aucune réserve en cours') }),
+      ended: endedHTML('Réserves terminées', closed.map(closedRowHTML)) });
+    wireListPage(app, ctx, () => openReserveSheet({ openEntry: ctx.openEntry }));
     wireReserveRows(app, ctx.openEntry, ctx.go);
-    const add = $('[data-add]', app);
-    if (add) add.onclick = () => { buzz(6); openReserveSheet({ openEntry: ctx.openEntry }); };
-    fitText(app, '.mrow .v', 13);
   },
 };
 
@@ -292,18 +269,12 @@ export const allSavingsScreen = {
     const others = new Set(reports.filter(x => x.a.currency !== main).map(x => x.a.currency)).size;
     // l'intro (revue le 2026-11-20, avec l'utilisateur : « Ton épargne » répétait le titre) : comment ce total se répartit
     const split = reports.filter(x => x.a.currency === main).reduce((n, x) => ({ held: n.held + (x.rep.held || 0), free: n.free + Math.max(0, x.rep.balance - (x.rep.held || 0)) }), { held: 0, free: 0 });
-    app.innerHTML = `<div class="screen month no-tabs has-fab">
-      <div class="topbar"><div class="left"><button class="iconbtn edge-l" data-back aria-label="Retour">${icon('caret-left')}</button>
-        <h1 class="title sm">Toutes les épargnes</h1></div></div>
-      ${reports.length ? `<section class="hero b-hero b-all"><div class="label">Mis de côté en tout</div><div class="big">${money(total)}</div>
-        <div class="b-res">${[split.held ? `${money(split.held)} pour tes réserves` : '', split.free ? `${money(split.free)} d’épargne libre` : '', others ? `et ${plural(others, 'autre devise', 'autres devises')}` : ''].filter(Boolean).join(' · ')}</div></section>` : ''}
-      <section class="section">${reports.length ? `<div class="group">${reports.map(savingsRowHTML).join('')}</div>` : ''}
-        ${savingsActionsHTML(savings, { aside: false })}</section>
-    </div>${fabHTML('Nouveau portefeuille d’épargne')}`;
-    $('[data-back]', app).onclick = () => ctx.back('#/mois');
+    app.innerHTML = listPageHTML({ title: 'Toutes les épargnes', fab: 'Nouveau portefeuille d’épargne',
+      intro: reports.length ? { label: 'Mis de côté en tout', big: money(total),
+        sub: [split.held ? `${money(split.held)} pour tes réserves` : '', split.free ? `${money(split.free)} d’épargne libre` : '', others ? `et ${plural(others, 'autre devise', 'autres devises')}` : ''].filter(Boolean).join(' · ') } : null,
+      body: sectionHTML({ body: `${reports.length ? `<div class="group">${reports.map(savingsRowHTML).join('')}</div>` : ''}
+        ${savingsActionsHTML(savings, { aside: false })}` }) });
+    wireListPage(app, ctx, () => openAccountSheet(null, { savings: true }));
     wireSavings(app, ctx, savings);
-    const add = $('[data-add]', app);
-    if (add) add.onclick = () => { buzz(6); openAccountSheet(null, { savings: true }); };
-    fitText(app, '.hero .big', 13);
   },
 };

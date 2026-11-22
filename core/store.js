@@ -15,12 +15,16 @@ import * as D from '../domain/dues.js';
 import { simulate } from '../domain/engine.js';
 import { txLines } from '../domain/ledger.js';
 import { detectCurrency, configureFormat, currencyOf, inPeriod, today } from './format.js';
-import { currentStorage, isMain } from './spaces.js';
+import { currentSpace, storageOf, MAIN } from './spaces.js';
 export { KINDS, KIND_LABEL } from '../domain/defaults.js';
 
-// Les réglages et petites préférences sont ceux de l'espace ouvert (D19) ; le premier espace garde « cauri: ».
-const SPACE = currentStorage();
-const PREFIX = SPACE.prefix;
+// Les réglages et petites préférences sont ceux de l'espace ouvert (D19) ; le premier espace garde « cauri: ». Changer
+// d'espace les remplace sur place (openSpace).
+let spaceId = currentSpace().id;
+let SPACE = storageOf(spaceId);
+let PREFIX = SPACE.prefix;
+/** L'espace de la session ouverte (le registre peut déjà en nommer un autre, le temps de passer de l'un à l'autre). */
+export const openSpaceId = () => spaceId;
 // Le verrouillage (D16) protège l'app entière : ses préférences sont communes à tous les espaces, comme le style, les mises
 // à jour et la page Développeur ouverte (« dev », 2026-11-21).
 const GLOBAL_PREFS = new Set(['lock', 'lockOpen', 'lockFails', 'style', 'autoUpdate', 'updateCheckedAt', 'dev']);
@@ -41,26 +45,34 @@ function write(key, value, prefix = PREFIX) {
 
 const startCurrency = () => detectCurrency();
 // Données localStorage des itérations 1 et 2 : converties une fois en événements, puis gardées telles quelles en sauvegarde.
-function legacyData() {
-  if (!isMain() || read('migrated', null)) return null; // seul le premier espace a pu connaître ces données
+// id, sp : l'espace qu'on ouvre (pas forcément encore celui des préférences, le temps de passer de l'un à l'autre).
+/** @param {string} id @param {{ prefix: string }} sp */
+function legacyData(id, sp) {
+  const P = sp.prefix;
+  if (id !== MAIN || read('migrated', null, P)) return null; // seul le premier espace a pu connaître ces données
   const keys = ['accounts', 'categories', 'tx', 'budgets', 'settings'];
-  try { if (!keys.some(k => localStorage.getItem(PREFIX + k) !== null)) return null; } catch (e) { return null; }
-  return { version: read('version', null), accounts: read('accounts', null), categories: read('categories', null), tx: read('tx', []), budgets: read('budgets', null), settings: read('settings', {}) };
+  try { if (!keys.some(k => localStorage.getItem(P + k) !== null)) return null; } catch (e) { return null; }
+  return { version: read('version', null, P), accounts: read('accounts', null, P), categories: read('categories', null, P), tx: read('tx', [], P), budgets: read('budgets', null, P), settings: read('settings', {}, P) };
 }
 
-let storageWarning = '';
-async function start() {
-  const opts = { today, detectCurrency: startCurrency, legacy: legacyData, onLegacyDone: () => write('migrated', new Date().toISOString()) };
+/**
+ * Ouvre la session d'un espace ; warn : ce qu'il faut dire si la base manque.
+ * @param {string} id @param {ReturnType<typeof storageOf>} sp
+ */
+async function start(id, sp) {
+  const opts = { today, detectCurrency: startCurrency, legacy: () => legacyData(id, sp), onLegacyDone: () => write('migrated', new Date().toISOString(), sp.prefix) };
   try {
-    return await openSession({ db: await openDb({ url: SPACE.db, idbName: SPACE.idb }), ...opts });
+    return { ses: await openSession({ db: await openDb({ url: sp.db, idbName: sp.idb }), ...opts }), warn: '' };
   } catch (e) {
     console.error('Base de données indisponible', e);
-    storageWarning = 'Bougette ne peut pas enregistrer sur cet appareil. Ce que tu notes sera perdu en fermant l’app.';
     // en mémoire : les anciennes données sont montrées mais pas marquées converties (elles le seront quand la base marchera)
-    return openSession({ db: await openWasmDb({ persist: false }), ...opts, onLegacyDone: null });
+    return { ses: await openSession({ db: await openWasmDb({ persist: false }), ...opts, onLegacyDone: null }),
+      warn: 'Bougette ne peut pas enregistrer sur cet appareil. Ce que tu notes sera perdu en fermant l’app.' };
   }
 }
-export const session = await start();
+const first = await start(spaceId, SPACE);
+export let session = first.ses;
+let storageWarning = first.warn;
 export const storageProblem = () => storageWarning;
 
 // D7 : plus d'emoji. Au démarrage (et après un import), chaque emoji ou ancienne icône dessinée devient l'icône
@@ -83,6 +95,30 @@ export async function refuseNegatives() {
 await migrateIcons();
 await refuseNegatives();
 
+/**
+ * Passer à l'espace choisi sur place (D19, 2026-11-22) : la base de l'espace d'avant est refermée (ses écritures en file
+ * finies), celle du nouveau ouverte, ses réglages lus ; les abonnés restent. L'appelant a d'abord arrêté la synchro et
+ * les copies de l'espace d'avant. Rejette si la nouvelle session ne s'ouvre pas (l'appelant recharge alors la page).
+ */
+export async function openSpace() {
+  try { await session.close(); } catch (e) { console.error('Fermeture de la base impossible', e); }
+  // la nouvelle session d'abord ; l'espace, ses préférences et sa session changent ensuite d'un coup (jamais les
+  // préférences d'un espace avec la session d'un autre)
+  const id = currentSpace().id, sp = storageOf(id);
+  const { ses, warn } = await start(id, sp);
+  spaceId = id;
+  SPACE = sp;
+  PREFIX = sp.prefix;
+  storageWarning = warn;
+  session = ses;
+  memo = { state: null };
+  attach(session);
+  syncFormat();
+  await migrateIcons();
+  await refuseNegatives();
+  applyLook();
+}
+
 // --- cache des vues (recalculées seulement quand l'état change) ---
 let memo = { state: null };
 function lazy(k, fn) {
@@ -99,7 +135,20 @@ function syncFormat() {
   configureFormat({ currency: st.currency, fmt: st.fmt, steps: st.steps || {} });
 }
 
-export const subscribe = fn => session.subscribe(fn);
+// Les abonnés sont gardés ici, pas dans la session : ils suivent d'un espace à l'autre.
+/** @type {Set<(keys: string[]) => void>} */
+const subscribers = new Set();
+/** @param {(keys: string[]) => void} fn */
+export const subscribe = fn => { subscribers.add(fn); return () => subscribers.delete(fn); };
+/** @param {import('../data/session.js').Session} ses */
+function attach(ses) {
+  ses.subscribe(keys => {
+    if (ses !== session) return;
+    // d'abord le format, qui suit les réglages, avant que les écrans ne se redessinent
+    if (keys.includes('settings')) syncFormat();
+    subscribers.forEach(f => { try { f(keys); } catch (e) { console.error(e); } });
+  });
+}
 
 let onError = msg => console.warn(msg);
 export function setErrorHandler(fn) { onError = fn; }
@@ -128,8 +177,7 @@ async function runOwn(cmds, own) {
 
 // --- lecture ---
 export const settings = () => lazy('settings', Q.settingsOf);
-// premier abonné : le format suit les réglages avant que les écrans ne se redessinent
-session.subscribe(keys => { if (keys.includes('settings')) syncFormat(); });
+attach(session);
 syncFormat();
 const wallets = () => lazy('wallets', Q.walletList);
 const cats = () => lazy('cats', Q.categoryList);
