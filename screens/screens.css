@@ -973,7 +973,6 @@
 /* Compte Google (D21, 2026-11-20) */
 .btn.ghost.danger { background: none; color: var(--loss); }
 .settings .row.static { cursor: default; }
-.onboarding .ob-restore { margin-top: var(--sp-4); width: 100%; }
 /* Compte Google en haut de Moi (2026-11-20, avec l'utilisateur : trop bas et caché pour quelque chose d'aussi important) */
 .me-sync-s { margin-top: 0; }
 
@@ -1016,3 +1015,5 @@ html[data-radius="square"] .rv-item { border-radius: 0; }
 .rise .dock-wrap { animation: riseIn .56s var(--spring) .1s both; }
 @keyframes riseIn { from { transform: translateY(40px); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .splash, .splash.grow, .splash .splash-in { transition: none; } .rise .screen > *, .rise .dock-wrap { animation: none; } }
+/* premier lancement, Google d'abord (2026-11-23) : « Commencer sans compte » en lien sous le bouton */
+.ob-welcome .ob-alone { margin: 0; }

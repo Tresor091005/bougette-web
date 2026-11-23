@@ -269,7 +269,7 @@ export function startCloud(ret, toast) {
   // les espaces d'un appareil lié sont attachés à son compte (ceux d'avant le 2026-11-20 aussi, dès l'ouverture)
   if (account()) claimSpaces(/** @type {import('./google.js').Account} */ (account()).email);
   if (ret && ret.purpose === 'link') {
-    if (ret.ok) finishLink().then(r => { toast(r.ok ? 'Compte Google lié' : `Lié, mais pas encore synchronisé : ${r.error}`); }).catch(e => toast(`Liaison impossible : ${e.message}`));
+    if (ret.ok) finishLink().then(r => { toast(r.ok ? 'Compte Google lié' : `Lié, mais pas encore synchronisé : ${r.error}`); window.dispatchEvent(new CustomEvent('bougette:linked', { detail: r })); }).catch(e => toast(`Liaison impossible : ${e.message}`));
     else if (ret.error !== 'access_denied') toast('Liaison avec Google impossible.');
   } else if (ret && ret.purpose === 'sync') {
     if (ret.ok) setTimeout(() => syncNow(), 800);
