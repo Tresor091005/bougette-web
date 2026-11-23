@@ -13,6 +13,9 @@ const KEY = 'cauri:splash';
 // seulement ce qui manquait à la feuille ; à durée égale, elle filait deux fois plus vite) : sa durée, en ms, gardée
 // le temps d'ouvrir le nouvel espace (aussi après un rechargement)
 const OUT = 'bougette:splash-out', GROW_MS = 440;
+// le temps de le voir (2026-11-23, avec l'utilisateur : l'app s'ouvre si vite que la tête de l'espace ne faisait que
+// passer) : il reste au moins ce temps à l'écran, depuis qu'il est posé, avant de sortir
+const MIN_MS = 900;
 /** @param {{ id: string, name: string, seed?: string }} s @param {string} [cls] */
 const splashHTML = (s, cls = '') => `<div id="splash" class="splash${cls}" aria-hidden="true"><div class="splash-in">
   <span class="splash-ava">${spaceAvatar(s)}</span><b>${esc(s.name)}</b></div></div>`;
@@ -30,20 +33,27 @@ export function showSplash({ from = null } = {}) {
   keepSplash();
   document.getElementById('splash')?.remove();
   const h = from ? from.getBoundingClientRect().height : 0;
-  document.body.insertAdjacentHTML('beforeend', splashHTML(currentSpace(), h ? ' grow sheet' : ' fade'));
+  document.body.insertAdjacentHTML('beforeend', splashHTML(currentSpace(), h ? ' grow from-sheet' : ' fade'));
   const el = /** @type {HTMLElement} */ (document.getElementById('splash'));
+  /** @type {any} */ (window).__splashAt = performance.now();
   if (!h) return new Promise(ok => setTimeout(ok, 160));
   el.style.setProperty('--from', `${Math.round(h)}px`);
   const rise = Math.max(1, innerHeight - h);
   try { sessionStorage.setItem(OUT, String(Math.round(Math.min(900, Math.max(GROW_MS, (GROW_MS * innerHeight) / rise))))); } catch (e) { /* durée par défaut */ }
   el.getBoundingClientRect(); // la hauteur de départ est posée avant de monter
   el.classList.add('full');
+  // le temps de le voir compte une fois l'écran couvert (la montée n'en fait pas partie) : posé d'avance, l'espace peut
+  // s'ouvrir avant la fin de la montée
+  /** @type {any} */ (window).__splashAt = performance.now() + 460;
   return new Promise(ok => setTimeout(ok, 460));
 }
 /** Le premier écran est là : l'écran d'ouverture sort par le haut et l'écran monte du bas. */
 export function hideSplash() {
   const el = document.getElementById('splash');
   if (!el) return;
+  const at = /** @type {any} */ (window).__splashAt;
+  const wait = typeof at === 'number' ? MIN_MS - (performance.now() - at) : 0;
+  if (wait > 0) { setTimeout(hideSplash, wait); return; }
   const d = document.documentElement;
   let ms = 600; // à l'ouverture de l'app : la vitesse d'une feuille à mi-hauteur
   try { ms = Number(sessionStorage.getItem(OUT)) || ms; sessionStorage.removeItem(OUT); } catch (e) { /* durée par défaut */ }

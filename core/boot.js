@@ -5,6 +5,6 @@
   try {
     if (JSON.parse(localStorage.getItem('cauri:pref:style') || 'null') === 'proto') document.documentElement.dataset.style = 'proto';
     const html = localStorage.getItem('cauri:splash');
-    if (html) document.body.insertAdjacentHTML('beforeend', html);
+    if (html) { document.body.insertAdjacentHTML('beforeend', html); /** @type {any} */ (window).__splashAt = performance.now(); }
   } catch (e) { /* sans écran d'ouverture */ }
 })();

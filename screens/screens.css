@@ -997,7 +997,7 @@ html[data-radius="square"] .rv-item { border-radius: 0; }
 .splash { position: fixed; left: 0; right: 0; bottom: 0; height: 100dvh; z-index: 100; display: flex; align-items: center; justify-content: center; background: var(--paper); color: var(--ink); transition: transform .46s var(--spring); }
 .splash-in { display: flex; flex-direction: column; align-items: center; gap: var(--sp-6); font-size: var(--fs-sheet); font-weight: 600; }
 .splash.grow { height: var(--from); border-radius: var(--r-sheet) var(--r-sheet) 0 0; transition: height .44s var(--spring), border-radius .44s var(--spring); }
-.splash.sheet { background: var(--card); } /* né de la feuille : son fond ; sinon celui de la page, comme l'écran de lancement d'Android (pas de saut de teinte) */
+.splash.from-sheet { background: var(--card); } /* né de la feuille : son fond ; sinon celui de la page, comme l'écran de lancement d'Android (pas de saut de teinte) */
 .splash.grow.full { height: 100dvh; border-radius: 0; }
 .splash.grow .splash-in { opacity: 0; transform: translateY(12px); transition: opacity .26s var(--ease-out) .14s, transform .44s var(--spring) .08s; }
 .splash.grow.full .splash-in { opacity: 1; transform: none; }
