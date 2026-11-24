@@ -57,6 +57,21 @@ export function checkReserves() {
       if (messages().find(x => x.key === m.key)?.title !== m.title) notify(m);
     } else for (const e of list) { live.add(e.key); e.send(); }
   }
+  // « Revoir mon épargne » (D17 revu, 2026-11-23) : quand ce qui est prévu ne suffit plus, une fois (et de nouveau si le
+  // manque grandit), jamais à chaque ouverture
+  const reviewSeen = /** @type {Record<string, number>} */ (pref('reviewSeen') || {});
+  /** @type {Record<string, number>} */
+  const reviewNow = {};
+  for (const a of savingsAccounts()) {
+    if (a.archived || a.emergency) continue;
+    const gap = savingsReport(a.id).versement.gap;
+    if (!gap) continue;
+    const key = `res-review-${a.id}`;
+    reviewNow[a.id] = Math.max(gap, reviewSeen[a.id] || 0);
+    live.add(key);
+    if (gap > (reviewSeen[a.id] || 0)) notify({ key, kind: 'warn', title: `${a.name} : tes réserves ne seront pas toutes prêtes`, body: `Il manque ${money(gap, { cur: a.currency })} par mois. Revois ton épargne : réduire, repousser, mettre en pause, ou verser plus.`, action: { label: 'Revoir', id: `review:${a.id}` } });
+  }
+  pref('reviewSeen', reviewNow);
   pref('readySeen', [...readyNow]);
   pref('goalSeen', [...goalNow]);
   for (const m of messages()) if (KEY.test(m.key) && !live.has(m.key)) resolve(m.key);

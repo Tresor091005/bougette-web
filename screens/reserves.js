@@ -8,7 +8,7 @@
 // wallet.update).
 import {
   account, savingsAccounts, savingsReport, emergencyAccount, monthlySpend, reserveById, createReserve,
-  updateReserve, reduceReserve, closeReserve, updateAccount, countedAccounts, pref, closedReserves, reserveChain,
+  updateReserve, reduceReserve, closeReserve, pauseReserve, resumeReserve, updateAccount, countedAccounts, pref, closedReserves, reserveChain,
   reserveReconducted, reserveDeletedUses, reserveUses, category, settings, accounts, scheduleById, openReserves,
 } from '../core/store.js';
 import { openDueSheet, dueHref, dayShort } from './due-page.js';
@@ -44,6 +44,7 @@ export function lateBy(due, ready) {
 export function statusHTML(v) {
   const r = v.reserve, cur = r.currency;
   if (v.full) return 'Remplie';
+  if (v.status === 'paused') return '<span class="muted">En pause</span>';
   if (v.status === 'overdue') return `<span class="loss">Échue le ${dayShort(r.due)}</span>`;
   if (v.status === 'later') return `<span class="rs-warn">Prête ${lateBy(r.due, v.ready)} trop tard</span>`;
   if (v.status === 'short') return `<span class="rs-warn">Il manquera ${money(approx(v.short, cur), { cur })}</span>`;
@@ -57,6 +58,7 @@ export const barTone = v => (v.status === 'overdue' || v.status === 'none' ? ' o
 function reserveLine(v) {
   const r = v.reserve;
   if (v.status === 'overdue') return statusHTML(v);
+  if (v.status === 'paused') return 'En pause : servie après les autres, avec ce qui reste';
   // en retard : « Prête le 2 févr 2028, 6 mois trop tard » (son échéance est dans le champ dessous)
   if (v.status === 'later') return `<span class="rs-warn">Prête le ${yearDate(v.ready)}, ${lateBy(r.due, v.ready)} trop tard</span>`;
   return `${v.status === 'ok' ? 'Prête à temps' : statusHTML(v)}${v.overdue ? ` · échue le ${yearDate(r.due)}` : ''}`;
@@ -115,7 +117,7 @@ export function reserveRowHTML(v) {
     ${chip(rv.category ? category(rv.category) : null)}
     <span class="main"><span class="l1"><span class="t">${esc(rv.name)}</span></span>
       <span class="bar rs-bar${barTone(v)}"><i style="width:${v.pct}%"></i></span>
-      <span class="l2"><span class="s">${money(v.saved, { cur })} / ${money(v.target, { cur })} · pour le ${dayShort(rv.due)}</span></span>
+      <span class="l2"><span class="s">${money(v.saved, { cur })} / ${money(v.target, { cur })} · ${rv.due ? `pour le ${dayShort(rv.due)}` : 'un jour'}</span></span>
       ${stage ? `<span class="l3 rs-stage">${stage}</span>` : ''}</span></button></div>`;
 }
 
@@ -151,24 +153,37 @@ export async function askWhen(id, openEntry) {
   const cur = r.currency;
   const k = await menuSheet({ title: `${esc(r.name)} est prête`, items: [
     { key: 'now', icon: 'arrow-right', label: 'Maintenant', note: `Tu notes la dépense de ${money(v ? v.target : r.amount - r.used, { cur })}, puis la réserve se ferme` },
-    { key: 'keep', icon: 'calendar-check', label: `Le ${dayShort(r.due)}`, note: 'L’argent reste de côté jusque-là' },
+    ...(r.due ? [{ key: 'keep', icon: 'calendar-check', label: `Le ${dayShort(r.due)}`, note: 'L’argent reste de côté jusque-là' }] : []),
     { key: 'date', icon: 'calendar-blank', label: 'À une autre date' },
   ] });
   if (!k) return;
   resolve(`res-ready-${id}`);
   if (k === 'now') afterSheets(() => useReserve(id, openEntry));
-  else if (k === 'keep') toast(`Gardée pour le ${dayShort(r.due)}`);
+  else if (k === 'keep' && r.due) toast(`Gardée pour le ${dayShort(r.due)}`);
   else afterSheets(async () => {
-    const d = await pickDate({ current: r.due, future: true, min: today(), title: 'Tu la dépenses quand ?' });
-    if (d && d !== r.due && (await updateReserve(r.id, { due: d }))) { buzz(12); toast(`Gardée pour le ${dayShort(d)}`); }
+    const d = await pickDate({ current: r.due || today(), future: true, min: today(), title: 'Tu la dépenses quand ?' });
+    if (d && d !== r.due && (await (r.due ? updateReserve(r.id, { due: d }) : resumeReserve(r.id, d)))) { buzz(12); toast(`Gardée pour le ${dayShort(d)}`); }
   });
 }
 
 /** Repousser une réserve : une nouvelle échéance. @param {any} r */
 export async function pushReserve(r) {
-  const d = await pickDate({ current: r.due > today() ? r.due : today(), future: true, min: today(), title: 'Nouvelle échéance' });
+  const d = await pickDate({ current: r.due && r.due > today() ? r.due : today(), future: true, min: today(), title: 'Nouvelle échéance' });
   if (!d) return;
   if (await updateReserve(r.id, { due: d })) { buzz(12); toast('Échéance repoussée'); }
+}
+
+/** Reprendre une réserve en pause (D17 revu) : lui redonner une date. @param {any} r */
+export async function resumeReserveAsk(r) {
+  const d = await pickDate({ current: addMonths(today(), 3), future: true, min: today(), title: 'Pour quand ?' });
+  if (!d) return;
+  if (await resumeReserve(r.id, d)) { buzz(12); toast(`Reprise pour le ${dayShort(d)}`); }
+}
+/** Mettre une réserve en pause (D17 revu) : sans date, servie après les autres, hors du manque. @param {any} r */
+export async function pauseReserveAsk(r) {
+  const yes = await confirmSheet({ title: `Mettre ${esc(r.name)} en pause ?`, text: 'Elle n’a plus de date : elle garde ce qu’elle a et reçoit ce qui reste une fois les autres réserves servies. Tu la reprends quand tu veux.', yes: 'Mettre en pause' });
+  if (!yes) return;
+  afterSheets(async () => { if (await pauseReserve(r.id)) { buzz(12); toast('Réserve en pause'); } });
 }
 
 /**
@@ -176,13 +191,13 @@ export async function pushReserve(r) {
  * @param {any} r @param {() => void} [onClosed]
  */
 export async function closeReserveAsk(r, onClosed = () => {}) {
-  const yes = await confirmSheet({
-    title: `Clore ${esc(r.name)} ?`,
-    text: 'Son argent va aux autres réserves ou à l’épargne libre. Tu pourras la reconduire depuis « Réserves terminées ».',
-    yes: 'Clore',
-  });
+  // rien payé encore : elle est abandonnée, hors des terminées (D17 revu : la vitrine de ce que l'app a aidé à financer)
+  const give = !r.used;
+  const yes = await confirmSheet(give
+    ? { title: `Abandonner ${esc(r.name)} ?`, text: 'Son argent va aux autres réserves ou à l’épargne libre. Elle n’ira pas dans les réserves terminées.', yes: 'Abandonner' }
+    : { title: `Clore ${esc(r.name)} ?`, text: 'Son argent va aux autres réserves ou à l’épargne libre. Tu pourras la reconduire depuis « Réserves terminées ».', yes: 'Clore' });
   if (!yes) return;
-  afterSheets(async () => { if (await closeReserve(r.id)) { onClosed(); toast('Réserve close'); } });
+  afterSheets(async () => { if (await closeReserve(r.id)) { onClosed(); toast(give ? 'Réserve abandonnée' : 'Réserve close'); } });
 }
 
 /** Le Journal filtré sur une réserve, sur la période de ses utilisations (du mois de la première à celui de la dernière). @param {any} r */
@@ -222,7 +237,11 @@ export async function openReserveMenu({ id, openEntry, go, atWallet = false }) {
       if (use) items.push(use);
       items.push({ key: 'push', icon: 'calendar-blank', label: 'Repousser', note: 'Choisir une nouvelle date' });
       if (!view.full && view.saved > 0) items.push({ key: 'reduce', icon: 'arrow-down', label: `Réduire à ${money(view.saved, { cur })}`, note: 'Elle vise ce qui est déjà de côté' });
-      items.push({ key: 'close', icon: 'x-circle', label: 'Clore', note: 'Son argent retourne à l’épargne' });
+      items.push({ key: 'close', icon: 'x-circle', label: r.used ? 'Clore' : 'Abandonner', note: 'Son argent retourne à l’épargne' });
+    } else if (!r.due) {
+      // en pause : Reprendre d'abord
+      items.push({ key: 'resume', icon: 'calendar-blank', label: 'Reprendre', note: 'Lui redonner une date' });
+      if (use) items.push(use);
     } else {
       const useFirst = !!use && (!!view?.full || (r.mode !== 'once' && uses.length > 0));
       if (use && useFirst) items.push(use);
@@ -243,6 +262,7 @@ export async function openReserveMenu({ id, openEntry, go, atWallet = false }) {
   if (k === 'vers') afterSheets(() => scheduleVersement(r.wallet, openEntry));
   else if (k === 'use') afterSheets(() => useReserve(r.id, openEntry));
   else if (k === 'push') afterSheets(() => pushReserve(r));
+  else if (k === 'resume') afterSheets(() => resumeReserveAsk(r));
   else if (k === 'reduce') afterSheets(async () => { if (view && (await reduceReserve(r.id, view.saved))) { buzz(12); toast('Montant réduit'); } });
   else if (k === 'close') afterSheets(() => closeReserveAsk(r));
   else if (k === 'edit') afterSheets(() => openReserveSheet({ id: r.id, openEntry }));
@@ -253,7 +273,7 @@ export async function openReserveMenu({ id, openEntry, go, atWallet = false }) {
 }
 
 /** Le portefeuille courant d'où part le versement : le premier compté dans le total, de la devise de l'épargne. @param {any} a */
-const versementFrom = a => (countedAccounts().find(x => !x.savings && x.currency === a.currency)
+export const versementFrom = a => (countedAccounts().find(x => !x.savings && x.currency === a.currency)
   || accounts().find(x => !x.savings && !x.archived && x.currency === a.currency))?.id || null;
 
 /**
@@ -366,7 +386,8 @@ export function render(app, ctx) {
           sub: r.freeMonths !== null && r.free > 0 ? `${String(r.freeMonths).replace('.', ',')} mois de dépenses` : '', end: `<span class="amt${r.free < 0 ? ' loss' : ''}">${money(r.free, { cur })}</span>` })}
       </div>`}
       <div class="group plain rs-acts">${a.emergency ? '' : rowHTML({ cls: 'add-row', attrs: `data-new="${a.id}"`, pill: `<span class="pill">${icon('plus')}</span>`, title: 'Nouvelle réserve' })}
-        ${rowHTML({ cls: 'add-row', attrs: `data-aside="${a.id}"`, pill: `<span class="pill">${icon('hand-coins')}</span>`, title: 'Mettre de côté' })}</div>
+        ${rowHTML({ cls: 'add-row', attrs: `data-aside="${a.id}"`, pill: `<span class="pill">${icon('hand-coins')}</span>`, title: 'Mettre de côté' })}
+        ${!a.emergency && r.reserves.length ? rowHTML({ cls: 'add-row', attrs: `data-review="${a.id}"`, pill: `<span class="pill">${icon('pencil-simple')}</span>`, title: 'Revoir mon épargne' }) : ''}</div>
       ${a.emergency ? '<p class="muted b-note">Pour les coups durs. Il ne compte pas dans ton total et n’a pas de réserves. 3 mois de dépenses suffisent.</p>' : ''}
       ${(() => {
         const done = closedReserves(a.id).slice(0, 12);
@@ -388,6 +409,13 @@ export function render(app, ctx) {
   wireReserveRows(app, ctx.openEntry, ctx.go, { atWallet: true });
   $$('[data-vers-new]', app).forEach(b => (b.onclick = () => { buzz(6); scheduleVersement(b.dataset.versNew || '', ctx.openEntry); }));
   $$('[data-vers]', app).forEach(b => (b.onclick = () => { buzz(6); openVersement(b.dataset.vers || '', ctx.go); }));
+  // « Revoir mon épargne » (D17 revu) : depuis la page, ou proposée par la cloche (…&revoir=1)
+  const review = (/** @type {string} */ id) => import('./savings-review.js').then(m => m.openSavingsReview(id));
+  $$('[data-review]', app).forEach(b => (b.onclick = () => { buzz(6); review(b.dataset.review || ''); }));
+  if (new URLSearchParams(location.hash.split('?')[1] || '').get('revoir') && list[0]) {
+    history.replaceState(null, '', location.hash.split('&revoir=1').join(''));
+    setTimeout(() => review(list[0].id), 300);
+  }
   $$('[data-aside]', app).forEach(b => (b.onclick = () => {
     const to = account(b.dataset.aside);
     if (!to) return;
@@ -470,7 +498,7 @@ function openClosedSheet(r, openEntry) {
   const again = reserveReconducted(r.id);
   const s = openSheet(`<div class="acc-sheet rs-sheet">
     ${sheetHead({ title: esc(r.name) })}
-    <p class="rs-say"><b>${money(r.amount, { cur: r.currency })}</b> visés · ${r.mode === 'once' ? 'en une fois' : 'en plusieurs fois'} · échéance le ${yearDate(r.due)}<br><span class="muted">${closedLine(r)}</span></p>
+    <p class="rs-say"><b>${money(r.amount, { cur: r.currency })}</b> visés · ${r.mode === 'once' ? 'en une fois' : 'en plusieurs fois'} · ${r.due ? `échéance le ${yearDate(r.due)}` : 'sans date (en pause)'}<br><span class="muted">${closedLine(r)}</span></p>
     ${historyHTML(r.id)}
     ${sheetActions(again ? '<p class="muted">Déjà reconduite.</p>' : `<button class="btn primary" data-again>${icon('arrow-counter-clockwise')}Reconduire</button>`)}
   </div>`, { label: 'Réserve terminée' });
@@ -502,9 +530,10 @@ export function openReserveSheet({ id = null, wallet = null, from = null, openEn
   const cur = a.currency, dec = currencyOf(cur).dec;
   const view = r ? savingsReport(walletId).reserves.find(v => v.reserve.id === r.id) : null;
   // reconduire : même nom, montant et utilisation ; l'échéance garde la durée d'avant, à partir d'aujourd'hui
-  const prevDue = prev ? addDays(today(), Math.max(1, daysBetween(prev.start, prev.due))) : null;
+  const prevDue = prev && prev.due ? addDays(today(), Math.max(1, daysBetween(prev.start, prev.due))) : null;
   const src = r || prev;
-  const f = { name: src?.name || '', amount: src?.amount || 0, due: r?.due || prevDue || addMonths(today(), 3), mode: src?.mode || 'once', category: src?.category || null };
+  // en pause : sans date tant qu'on n'en choisit pas une (choisir une date la reprend)
+  const f = { name: src?.name || '', amount: src?.amount || 0, due: r ? r.due : prevDue || addMonths(today(), 3), mode: src?.mode || 'once', category: src?.category || null };
   const s = openSheet(`<div class="acc-sheet rs-sheet">
     ${sheetHead({ title: r ? esc(r.name) : prev ? 'Reconduire la réserve' : 'Nouvelle réserve' })}
     ${view ? `<p class="rs-say"><b>${money(view.saved, { cur })}</b> sur ${money(view.target, { cur })}${r.used ? ` · ${money(r.used, { cur })} déjà utilisés` : ''}<br><span class="muted">${reserveLine(view)}</span>${reserveDeletedUses(r).length ? `<br><span class="muted">${reserveDeletedUses(r).length > 1 ? 'Des opérations faites avec elle ont été supprimées' : 'Une opération faite avec elle a été supprimée'} : son argent est revenu dans la réserve.</span>` : ''}</p>` : '<p class="muted rs-say">De l’argent mis de côté pour une dépense à venir.</p>'}
@@ -518,12 +547,12 @@ export function openReserveSheet({ id = null, wallet = null, from = null, openEn
     <div data-err></div>
     ${r ? historyHTML(r.id) : prev ? historyHTML(prev.id, true) : ''}
     ${sheetActions(`<button class="btn primary" data-save>${icon('check')}${r ? 'Enregistrer' : 'Créer la réserve'}</button>
-      ${r ? `<button type="button" class="btn ghost" data-closeres>${icon('x-circle')}Clore la réserve</button>` : ''}`)}
+      ${r ? `<button type="button" class="btn ghost" data-closeres>${icon('x-circle')}${r.used ? 'Clore la réserve' : 'Abandonner la réserve'}</button>` : ''}`)}
   </div>`, { label: 'Réserve' });
   const el = s.el, errEl = $('[data-err]', el), nameIn = /** @type {HTMLInputElement} */ ($('[data-name]', el)), amtIn = /** @type {HTMLInputElement} */ ($('[data-amt]', el));
   const showErr = msg => { errEl.innerHTML = noticeHTML(esc(msg)); buzz(14); };
   const paint = () => {
-    $('[data-duel]', el).textContent = yearDate(f.due);
+    $('[data-duel]', el).textContent = f.due ? yearDate(f.due) : 'Un jour (en pause)';
     const cl = f.category ? category(f.category)?.name || '' : ''; // le nom seul (unique, D13), comme partout
     $('[data-catl]', el).textContent = cl || 'Choisir';
     const wl = $('[data-wall]', el);
@@ -543,7 +572,7 @@ export function openReserveSheet({ id = null, wallet = null, from = null, openEn
     if (c && c !== '*') { f.category = c; paint(); }
   };
   $('[data-due]', el).onclick = async () => {
-    const d = await pickDate({ current: f.due, future: true, min: today(), title: 'Échéance' });
+    const d = await pickDate({ current: f.due || addMonths(today(), 3), future: true, min: today(), title: 'Échéance' });
     if (d) { f.due = d; paint(); }
   };
 

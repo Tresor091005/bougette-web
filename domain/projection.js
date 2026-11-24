@@ -376,6 +376,12 @@ const HANDLERS = {
     putReserve(s, { id: data.id, wallet_id: w.id, name: data.name, amount: data.amount, used: 0, currency: w.currency, start_on: data.start, due_on: data.due,
       mode: data.mode, repeats: data.repeat || 0, pinned: null, closed_on: null, created_at: at, from_id: data.from ?? null, uses: null, category_id: data.category ?? null });
   },
+  'reserve.paused': (s, { data }) => {
+    const r = reserveOrThrow(s, data.id);
+    if (r.closed_on) throw new ProjectionError(`Réserve ${data.id} déjà close`);
+    // keep : ce qu'elle avait, qu'elle garde en pause (dans held, que ses utilisations font baisser)
+    putReserve(s, { ...r, due_on: '', held: Math.max(0, Math.min(Number(data.keep) || 0, r.amount - r.used)) || null });
+  },
   'reserve.updated': (s, { data }) => {
     const r = reserveOrThrow(s, data.id);
     const ch = pick(data.changes, ['name', 'amount', 'due', 'mode', 'repeat', 'pinned', 'category']);
@@ -384,6 +390,7 @@ const HANDLERS = {
     if ('name' in ch) out.name = ch.name;
     if ('amount' in ch) out.amount = ch.amount;
     if ('due' in ch) out.due_on = ch.due;
+    if ('due' in ch && r.due_on === '' && ch.due) out.held = null; // reprise : elle redevient datée, servie à son niveau
     if ('mode' in ch) out.mode = ch.mode;
     if ('repeat' in ch) out.repeats = ch.repeat || 0;
     if ('pinned' in ch) out.pinned = ch.pinned ?? null;
@@ -507,7 +514,8 @@ function putReserve(s, r) {
   if (!Number.isSafeInteger(r.used) || r.used < 0 || r.used > r.amount) throw new ProjectionError(`Utilisé de la réserve ${r.id} illisible`);
   if (!Number.isSafeInteger(r.repeats) || r.repeats < 0) throw new ProjectionError(`Répétition de la réserve ${r.id} illisible`);
   if (r.pinned != null && (!Number.isSafeInteger(r.pinned) || r.pinned < 0)) throw new ProjectionError(`Montant fixé de la réserve ${r.id} illisible`);
-  if (!DAY.test(r.start_on) || !DAY.test(r.due_on) || r.start_on > r.due_on) throw new ProjectionError(`Dates de la réserve ${r.id} illisibles`);
+  // due_on vide : en pause, sans date (D17 revu, 2026-11-23)
+  if (!DAY.test(r.start_on) || (r.due_on !== '' && (!DAY.test(r.due_on) || r.start_on > r.due_on))) throw new ProjectionError(`Dates de la réserve ${r.id} illisibles`);
   if (r.closed_on != null && !DAY.test(r.closed_on)) throw new ProjectionError(`Date de clôture de la réserve ${r.id} illisible`);
   if (typeof r.name !== 'string' || !r.name) throw new ProjectionError(`Nom de la réserve ${r.id} illisible`);
   put(s, 'reserves', r);

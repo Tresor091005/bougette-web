@@ -1017,3 +1017,35 @@ html[data-radius="square"] .rv-item { border-radius: 0; }
 @media (prefers-reduced-motion: reduce) { .splash, .splash.grow, .splash .splash-in { transition: none; } .rise .screen > *, .rise .dock-wrap { animation: none; } }
 /* premier lancement, Google d'abord (2026-11-23) : « Commencer sans compte » en lien sous le bouton */
 .ob-welcome .ob-alone { margin: 0; }
+
+/* Revoir mon épargne (D17 revu, 2026-11-23) : chaque réserve et ses gestes ; le manque recalculé en tête */
+.sr-gap { margin: 0 0 var(--sp-6); color: var(--ink-2); line-height: 1.45; }
+.sr-list { display: flex; flex-direction: column; gap: var(--sp-5); margin-bottom: var(--sp-8); }
+.sr-item { padding: var(--sp-5) 0; border-bottom: 1px solid var(--rule); }
+.sr-item.gone { opacity: .55; }
+.sr-t { font-weight: 600; }
+.sr-item .rs-bar { margin: var(--sp-3) 0; }
+.sr-s { color: var(--ink-2); font-size: var(--fs-2nd); margin-top: var(--sp-1); }
+.sr-acts { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin-top: var(--sp-4); align-items: center; }
+.sr-acts .chip-btn { min-height: 44px; padding: 0 var(--sp-5); border-radius: var(--r-pill); background: var(--field); color: var(--ink); font-size: var(--fs-2nd); }
+.sr-acts .link { margin: 0 0 0 var(--sp-2); }
+
+/* À propos, confidentialité, conditions (2026-11-24, revues le même jour : « vilaines ») : un en-tête avec l'icône de la
+   page et ce qu'elle dit ; chaque partie, son icône à gauche, un titre et le texte ; séparées d'un filet, sur le papier */
+.lg-hero { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-5); padding: var(--sp-4) 0 var(--sp-8); border-bottom: 1px solid var(--rule); }
+.lg-badge { width: 52px; height: 52px; border-radius: var(--r-lg); background: var(--accent-soft); color: var(--accent-text); display: grid; place-items: center; }
+.lg-badge .ic { width: 26px; height: 26px; }
+.lg-hero p { font-size: var(--fs-section); line-height: 1.45; color: var(--ink); margin: 0; text-wrap: pretty; }
+.lg-list { display: flex; flex-direction: column; }
+.lg-sec { display: flex; gap: var(--sp-6); padding: var(--sp-7) 0; border-bottom: 1px solid var(--rule); }
+.lg-sec .pill { flex: none; margin-top: var(--sp-1); }
+.lg-body { min-width: 0; }
+.lg-body h2 { font: 500 var(--fs-body)/1.35 var(--sans); color: var(--ink); margin: 0 0 var(--sp-2); }
+.lg-body p { color: var(--ink-2); font-size: var(--fs-2nd); line-height: 1.55; margin: 0 0 var(--sp-3); }
+.lg-body p:last-child { margin-bottom: 0; }
+.lg-body b { color: var(--ink); font-weight: 500; }
+.lg-foot { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-4); color: var(--ink-3); font-size: var(--fs-2nd); margin: var(--sp-6) 0 var(--sp-10); }
+.lg-foot .link { margin: 0; color: var(--accent-text); }
+.legal-screen .lg-lead { color: var(--ink-2); font-size: var(--fs-body); line-height: 1.5; margin: var(--sp-2) 0 var(--sp-8); }
+.lg-body ol { margin: 0; padding-left: var(--sp-8); color: var(--ink-2); font-size: var(--fs-2nd); line-height: 1.55; display: flex; flex-direction: column; gap: var(--sp-3); }
+.lg-body li::marker { color: var(--ink-3); }

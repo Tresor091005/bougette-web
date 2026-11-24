@@ -13,11 +13,7 @@ export function render(app, { back }) {
     ${topbarHTML({ title: 'Affichage' })}
     ${sectionHTML({ title: 'Style', body: `
       <div class="group plain"><div class="row stack">${seg([['carnet', 'Carnet'], ['proto', 'Proto']], uiStyle(), 'look-style')}</div></div>
-      <p class="hint left">Carnet : le style de Bougette. Proto : bleu ardoise et crème. Changer de style remet sa police et ses coins.</p>` })}
-    ${sectionHTML({ title: 'Police', body: `
-      <div class="group plain"><div class="row stack"><div class="t">Le texte</div>${seg([['geist', 'Geist'], ['mono', 'Mono']], l.text, 'look-text')}</div>
-        <div class="row stack"><div class="t">Les montants</div>${seg([['geist', 'Geist'], ['mono', 'Mono']], l.num, 'look-num')}</div></div>
-      <p class="hint left">Mono : chaque caractère a la même largeur.</p>` })}
+      <p class="hint left">Carnet : le style de Bougette. Proto : bleu ardoise et crème. Changer de style remet ses coins.</p>` })}
     ${sectionHTML({ title: 'Coins', body: `
       <div class="group plain"><div class="row stack">${seg([['round', 'Ronds'], ['square', 'Carrés']], l.radius, 'look-radius')}</div></div>` })}
     ${sectionHTML({ cls: 'tail', body: `<div class="group plain">
@@ -27,8 +23,6 @@ export function render(app, { back }) {
   </div>`;
   wireBack(app, () => back('#/reglages'));
   wireSeg(/** @type {HTMLElement} */ ($('.look-style', app)), v => { buzz(8); setUiStyle(v === 'proto' ? 'proto' : 'carnet'); });
-  wireSeg(/** @type {HTMLElement} */ ($('.look-text', app)), v => { buzz(8); setLook({ text: v }); });
-  wireSeg(/** @type {HTMLElement} */ ($('.look-num', app)), v => { buzz(8); setLook({ num: v }); });
   wireSeg(/** @type {HTMLElement} */ ($('.look-radius', app)), v => { buzz(8); setLook({ radius: v }); });
   $$('[data-toggle]', app).forEach(b => (b.onclick = () => {
     const k = /** @type {string} */ (b.dataset.toggle);

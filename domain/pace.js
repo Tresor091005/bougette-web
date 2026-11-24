@@ -54,3 +54,36 @@ export function runway({ base, moves, today, period, window = 14, step = 1 }) {
   if (until >= period.end) return { ...out, state: 'whole', until: period.end, ratio, leftover: Math.max(0, Math.floor((base - rate * daysLeft) / step) * step) };
   return { ...out, state: 'short', until, ratio, cut: Math.max(step, Math.ceil((rate - base / daysLeft) / step) * step) };
 }
+
+/**
+ * Ce mois face à d'habitude (2026-11-23, avec l'utilisateur : l'anneau « F / jour » se lisait comme ce qu'on a le droit
+ * de dépenser ; comme Money Lover, on compare plutôt ce qui est dépensé depuis le début de la période à ce qui l'était
+ * d'habitude au même jour). D'habitude : la moyenne des périodes d'avant (previous, la plus récente d'abord) que
+ * l'historique couvre en entier (la première dépense notée au plus tard leur premier jour) ; le même rang de jour,
+ * ramené au dernier jour d'une période plus courte. Les dépenses comptées : toutes celles notées, échéances comprises,
+ * sans les prévues.
+ * now, usual : dépensé ce mois-ci jusqu'à aujourd'hui, et d'habitude au même jour ; pct : l'écart en % (null sans
+ * habitude ou d'habitude rien) ; months : combien de périodes font l'habitude ; curveNow (jusqu'à aujourd'hui) et
+ * curveUsual (toute la période) : le cumul jour après jour, pour la courbe.
+ * @param {{ moves: Move[], today: string, current: Period, previous: Period[] }} o
+ * @returns {{ now: number, usual: number, pct: number|null, months: number, day: number, curveNow: number[], curveUsual: number[] }}
+ */
+export function habitPace({ moves, today, current, previous }) {
+  const spends = moves.filter(m => m.type === 'expense' && !m.planned && m.date <= today);
+  const first = spends.reduce((d, m) => (m.date < d ? m.date : d), today);
+  /** le cumul jour après jour d'une période (jusqu'à `upTo` compris) @param {Period} p @param {string} upTo */
+  const cumul = (p, upTo) => {
+    const out = Array(p.days).fill(0);
+    for (const m of spends) if (m.date >= p.start && m.date <= p.end && m.date <= upTo) out[daysBetween(p.start, m.date)] += m.amount;
+    for (let i = 1; i < out.length; i++) out[i] += out[i - 1];
+    return out;
+  };
+  const day = Math.max(0, Math.min(current.days - 1, daysBetween(current.start, today)));
+  const nowAll = cumul(current, today);
+  const curveNow = nowAll.slice(0, day + 1);
+  const used = previous.filter(p => first <= p.start).map(p => cumul(p, p.end));
+  const curveUsual = Array.from({ length: current.days }, (_, i) =>
+    used.length ? Math.round(used.reduce((n, c) => n + c[Math.min(i, c.length - 1)], 0) / used.length) : 0);
+  const now = curveNow[day] || 0, usual = curveUsual[day] || 0;
+  return { now, usual, pct: used.length && usual > 0 ? Math.round((now / usual - 1) * 100) : null, months: used.length, day, curveNow, curveUsual };
+}

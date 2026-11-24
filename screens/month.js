@@ -59,7 +59,8 @@ function openReserves(reports) {
   return reports.flatMap(x => x.rep.reserves.map((/** @type {any} */ v) => ({ v })))
     .sort((p, q) => {
       const u = (/** @type {any} */ x) => (x.v.status === 'overdue' ? 0 : x.v.status === 'none' ? 1 : x.v.status === 'short' || x.v.status === 'later' ? 2 : 3);
-      return u(p) - u(q) || (p.v.reserve.due < q.v.reserve.due ? -1 : p.v.reserve.due > q.v.reserve.due ? 1 : 0);
+      const dp = p.v.reserve.due || '9999-12-31', dq = q.v.reserve.due || '9999-12-31'; // en pause : en dernier
+      return u(p) - u(q) || (dp < dq ? -1 : dp > dq ? 1 : 0);
     });
 }
 /** Une épargne qui a un souci : une réserve échue ou sans rien de prévu. @param {{ rep: any }} x */

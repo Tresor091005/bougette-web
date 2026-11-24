@@ -37,6 +37,8 @@ export const EVENT_TYPES = {
   // réserves d'un portefeuille d'épargne (D17)
   'reserve.created': 1,
   'reserve.updated': 1,
+  // en pause (D17 revu, 2026-11-23) : la réserve perd sa date ; Reprendre la lui redonne (reserve.updated)
+  'reserve.paused': 1,
   'reserve.used': 1,
   'reserve.closed': 1,
   // répartition enregistrée (D17, revu) : de l'argent mis dans (ou repris d'une) réserve

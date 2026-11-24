@@ -15,14 +15,14 @@ import { duesOf, dueItems, scheduleById, dateAfter } from './dues.js';
 /** @typedef {import('./projection.js').Row} Row */
 /**
  * @typedef {{ id: string, wallet: string, name: string, amount: number, used: number, currency: string, start: string,
- *   due: string, mode: 'once'|'gradual', held: number, closed: string|null, from: string|null, uses: string[], category: string|null,
- *   created?: string }} Reserve
+ *   due: string|null, mode: 'once'|'gradual', held: number, closed: string|null, from: string|null, uses: string[], category: string|null,
+ *   created?: string, keep?: number }} Reserve keep : en pause, ce qu'elle garde (ce qu'elle avait à la pause)
  */
 /**
  * Ce que dit une réserve (D17 revu le 2026-11-20) : 'full' remplie ; 'overdue' échue sans être remplie ; 'ok' prête à
  * temps ; 'later' pas prête à temps, mais ce qui est prévu la remplit plus tard (ready) ; 'short' ce qui est prévu ne la
- * remplit jamais (short : ce qui manquera à son échéance) ; 'none' rien de prévu.
- * @typedef {'full'|'overdue'|'ok'|'later'|'short'|'none'} ReserveStatus
+ * remplit jamais (short : ce qui manquera à son échéance) ; 'none' rien de prévu ; 'paused' en pause, sans date (« Un jour »).
+ * @typedef {'full'|'overdue'|'ok'|'later'|'short'|'none'|'paused'} ReserveStatus
  */
 /**
  * @typedef {{ reserve: Reserve, target: number, saved: number, pct: number, full: boolean, overdue: boolean, soon: boolean,
@@ -43,9 +43,22 @@ export function addMonths(d, n) {
   return new Date(Date.UTC(y, m, Math.min(day, last))).toISOString().slice(0, 10);
 }
 
+// En pause (D17 revu, 2026-11-23) : une réserve sans date (« Un jour »), due_on vide. Servie après toutes les réserves
+// datées, avec ce qui reste ; hors du manque et du rejeu ; elle garde ce qu'elle a sans le bloquer (en cas de coup dur,
+// son argent va d'abord aux réserves datées). Reprendre : lui redonner une date.
+const FAR = '9999-12-31';
+/** La date qui ordonne une réserve (en pause : après toutes les autres). @param {{ due: string|null }} r */
+export const dueKey = r => r.due || FAR;
+/** La date d'une réserve datée (le rejeu ne garde que celles-là). @param {{ due: string|null }} r */
+const dated = r => /** @type {string} */ (r.due);
+/** Une réserve en pause (sans date) ? @param {{ due: string|null }} r */
+export const isPaused = r => !r.due;
+/** Une réserve abandonnée : close sans avoir rien payé (elle n'entre pas dans les terminées, D17 revu). @param {{ closed: string|null, used: number }} r */
+export const isAbandoned = r => !!r.closed && !r.used;
+
 /** @param {Row} r @returns {Reserve} */
 const reserveOf = r => ({
-  id: r.id, wallet: r.wallet_id, name: r.name, amount: r.amount, used: r.used, currency: r.currency, start: r.start_on, due: r.due_on,
+  id: r.id, wallet: r.wallet_id, name: r.name, amount: r.amount, used: r.used, currency: r.currency, start: r.start_on, due: r.due_on || null,
   mode: r.mode, held: r.held || 0, closed: r.closed_on ?? null, from: r.from_id ?? null, uses: r.uses ? JSON.parse(r.uses) : [], category: r.category_id ?? null,
   created: r.created_at || '',
 });
@@ -53,7 +66,7 @@ const reserveOf = r => ({
 export function reservesOf(s, { wallet, open } = {}) {
   return [...s.reserves.values()].map(reserveOf)
     .filter(r => (!wallet || r.wallet === wallet) && (!open || !r.closed))
-    .sort((a, b) => (!a.closed === !b.closed ? 0 : a.closed ? 1 : -1) || (a.due < b.due ? -1 : a.due > b.due ? 1 : 0) || (a.id < b.id ? -1 : 1));
+    .sort((a, b) => (!a.closed === !b.closed ? 0 : a.closed ? 1 : -1) || (dueKey(a) < dueKey(b) ? -1 : dueKey(a) > dueKey(b) ? 1 : 0) || (a.id < b.id ? -1 : 1));
 }
 /**
  * Les fois successives d'une même réserve (reconduites l'une de l'autre), de la plus ancienne à la plus récente.
@@ -103,6 +116,7 @@ export const targetOf = r => r.amount - r.used;
  */
 export function expectedOf(r, today) {
   const t = targetOf(r);
+  if (!r.due) return 0; // en pause : aucun niveau à tenir, seulement ce qui reste
   if (today >= r.due) return t;
   if (today < r.start) return 0;
   const total = daysBetween(r.start, r.due);
@@ -110,7 +124,7 @@ export function expectedOf(r, today) {
 }
 
 /** L'ordre de la répartition : l'échéance la plus proche d'abord (à égalité, la plus petite). @param {Reserve} x @param {Reserve} y */
-const byDue = (x, y) => (x.due < y.due ? -1 : x.due > y.due ? 1 : 0) || targetOf(x) - targetOf(y);
+const byDue = (x, y) => (dueKey(x) < dueKey(y) ? -1 : dueKey(x) > dueKey(y) ? 1 : 0) || targetOf(x) - targetOf(y);
 
 /**
  * Répartition d'un argent entre les réserves ouvertes (revu le 2026-11-19, avec l'utilisateur). Simple : par échéance,
@@ -135,7 +149,10 @@ export function suggestSplit(amount, open, today) {
   };
   // 1. chacune à son niveau, arrondi au pas de la devise par excès (les plus proches d'abord : elles passent avant)
   for (const r of order) { const st = stepOf(r.currency); give(r, Math.min(Math.ceil(expectedOf(r, today) / st) * st, targetOf(r))); }
-  for (const r of order) give(r, targetOf(r)); // 2. le reste les complète totalement, la plus proche d'abord
+  // 2. en pause (D17 revu) : une fois les datées à leur niveau, elle garde ce qu'elle avait à la pause (keep ; mettre en
+  // pause ne la vide pas) ; en cas de coup dur, les niveaux des datées passent avant ; au-delà, elle est servie en dernier
+  for (const r of order) if (!r.due) give(r, Math.min(r.keep || 0, targetOf(r)));
+  for (const r of order) give(r, targetOf(r)); // 3. le reste complète les datées, la plus proche d'abord
   return { parts, free: left };
 }
 
@@ -148,7 +165,7 @@ export function suggestRelease(amount, open) {
   /** @type {Record<string, number>} */
   const out = {};
   let left = Math.max(0, amount);
-  for (const r of [...open].sort((a, b) => (a.due < b.due ? 1 : a.due > b.due ? -1 : 0))) {
+  for (const r of [...open].sort((a, b) => (dueKey(a) < dueKey(b) ? 1 : dueKey(a) > dueKey(b) ? -1 : 0))) {
     const g = Math.min(r.held, left);
     if (g > 0) { out[r.id] = g; left -= g; }
   }
@@ -165,11 +182,12 @@ export function suggestRelease(amount, open) {
 export function reserveView(r, saved, today, look = null, own = 0) {
   const target = targetOf(r);
   const full = saved >= target;
-  const daysLeft = daysBetween(today, r.due);
-  const overdue = today > r.due;
+  const paused = !r.due;
+  const daysLeft = paused ? Infinity : daysBetween(today, /** @type {string} */ (r.due));
+  const overdue = !paused && today > /** @type {string} */ (r.due);
   const ready = look ? look.ready : null;
   /** @type {ReserveStatus} */
-  const status = full ? 'full' : overdue ? 'overdue' : ready && ready <= r.due ? 'ok' : ready ? 'later' : look?.plan ? 'short' : 'none';
+  const status = full ? 'full' : paused ? 'paused' : overdue ? 'overdue' : ready && ready <= /** @type {string} */ (r.due) ? 'ok' : ready ? 'later' : look?.plan ? 'short' : 'none';
   return {
     reserve: r, target, saved, pct: target ? Math.min(100, Math.floor((saved * 100) / target)) : 100, full, overdue,
     soon: !full && daysLeft >= 0 && daysLeft <= 7, short: look && !full ? look.short : 0, ready, plan: !!look?.plan, own, status,
@@ -188,7 +206,7 @@ export function reserveView(r, saved, today, look = null, own = 0) {
  */
 export function allocationOf(s, walletId, today) {
   const balance = walletBalances(s)[walletId] || 0;
-  const open = reservesOf(s, { wallet: walletId, open: true }).map(r => ({ ...r, held: 0 }));
+  const open = reservesOf(s, { wallet: walletId, open: true }).map(r => ({ ...r, held: 0, keep: r.due ? 0 : r.held }));
   const own = ownOf(s, open);
   const { parts } = splitOwn(Math.max(0, balance), open, own, today);
   return { balance, parts, free: balance - Object.values(parts).reduce((n, v) => n + v, 0), own };
@@ -251,7 +269,8 @@ export function splitOwn(amount, open, own, today) {
   let left = Math.max(0, amount);
   /** @type {Record<string, number>} */
   const held = {};
-  for (const r of [...open].sort(byDue)) { const g = Math.min(own[r.id] || 0, left); held[r.id] = g; left -= g; }
+  // l'argent propre d'abord, aux réserves datées seulement (en pause : son argent va d'abord aux datées en cas de coup dur)
+  for (const r of [...open].sort(byDue)) { const g = r.due ? Math.min(own[r.id] || 0, left) : 0; held[r.id] = g; left -= g; }
   const rest = suggestSplit(left, open.map(r => ({ ...r, held: held[r.id] })), today);
   /** @type {Record<string, number>} */
   const parts = {};
@@ -269,7 +288,7 @@ export function allocationAfter(s, walletId, today, reserveId, amount) {
   const balance = (walletBalances(s)[walletId] || 0) - amount;
   const before = reservesOf(s, { wallet: walletId, open: true });
   const own = ownOf(s, before);
-  const all = before.map(r => ({ ...r, held: 0, used: r.id === reserveId ? r.used + amount : r.used }));
+  const all = before.map(r => ({ ...r, held: 0, keep: r.due ? 0 : Math.max(0, r.held - (r.id === reserveId ? amount : 0)), used: r.id === reserveId ? r.used + amount : r.used }));
   const it = all.find(r => r.id === reserveId);
   if (it) own[it.id] = Math.max(0, Math.min((own[it.id] || 0) - amount, targetOf(it))); // la dépense prend d'abord son argent propre
   const open = all.filter(r => !(r.id === reserveId && (r.mode === 'once' || r.used >= r.amount)));
@@ -299,11 +318,16 @@ export function allocationAfter(s, walletId, today, reserveId, amount) {
  * @param {State} s @param {string} walletId @param {string} today @returns {Replay|null}
  */
 function replayOf(s, walletId, today) {
-  const live = reservesOf(s, { wallet: walletId, open: true }).map(r => ({ ...r, held: 0 }));
-  if (!live.length) return null;
-  const until = addMonths(live.reduce((m, r) => (r.due > m ? r.due : m), today), 12);
+  // en pause : dans le rejeu comme sur la page (elle prend ce qui reste une fois les datées à leur niveau), sans échéance
+  const live = reservesOf(s, { wallet: walletId, open: true }).map(r => ({ ...r, held: 0, keep: r.due ? 0 : r.held }));
+  const datedLive = live.filter(r => r.due);
+  if (!datedLive.length) return null;
+  const until = addMonths(datedLive.reduce((m, r) => (dated(r) > m ? dated(r) : m), today), 12);
+  // une dépense payée par une réserve datée n'est que cette réserve dépensée ; payée par une réserve en pause (sans date),
+  // elle sort bien de l'épargne
+  const datedIds = new Set(datedLive.map(r => r.id));
   /** @type {Flow[]} */
-  const flows = duesOf(s, today, until, walletId).filter(d => !d.paused && !d.needsWallet && !(d.kind === 'expense' && d.reserve)).map(d => ({
+  const flows = duesOf(s, today, until, walletId).filter(d => !d.paused && !d.needsWallet && !(d.kind === 'expense' && d.reserve && datedIds.has(d.reserve))).map(d => ({
     date: d.date < today ? today : d.date, on: d.date, amount: d.amount, into: d.kind !== 'expense' && (d.kind === 'income' || d.to === walletId),
     reserve: d.kind === 'transfer' && d.to === walletId ? d.reserve : null, kind: d.kind, note: d.note,
   }));
@@ -334,7 +358,7 @@ function replay(base, today, extra = []) {
   const seen = new Set();
   /** le premier jour depuis lequel chaque réserve est remplie @type {Record<string, string>} */
   const fullSince = {};
-  const dates = [...new Set([today, ...flows.map(f => f.date), ...live.map(r => (r.due < today ? today : r.due))])].sort();
+  const dates = [...new Set([today, ...flows.map(f => f.date), ...live.filter(r => r.due).map(r => (dated(r) < today ? today : dated(r)))])].sort();
   for (const d of dates) {
     if (!live.length) break;
     const day = flows.filter(f => f.date === d);
@@ -350,7 +374,7 @@ function replay(base, today, extra = []) {
       if (targetOf(r) - parts[r.id] < stepOf(r.currency)) fullSince[r.id] ||= d;
       else delete fullSince[r.id];
     }
-    for (const r of live.filter(x => x.due <= d)) {
+    for (const r of live.filter(x => x.due && dated(x) <= d)) {
       const miss = targetOf(r) - parts[r.id];
       if (!seen.has(r.id)) { seen.add(r.id); out[r.id].atDue = parts[r.id]; out[r.id].short = miss < stepOf(r.currency) ? 0 : miss; }
       if (miss < stepOf(r.currency)) {
@@ -401,11 +425,11 @@ export function shortfallOf(s, walletId, today, monthStart = 1) {
   const base = replayOf(s, walletId, today);
   const first = addDays(monthSpan(addDays(today, -1), monthStart).end, 1);
   const inflow = base?.flows.find(f => f.into) || null;
-  const helped = base ? base.live.filter(r => r.due >= today && r.due >= first) : [];
+  const helped = base ? base.live.filter(r => r.due && dated(r) >= today && dated(r) >= first) : [];
   if (!base || !helped.length) return { gap: null, next: first, inflow };
   const cur = s.accounts.get(walletId)?.currency || helped[0].currency;
   const step = stepOf(cur);
-  const starts = periodStarts(addDays(today, -1), helped.reduce((m, r) => (r.due > m ? r.due : m), first), monthStart);
+  const starts = periodStarts(addDays(today, -1), helped.reduce((m, r) => (dated(r) > m ? dated(r) : m), first), monthStart);
   const holds = (/** @type {number} */ k) => {
     const look = replay(base, today, k ? starts.map(d => ({ date: d, on: d, amount: k * step, into: true, reserve: null, kind: 'transfer', note: '' })) : []);
     return helped.every(r => !look[r.id].short);

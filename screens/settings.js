@@ -115,6 +115,7 @@ export function render(app, { go }) {
         ${row('data-go="#/reglages/verrou"', 'lock-simple', 'Verrouillage', !hasCode() ? 'Pas de code' : lockAtOpen() ? 'Code demandé à l’ouverture' : 'Code choisi')}
         ${row('data-go="#/reglages/donnees"', 'shield-check', 'Données et sauvegarde', 'Vérifier, exporter, repartir de zéro')}
         ${updateAvailable() ? row('data-update', 'download-simple', 'Mises à jour', `Version du ${esc(VERSION)}`) : ''}
+        ${row('data-go="#/reglages/a-propos"', 'info', 'À propos', 'Aide, confidentialité, conditions')}
       </div>` })}
 
     ${devUnlocked() ? sectionHTML({ title: 'Outils', body: `
@@ -122,7 +123,6 @@ export function render(app, { go }) {
         ${row('data-go="#/reglages/dev"', 'code', 'Développeur', 'Démo, accueil guidé, messages, retour en arrière')}
       </div>` }) : ''}
 
-    <div class="about">${icon('logo')}<b>Bougette</b><span data-version>Version du ${VERSION}</span> · marche sans internet<br>${account() ? 'Tes données restent sur ce téléphone et dans ton Google Drive.' : 'Tes données restent sur ce téléphone.'}</div>
   </div>`;
 
   $$('[data-go]', app).forEach(b => (b.onclick = () => go(b.dataset.go)));
@@ -134,5 +134,4 @@ export function render(app, { go }) {
   $('[data-display]', app).onclick = () => go('#/reglages/affichage');
   const up = $('[data-update]', app);
   if (up) up.onclick = () => { buzz(6); openUpdateSheet(); };
-  versionTaps(/** @type {HTMLElement} */ ($('.about [data-version]', app)));
 }

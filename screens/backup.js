@@ -221,6 +221,7 @@ export function openInboxSheet() {
     else if (m.action.id === 'update') setTimeout(() => window.dispatchEvent(new CustomEvent('bougette:open-update')), 280);
     else if (m.action.id === 'assign') setTimeout(() => { location.hash = '#/mois'; }, 280);
     else if (m.action.id === 'savings') setTimeout(() => { location.hash = '#/epargne'; }, 280);
+    else if (m.action.id.startsWith('review:')) setTimeout(() => { location.hash = `#/epargne?w=${encodeURIComponent(m.action.id.slice(7))}&revoir=1`; }, 280);
     // une réserve prête (2026-11-19) : « Tu la dépenses quand ? »
     else if (m.action.id.startsWith('when:')) {
       const id = m.action.id.slice(5);

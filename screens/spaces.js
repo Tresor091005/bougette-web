@@ -8,7 +8,7 @@
 import { spaces, openSpaces, archivedSpaces, currentSpace, addSpace, renameSpace, chooseSpace, archiveSpace, reopenSpace, startOver, nextSpaceName, reopen, MAIN, DEMO } from '../core/spaces.js';
 import { esc, shortDate, iso } from '../core/format.js';
 import { icon } from '../core/icons.js';
-import { buzz, menuSheet, promptSheet, toast, openSheet, $, $$ } from '../core/ui.js';
+import { buzz, menuSheet, promptSheet, toast, openSheet, afterSheets, $, $$ } from '../core/ui.js';
 import { askIdentity } from './lock.js';
 import { spaceAvatar } from '../core/avatar.js';
 import { topbarHTML, wireBack, rowHTML, sectionHTML, sheetHead } from './parts.js';
@@ -77,8 +77,9 @@ export function openSpacesSheet({ go }) {
     buzz(8);
     openSpace(x, b.closest('.sheet'));
   }));
-  $('[data-sp-new]', s.el).onclick = () => { buzz(6); s.close(); newSpace(); };
-  $('[data-sp-manage]', s.el).onclick = () => { buzz(6); s.close(); go('#/reglages/espaces'); };
+  // la feuille se ferme en reculant dans l'historique : la page s'ouvre une fois ce retour fini (sinon il l'annulait, 2026-11-24)
+  $('[data-sp-manage]', s.el).onclick = () => { buzz(6); s.close(); afterSheets(() => go('#/reglages/espaces')); };
+  $('[data-sp-new]', s.el).onclick = () => { buzz(6); s.close(); afterSheets(() => newSpace()); };
 }
 
 export function render(app, { back }) {
@@ -122,7 +123,7 @@ export function render(app, { back }) {
     const k = await menuSheet({ title: esc(s.name), items });
     if (k === 'open') return openSpace(s);
     if (k === 'rename') {
-      if (!(await askIdentity('Renommer l’espace'))) return;
+      // renommer ne fait rien sortir ni ne casse rien : sans code à demander (2026-11-24, avec l'utilisateur)
       const name = await promptSheet({ title: 'Renommer l’espace', value: s.name, yes: 'Renommer', check: v => nameProblem(v, s.id) });
       if (name === null) return;
       try { renameSpace(s.id, name); render(app, { back }); } catch (e) { toast(/** @type {Error} */ (e).message); }

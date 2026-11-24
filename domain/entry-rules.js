@@ -175,12 +175,12 @@ export const reserveUsable = (v, balance) => v.reserve.mode !== 'once' || balanc
  * Les réserves dans l'ordre de la saisie : la choisie en tête (comme la catégorie choisie), puis celles qu'on peut
  * utiliser (par échéance), les grisées à la fin (2026-11-19 : une grisée en tête, c'était le premier toucher qui ne
  * marchait pas).
- * @template {{ reserve: { id: string, due: string } }} V
+ * @template {{ reserve: { id: string, due: string|null } }} V
  * @param {V[]} list @param {string|null} chosen @param {(v: V) => boolean} usable
  * @returns {V[]}
  */
 export const reserveOrder = (list, chosen, usable) => [...list].sort((x, y) => Number(y.reserve.id === chosen) - Number(x.reserve.id === chosen)
-  || Number(!usable(x)) - Number(!usable(y)) || (x.reserve.due < y.reserve.due ? -1 : x.reserve.due > y.reserve.due ? 1 : 0));
+  || Number(!usable(x)) - Number(!usable(y)) || ((x.reserve.due || '9999-12-31') < (y.reserve.due || '9999-12-31') ? -1 : (x.reserve.due || '9999-12-31') > (y.reserve.due || '9999-12-31') ? 1 : 0));
 
 /**
  * Une date ramenée dans ce qui est permis pour une échéance (de la fois d'avant à aujourd'hui).

@@ -9,7 +9,7 @@ import { settingsOf, draftOf, walletBalances, moveCount, entriesOn, currencyLock
 import { checkChange, blocksNegative } from './rules.js';
 import { isPositiveAmount, MAX_AMOUNT } from './money.js';
 import { isCatalogIcon, migratedIcon, FALLBACK_ICON } from './catalog.js';
-import { reservesOf } from './reserves.js';
+import { reservesOf, allocationOf } from './reserves.js';
 import { budgetsOf, overlaps, meet, lengthOf, currentWindow } from './budgets.js';
 import { isMonthStart } from './month-start.js';
 import {
@@ -791,7 +791,23 @@ const DECIDERS = {
   },
 
 
-  // Clore : ce qui était dessus retourne aux autres
+  // Mettre en pause (D17 revu, 2026-11-23) : une réserve sans date (« Un jour »), servie après les datées, hors du manque
+  'reserve.pause'(s, { id }, ctx) {
+    const r = openReserve(s, id);
+    if (!r.due) return [];
+    // ce qu'elle a au moment de la pause : elle le garde (une fois les datées à leur niveau), sans le bloquer
+    const keep = allocationOf(s, r.wallet, ctx.today).parts[id] || 0;
+    return [{ type: 'reserve.paused', payload: { id, keep } }];
+  },
+  // Reprendre : lui redonner une date (comme Repousser : pas dans le passé)
+  'reserve.resume'(s, { id, due }, ctx) {
+    const r = openReserve(s, id);
+    if (r.due) fail('Cette réserve n’est pas en pause.', 'due');
+    if (!validDate(due)) fail('Choisis la date d’échéance.', 'due');
+    return DECIDERS['reserve.update'](s, /** @type {any} */ ({ id, changes: { due } }), ctx);
+  },
+
+  // Clore : ce qui était dessus retourne aux autres (rien payé encore : elle est abandonnée, hors des terminées, D17 revu)
   'reserve.close'(s, { id }, ctx) {
     openReserve(s, id);
     return [{ type: 'reserve.closed', payload: { id, on: ctx.today } }];
@@ -1124,9 +1140,13 @@ function reserveFields(c, ctx, cur, s) {
   if (Number.isSafeInteger(c.amount) && c.amount > MAX_AMOUNT) fail(M.tooBig, 'amount');
   if (!isPositiveAmount(c.amount)) fail('Indique le montant visé.', 'amount');
   if (cur && c.amount <= cur.used) fail('Le montant visé doit dépasser ce qui a déjà été utilisé.', 'amount');
-  if (!validDate(c.due)) fail('Choisis la date d’échéance.', 'due');
-  if (c.due !== cur?.due && c.due < ctx.today) fail(notPast('L’échéance'), 'due');
-  if (c.due < (cur?.start ?? ctx.today)) fail('L’échéance ne peut pas venir avant le début.', 'due');
+  // en pause (D17 revu) : une réserve sans date se modifie sans en recevoir une (Reprendre la lui redonne)
+  const stillPaused = !!cur && !cur.due && !c.due;
+  if (!stillPaused) {
+    if (!validDate(c.due)) fail('Choisis la date d’échéance.', 'due');
+    if (c.due !== cur?.due && c.due < ctx.today) fail(notPast('L’échéance'), 'due');
+    if (c.due < (cur?.start ?? ctx.today)) fail('L’échéance ne peut pas venir avant le début.', 'due');
+  }
   const mode = c.mode === 'gradual' ? 'gradual' : c.mode === 'once' || c.mode == null ? 'once' : fail('Mode inconnu.');
   let cat = c.category || null;
   // la catégorie de la dépense est obligatoire (revu le 2026-11-10 : sans elle, chaque utilisation la redemandait)
@@ -1137,7 +1157,7 @@ function reserveFields(c, ctx, cur, s) {
     if (k.kind !== 'expense') fail(M.pickExpenseCat, 'category');
     if (k.archived_at && cat !== cur?.category) fail(archivedCat(k.name), 'archived');
   }
-  return { name, amount: c.amount, due: c.due, mode, category: cat };
+  return { name, amount: c.amount, due: stillPaused ? null : c.due, mode, category: cat };
 }
 
 /**

@@ -15,7 +15,7 @@ const TAPS = 7;
 export const devUnlocked = () => pref('dev') === true;
 
 /**
- * Sept touchers sur la version ouvrent la page Développeur (comme Android) : à partir du 3e, « Encore N touchers » ; au
+ * Sept touchers sur la version ouvrent la page Développeur (comme Android), sans compte à rebours (2026-11-24) ; au
  * 7e, la page s'ouvre et reste accessible sur ce téléphone. Plus de deux secondes entre deux touchers : on recommence.
  * @param {HTMLElement} el l'endroit où la version est écrite
  * @param {() => void} [before] juste avant d'ouvrir la page (fermer une feuille)
@@ -26,7 +26,8 @@ export function versionTaps(el, before) {
     const now = Date.now();
     n = now - last > 2000 ? 1 : n + 1;
     last = now;
-    if (n < TAPS) { if (n >= 3) toast(TAPS - n === 1 ? 'Encore 1 toucher' : `Encore ${TAPS - n} touchers`); return; }
+    // sans compte à rebours (2026-11-24, avec l'utilisateur : le message cachait la version qu'on touchait)
+    if (n < TAPS) return;
     n = 0;
     pref('dev', true);
     if (!before) { location.hash = '#/reglages/dev'; return; }

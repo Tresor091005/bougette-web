@@ -111,4 +111,29 @@ html[data-font-num="mono"] :is(.big, .amt, .mrow .v, .hero .big, .pf-v, .pf-ring
   font-family: var(--mono); font-weight: 400; letter-spacing: -.01em; }
 html[data-font-num="geist"] :is(.big, .amt, .mrow .v, .hero .big, .pf-v, .pf-ring b, .pf-wl span:last-child) {
   font-family: var(--sans); }
+/* les grands montants en Geist (2026-11-23, avec l'utilisateur : en grand, la graisse 600 et l'interlettrage serré
+   alourdissaient et collaient les chiffres) : graisse 500, interlettrage moins serré, chiffres de même largeur */
+html[data-font-num="geist"] :is(.big, .hero .big, .pf-v:not(.md)) { font-weight: 500; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 html[data-font-text="mono"] body, html[data-font-text="mono"] body *:not(svg):not(svg *) { font-family: var(--mono) !important; }
+/* Le rythme face à d'habitude (2026-11-23, avec l'utilisateur ; remplace l'anneau « F / jour ») : l'écart, une petite
+   courbe (ce mois-ci par-dessus d'habitude), et ce qu'il dit ; le détail au toucher */
+.pf-t.habit { min-height: 140px; }
+.pf-t.habit .pf-v.warn { color: var(--c3); } /* plus que d'habitude : l'orange des avertissements */
+.pf-curve { width: 100%; height: auto; display: block; margin: auto 0 var(--sp-2); padding-top: var(--sp-3); overflow: visible; }
+.hb-curve { width: 100%; height: auto; display: block; overflow: visible; }
+:is(.pf-curve, .hb-curve) path:not(.area) { fill: none; stroke-linejoin: round; stroke-linecap: round; }
+:is(.pf-curve, .hb-curve) .now { stroke: var(--accent-text); stroke-width: 2; }
+:is(.pf-curve, .hb-curve) .usual { stroke: var(--ink-3); stroke-width: 1.25; stroke-dasharray: 2 3; }
+:is(.pf-curve, .hb-curve) .area { stroke: none; }
+:is(.pf-curve, .hb-curve) .base { stroke: var(--rule); stroke-width: 1; }
+:is(.pf-curve, .hb-curve) .tick { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 3; }
+:is(.pf-curve, .hb-curve) .dot { fill: var(--accent-text); stroke: var(--card); stroke-width: 2; }
+/* la phrase du rythme, comme la prochaine échéance d'« À payer » : en écriture normale, Geist, même en Proto */
+html .pf-t .pf-s.pf-say { font-family: var(--sans); text-transform: none; letter-spacing: 0; font-size: var(--fs-meta); margin-top: var(--sp-4); }
+.hb-axis { display: flex; justify-content: space-between; color: var(--ink-3); font-size: var(--fs-meta); margin: var(--sp-2) 0 var(--sp-6); position: relative; }
+.hb-axis .today { position: absolute; top: 0; transform: translateX(-50%); color: var(--ink-2); }
+.hb-nums { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-6); margin: var(--sp-4) 0 var(--sp-6); }
+.hb-nums b { display: block; font-size: var(--fs-section); font-weight: 600; margin-top: var(--sp-2); }
+.hb-l { display: flex; align-items: center; gap: var(--sp-3); color: var(--ink-2); font-size: var(--fs-2nd); }
+.hb-k { width: 14px; height: 0; border-top: 2px solid var(--accent-text); flex: none; }
+.hb-k.usual { border-top: 2px dashed var(--ink-3); }

@@ -5,57 +5,41 @@
 <style>
 @font-face { font-family: 'Geist'; src: url('fonts/geist.woff2') format('woff2'); font-weight: 400 600; font-display: swap; }
 :root { color-scheme: dark; --paper: #121317; --card: #1B1D23; --ink: #ECEDF0; --ink-2: #9A9EA8; --ink-3: #5F636C; --rule: #2A2D35;
-  --accent: #4F63C9; --accent-text: #8EA0E6; --accent-soft: #232A45; --gain: #74B893; --sans: 'Geist', -apple-system, 'Segoe UI', Roboto, sans-serif; }
+  --accent: #4F63C9; --accent-text: #8EA0E6; --accent-soft: #232A45; --sans: 'Geist', -apple-system, 'Segoe UI', Roboto, sans-serif; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--paper); color: var(--ink); font: 400 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
 main { max-width: 560px; margin: 0 auto; padding: calc(28px + env(safe-area-inset-top)) 20px calc(40px + env(safe-area-inset-bottom)); }
 .head { display: flex; align-items: center; gap: 14px; }
-.head img { width: 52px; height: 52px; border-radius: 14px; }
-.brand { font: 600 22px/1.15 var(--sans); letter-spacing: -.02em; }
+.head img { width: 44px; height: 44px; border-radius: 12px; }
+.brand { font: 600 19px/1.15 var(--sans); letter-spacing: -.02em; }
 .sub { color: var(--ink-2); font-size: 14px; }
-h1 { font: 600 30px/1.15 var(--sans); letter-spacing: -.025em; margin: 34px 0 10px; }
-.lead { color: var(--ink-2); font-size: 16px; margin: 0; }
-.section { margin-top: 34px; }
-h2 { font: 500 17px/1.3 var(--sans); letter-spacing: -.01em; margin: 0 0 6px; }
-.rows { border-top: 1px solid var(--rule); }
-.row { display: flex; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--rule); }
-.dot { flex: none; width: 34px; height: 34px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); display: grid; place-items: center; }
-.dot svg { width: 18px; height: 18px; }
-.row b { display: block; font-weight: 500; color: var(--ink); }
-.row span { color: var(--ink-2); font-size: 14px; }
-p { color: var(--ink-2); margin: 8px 0 0; }
-code { font: 500 13px var(--sans); color: var(--accent-text); background: var(--accent-soft); padding: 2px 7px; border-radius: 99px; }
+h1 { font: 600 30px/1.15 var(--sans); letter-spacing: -.025em; margin: 34px 0 0; }
+.hero { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding: 20px 0 24px; border-bottom: 1px solid var(--rule); }
+.badge { width: 52px; height: 52px; border-radius: 14px; background: var(--accent-soft); color: var(--accent-text); display: grid; place-items: center; }
+.badge svg { width: 26px; height: 26px; }
+.hero p { font-size: 17px; line-height: 1.45; color: var(--ink); margin: 0; }
+.sec { display: flex; gap: 14px; padding: 18px 0; border-bottom: 1px solid var(--rule); }
+.dot { flex: none; width: 36px; height: 36px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); display: grid; place-items: center; margin-top: 2px; }
+.dot svg { width: 20px; height: 20px; }
+.body { min-width: 0; }
+h2 { font: 500 16px/1.35 var(--sans); margin: 0 0 4px; }
+.body p, .body ol { color: var(--ink-2); font-size: 14.5px; line-height: 1.55; margin: 0 0 8px; }
+.body p:last-child, .body ol:last-child { margin-bottom: 0; }
+.body ol { padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.body li::marker { color: var(--ink-3); }
+.body b { color: var(--ink); font-weight: 500; }
 a { color: var(--accent-text); text-decoration: none; }
-.steps { margin: 10px 0 0; padding: 0; list-style: none; counter-reset: s; }
-.steps li { counter-increment: s; position: relative; padding: 10px 0 10px 34px; border-bottom: 1px solid var(--rule); color: var(--ink-2); font-size: 14px; }
-.steps li::before { content: counter(s); position: absolute; left: 0; top: 10px; width: 22px; height: 22px; border-radius: 99px; background: var(--card); color: var(--ink); font-size: 12px; display: grid; place-items: center; }
-.steps b { color: var(--ink); font-weight: 500; }
-.btn { display: flex; align-items: center; justify-content: center; height: 52px; border-radius: 99px; background: var(--accent); color: #fff; font-weight: 500; margin-top: 36px; }
+.btn { display: flex; align-items: center; justify-content: center; height: 52px; border-radius: 99px; background: var(--accent); color: #fff; font-weight: 500; margin-top: 32px; }
 .foot { color: var(--ink-3); font-size: 13px; text-align: center; margin-top: 18px; }
 </style></head><body><main>
 <div class="head"><img src="icons/icon-192.png" alt=""><div><div class="brand">Bougette</div><div class="sub">Ton argent, au franc près.</div></div></div>
 <h1>Confidentialité</h1>
-<p class="lead">Bougette n'a pas de serveur. Nous ne recevons, ne gardons et ne voyons aucune de tes données.</p>
-
-<div class="section"><h2>En bref</h2><div class="rows">
-<div class="row"><div class="dot"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M176 16H80a24 24 0 0 0-24 24v176a24 24 0 0 0 24 24h96a24 24 0 0 0 24-24V40a24 24 0 0 0-24-24Zm8 200a8 8 0 0 1-8 8H80a8 8 0 0 1-8-8V40a8 8 0 0 1 8-8h96a8 8 0 0 1 8 8ZM140 60a12 12 0 1 1-12-12 12 12 0 0 1 12 12Z"/></svg></div>
-<div><b>Tes données restent chez toi</b><span>Dans l'app sur ton téléphone, ou dans ton navigateur pour la version web.</span></div></div>
-<div class="row"><div class="dot"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M160 40a88.1 88.1 0 0 0-78.7 48.6A64 64 0 1 0 72 216h88a88 88 0 0 0 0-176Zm0 160H72a48 48 0 0 1-3.2-95.9 87.9 87.9 0 0 0-4.8 28.6 8 8 0 0 0 16 0 72 72 0 1 1 80 67.3Zm37.7-106.3a8 8 0 0 1 0 11.3l-48 48a8 8 0 0 1-11.3 0l-24-24a8 8 0 0 1 11.3-11.3l18.3 18.3 42.3-42.3a8 8 0 0 1 11.4 0Z"/></svg></div>
-<div><b>Ton Drive, si tu le veux</b><span>En liant un compte Google, une copie va dans un dossier caché de ton Drive, réservé à Bougette, compressée et chiffrée.</span></div></div>
-<div class="row"><div class="dot"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M208 80h-32V56a48 48 0 0 0-96 0v24H48a16 16 0 0 0-16 16v112a16 16 0 0 0 16 16h160a16 16 0 0 0 16-16V96a16 16 0 0 0-16-16ZM96 56a32 32 0 0 1 64 0v24H96Zm112 152H48V96h160v112Z"/></svg></div>
-<div><b>Rien n'est partagé</b><span>Pas de publicité, pas de suivi, pas de revente. Tes données vont seulement de ton appareil à ton propre Drive.</span></div></div>
-</div></div>
-
-<div class="section"><h2>Ce que Bougette demande à Google</h2>
-<p>Un seul accès : <code>drive.appdata</code>, lire et écrire les fichiers de Bougette dans son dossier caché. Bougette ne voit ni tes autres fichiers, ni ton mot de passe. Ton nom et ton adresse e-mail servent seulement à t'afficher quel compte est lié.</p></div>
-
-<div class="section"><h2>Supprimer tes données</h2>
-<ol class="steps">
-<li><b>Dans l'app</b> : Moi › Google Drive › Délier ce téléphone. Puis efface les données gardées sur l'appareil : sur Android, Paramètres › Applications › Bougette › Stockage › Effacer les données (ou désinstalle l'app) ; dans le navigateur, efface les données du site.</li>
-<li><b>Dans Google Drive</b> (sur le web) : Paramètres › Gérer les applications › Bougette › Supprimer les données d'application cachées.</li>
-<li><b>L'accès</b> : retire Bougette sur <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</li>
-</ol></div>
-
+<div class="hero"><span class="badge"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M208,40H48A16,16,0,0,0,32,56v56c0,52.72,25.52,84.67,46.93,102.19,23.06,18.86,46,25.26,47,25.53a8,8,0,0,0,4.2,0c1-.27,23.91-6.67,47-25.53C198.48,196.67,224,164.72,224,112V56A16,16,0,0,0,208,40Zm0,72c0,37.07-13.66,67.16-40.6,89.42A129.3,129.3,0,0,1,128,223.62a128.25,128.25,0,0,1-38.92-21.81C61.82,179.51,48,149.3,48,112l0-56,160,0ZM82.34,141.66a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32l-56,56a8,8,0,0,1-11.32,0Z"/></svg></span><p>Bougette n’a pas de serveur. Nous ne recevons, ne gardons et ne voyons aucune de tes données.</p></div>
+<div class="sec"><span class="dot"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M176,16H80A24,24,0,0,0,56,40V216a24,24,0,0,0,24,24h96a24,24,0,0,0,24-24V40A24,24,0,0,0,176,16ZM72,64H184V192H72Zm8-32h96a8,8,0,0,1,8,8v8H72V40A8,8,0,0,1,80,32Zm96,192H80a8,8,0,0,1-8-8v-8H184v8A8,8,0,0,1,176,224Z"/></svg></span><div class="body"><h2>Où sont tes données</h2><p>Sur ton appareil : dans l’app (Android) ou dans ton navigateur (version web).</p><p>Si tu lies un compte Google : aussi dans ton Google Drive, dans un dossier caché réservé à Bougette, compressées et chiffrées, pour les retrouver sur tes autres appareils.</p></div></div>
+<div class="sec"><span class="dot"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M160,40A88.09,88.09,0,0,0,81.29,88.67,64,64,0,1,0,72,216h88a88,88,0,0,0,0-176Zm0,160H72a48,48,0,0,1,0-96c1.1,0,2.2,0,3.29.11A88,88,0,0,0,72,128a8,8,0,0,0,16,0,72,72,0,1,1,72,72Zm37.66-93.66a8,8,0,0,1,0,11.32l-48,48a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L144,148.69l42.34-42.35A8,8,0,0,1,197.66,106.34Z"/></svg></span><div class="body"><h2>Ce que Bougette demande à Google</h2><p>Un seul accès : <b>drive.appdata</b>, lire et écrire les fichiers de Bougette dans son dossier caché. Bougette ne voit ni tes autres fichiers, ni ton mot de passe. Ton nom et ton adresse e-mail servent seulement à t’afficher quel compte est lié.</p></div></div>
+<div class="sec"><span class="dot"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M53.92,34.62A8,8,0,1,0,42.08,45.38L61.32,66.55C25,88.84,9.38,123.2,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.82,19.57,27.65,38.4C61.43,194.74,93.12,208,128,208a127.11,127.11,0,0,0,52.07-10.83l22,24.21a8,8,0,1,0,11.84-10.76Zm47.33,75.84,41.67,45.85a32,32,0,0,1-41.67-45.85ZM128,192c-30.78,0-57.67-11.19-79.93-33.25A133.16,133.16,0,0,1,25,128c4.69-8.79,19.66-33.39,47.35-49.38l18,19.75a48,48,0,0,0,63.66,70l14.73,16.2A112,112,0,0,1,128,192Zm6-95.43a8,8,0,0,1,3-15.72,48.16,48.16,0,0,1,38.77,42.64,8,8,0,0,1-7.22,8.71,6.39,6.39,0,0,1-.75,0,8,8,0,0,1-8-7.26A32.09,32.09,0,0,0,134,96.57Zm113.28,34.69c-.42.94-10.55,23.37-33.36,43.8a8,8,0,1,1-10.67-11.92A132.77,132.77,0,0,0,231.05,128a133.15,133.15,0,0,0-23.12-30.77C185.67,75.19,158.78,64,128,64a118.37,118.37,0,0,0-19.36,1.57A8,8,0,1,1,106,49.79,134,134,0,0,1,128,48c34.88,0,66.57,13.26,91.66,38.35,18.83,18.83,27.3,37.62,27.65,38.41A8,8,0,0,1,247.31,131.26Z"/></svg></span><div class="body"><h2>Ce que nous ne faisons pas</h2><p>Pas de publicité, pas de suivi, pas de revente. Aucune donnée n’est partagée avec qui que ce soit : elles vont seulement de ton appareil à ton propre Drive.</p></div></div>
+<div class="sec"><span class="dot"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M176,232a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,232Zm40-128a87.55,87.55,0,0,1-33.64,69.21A16.24,16.24,0,0,0,176,186v6a16,16,0,0,1-16,16H96a16,16,0,0,1-16-16v-6a16,16,0,0,0-6.23-12.66A87.59,87.59,0,0,1,40,104.49C39.74,56.83,78.26,17.14,125.88,16A88,88,0,0,1,216,104Zm-16,0a72,72,0,0,0-73.74-72c-39,.92-70.47,33.39-70.26,72.39a71.65,71.65,0,0,0,27.64,56.3A32,32,0,0,1,96,186v6h64v-6a32.15,32.15,0,0,1,12.47-25.35A71.65,71.65,0,0,0,200,104Zm-16.11-9.34a57.6,57.6,0,0,0-46.56-46.55,8,8,0,0,0-2.66,15.78c16.57,2.79,30.63,16.85,33.44,33.45A8,8,0,0,0,176,104a9,9,0,0,0,1.35-.11A8,8,0,0,0,183.89,94.66Z"/></svg></span><div class="body"><h2>Quand tu nous écris</h2><p>« Signaler un problème » et « Proposer une idée » ouvrent WhatsApp avec un message prérempli : la version de l’app et le modèle de ton téléphone, jamais tes données. Tu choisis d’envoyer ou non.</p></div></div>
+<div class="sec"><span class="dot"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z"/></svg></span><div class="body"><h2>Supprimer tes données</h2><ol><li><b>Dans l’app</b> : Moi › Google Drive › Délier cet appareil. Puis efface ce qui est gardé sur l’appareil : sur Android, Paramètres › Applications › Bougette › Stockage › Effacer les données (ou désinstalle l’app) ; dans le navigateur, efface les données du site.</li><li><b>Dans Google Drive</b> (sur le web) : Paramètres › Gérer les applications › Bougette › Supprimer les données d’application cachées.</li><li><b>Dans ton compte Google</b> : retire l’accès de Bougette sur <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</li></ol></div></div>
 <a class="btn" href="./">Ouvrir Bougette</a>
-<div class="foot">Mise à jour le 21 novembre 2026</div>
+<div class="foot">Mise à jour le 24 novembre 2026</div>
 </main></body></html>

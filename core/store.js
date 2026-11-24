@@ -488,10 +488,13 @@ export const monthlySpend = () => lazy('monthlySpend:' + today(), s => V.monthly
 /** Ce que deviendrait la répartition d'une épargne après une dépense sur une réserve (rien n'est écrit). @param {string} w @param {string} r @param {number} amount */
 export const allocationAfter = (w, r, amount) => V.allocationAfter(S(), w, today(), r, amount);
 export const savingsReport = id => lazy('savings:' + id + ':' + today(), s => V.savingsReport(s, id, today(), { monthlySpend: monthlySpend() }));
+/** Toutes les réserves (ouvertes d'abord, par échéance). */
+export const reservesOf = () => lazy('reserves', s => V.reservesOf(s));
 export const reserveById = id => lazy('reserves', s => V.reservesOf(s)).find(r => r.id === id) || null;
 // Réserves terminées d'un portefeuille (les plus récentes d'abord), les fois successives d'une réserve, reconduite ou non,
 // opérations d'utilisation supprimées depuis (D17).
-export const closedReserves = walletId => lazy('reserves', s => V.reservesOf(s)).filter(r => r.closed && (!walletId || r.wallet === walletId))
+// une réserve abandonnée (close sans avoir rien payé) n'y entre pas (D17 revu)
+export const closedReserves = walletId => lazy('reserves', s => V.reservesOf(s)).filter(r => r.closed && !V.isAbandoned(r) && (!walletId || r.wallet === walletId))
   .sort((a, b) => (a.closed < b.closed ? 1 : a.closed > b.closed ? -1 : 0));
 export const reserveChain = id => V.reserveChain(S(), id);
 // Réserve utilisée par une opération (D17), ou null : la catégorie dit pour quoi, la réserve d'où l'argent était préparé.
@@ -528,6 +531,44 @@ export async function createReserve(data, { onError: own = null } = {}) {
 export const updateReserve = (id, changes, { onError: own = null } = {}) => runOwn([{ type: 'reserve.update', id, changes }], own);
 export const reduceReserve = (id, to) => run([{ type: 'reserve.reduce', id, to }]);
 export const closeReserve = id => run([{ type: 'reserve.close', id }]);
+export const pauseReserve = id => run([{ type: 'reserve.pause', id }]);
+/**
+ * « Revoir mon épargne » (D17 revu, 2026-11-23) : les commandes des gestes sur les réserves, puis le versement (le seul :
+ * son montant ; aucun : il est programmé, chaque mois au prochain début de période ; plusieurs : ils ne changent pas ici).
+ * @param {string} walletId @param {any[]} reserveCmds @param {{ amount: number|null, from: string|null }} v
+ */
+function reviewCmds(walletId, reserveCmds, v) {
+  const rep = V.savingsReport(S(), walletId, today());
+  const list = rep.versement.list;
+  const cmds = [...reserveCmds];
+  const monthly = list.length === 1 && (() => { const r = D.scheduleById(S(), list[0].head); return !!r && r.every === 'month' && (r.interval || 1) === 1; })();
+  if (v.amount != null && monthly && v.amount !== list[0].amount) cmds.push({ type: 'due.update', id: list[0].head, changes: { amount: v.amount } });
+  if (v.amount && !list.length && v.from) {
+    const w = S().accounts.get(walletId);
+    cmds.push({ type: 'due.create', kind: 'transfer', amount: v.amount, accountId: v.from, toAccountId: walletId, note: `Versement ${w?.name || ''}`.trim().slice(0, 40), start: rep.versement.next, every: 'month', interval: 1 });
+  }
+  return cmds;
+}
+/**
+ * Ce que deviendrait l'épargne avec ces gestes (rien n'est écrit) : son rapport, ou le refus du domaine.
+ * @param {string} walletId @param {any[]} reserveCmds @param {{ amount: number|null, from: string|null }} v
+ */
+export function previewSavings(walletId, reserveCmds, v = { amount: null, from: null }) {
+  const t = today();
+  let n = 0;
+  try {
+    const cmds = reviewCmds(walletId, reserveCmds, v).map(c => (c.type === 'due.create' ? { ...c, id: 'apercu-versement' } : c));
+    const next = simulate(S(), cmds, { today: t, newId: () => `apercu-${++n}` }, new Date().toISOString());
+    return { rep: V.savingsReport(next, walletId, t, { monthlySpend: monthlySpend() }), error: null };
+  } catch (e) {
+    if (e instanceof DomainError) return { rep: null, error: e.message };
+    console.error(e);
+    return { rep: null, error: 'Impossible de calculer ce que ça donnerait.' };
+  }
+}
+/** Valider « Revoir mon épargne » : tout d'un coup (tout ou rien). @param {string} walletId @param {any[]} reserveCmds @param {{ amount: number|null, from: string|null }} v */
+export const applySavingsReview = (walletId, reserveCmds, v) => run(reviewCmds(walletId, reserveCmds, v).map(c => (c.type === 'due.create' ? { ...c, id: uid() } : c)));
+export const resumeReserve = (id, due) => run([{ type: 'reserve.resume', id, due }]);
 export const setSettings = patch => run([{ type: 'settings.change', changes: patch }]);
 
 // Export CSV (séparateur « ; », virgule décimale, lisible par un tableur en français).
@@ -573,7 +614,9 @@ export function setUiStyle(v) {
  */
 export function look() {
   const l = /** @type {any} */ (pref('look') || {}), proto = uiStyle() === 'proto';
-  return { text: l.text || 'geist', num: l.num || (proto ? 'mono' : 'geist'), radius: l.radius || (proto ? 'square' : 'round') };
+  // le texte toujours en Geist ; les chiffres suivent le style (Proto : sa monospace) — le choix de police est retiré
+  // d'Affichage (2026-11-23, avec l'utilisateur)
+  return { text: 'geist', num: proto ? 'mono' : 'geist', radius: l.radius || (proto ? 'square' : 'round') };
 }
 /** @param {Partial<{ text: string, num: string, radius: string }>} ch */
 export function setLook(ch) {
