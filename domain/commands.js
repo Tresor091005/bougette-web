@@ -3,17 +3,18 @@
 import { CURRENCIES, GROUPS, currencyOf, shortDate, money, stepChoices } from './format.js';
 import { KINDS, DEFAULT_CATEGORIES, SETTING_KEYS, initialSettings, UNTRACKED } from './defaults.js';
 import { canonical } from './canonical.js';
+import { DUE, RES } from './words.js';
 import { txLines, balanceLines, MOVE_KINDS, linesToMove } from './ledger.js';
-import { linesOf, isWallet } from './projection.js';
+import { linesOf, isWallet, cloneState, apply } from './projection.js';
 import { settingsOf, draftOf, walletBalances, moveCount, entriesOn, currencyLockCount } from './queries.js';
 import { checkChange, blocksNegative } from './rules.js';
 import { isPositiveAmount, MAX_AMOUNT } from './money.js';
 import { isCatalogIcon, migratedIcon, FALLBACK_ICON } from './catalog.js';
 import { reservesOf, allocationOf } from './reserves.js';
 import { budgetsOf, overlaps, meet, lengthOf, currentWindow } from './budgets.js';
-import { isMonthStart } from './month-start.js';
+import { isMonthStart, byOptions } from './month-start.js';
 import {
-  scheduleById, isDateOf, isPending, reserveFor, EVERY, MAX_INTERVAL, datesOf, addDays, doneOf, handledDates, dateAfter, schedulesOf, indexAt, nthDate,
+  scheduleById, isDateOf, isPending, reserveFor, adjustedOn, rootOf, EVERY, MAX_INTERVAL, datesOf, addDays, doneOf, handledDates, dateAfter, schedulesOf, indexAt, nthDate,
   chainOf, ownCount, continueAt, confirmRange, nextOpenDate, settledIn, nextPending, stopErases
 } from './dues.js';
 
@@ -41,9 +42,9 @@ const M = {
   noWallet: 'Ce portefeuille n’existe pas.',
   noCategory: 'Cette catégorie n’existe pas.',
   noEntry: 'Cette opération n’existe pas.',
-  noReserve: 'Cette réserve n’existe pas.',
+  noReserve: `${RES.This} n’existe pas.`,
   noBudget: 'Ce budget n’existe pas.',
-  noDue: 'Cette échéance n’existe pas.',
+  noDue: `${DUE.This} n’existe pas.`,
   tooBig: 'Ce montant est trop grand.',
   amount: 'Indique un montant.',
   badDate: 'Date illisible.',
@@ -54,20 +55,20 @@ const M = {
   currency: 'Les deux portefeuilles doivent avoir la même devise.',
   pickCategory: 'Choisis une catégorie.',
   pickExpenseCat: 'Choisis une catégorie de dépenses.',
-  closed: 'Cette réserve est close.',
+  closed: `${RES.This} est ${RES.adj('clos', 'close')}.`,
   badBalance: 'Ce solde n’est pas un montant lisible.',
   negative: 'Le solde ne peut pas être négatif.',
   ident: 'L’identifiant ne peut contenir que des lettres, des chiffres, des espaces et . - /',
   icon: 'Choisis une icône parmi celles proposées.',
   sameKind: 'Choisis une catégorie du même type.',
   twoLevels: 'Une sous-catégorie ne peut pas avoir de sous-catégories.',
-  settled: 'Cette échéance est déjà réglée.',
-  notDateOf: 'Cette date n’est pas une date de cette échéance.',
+  settled: `${DUE.This} est déjà réglé${DUE.e}.`,
+  notDateOf: `Cette date n’est pas une date de ${DUE.this}.`,
   notPlanned: 'Cette opération n’est pas prévue.',
-  typeFixed: 'Une échéance garde son type : une dépense reste une dépense.',
-  catFixed: 'Une échéance garde sa catégorie : pour une autre, modifie l’échéance.',
+  typeFixed: `${DUE.A} garde son type : une dépense reste une dépense.`,
+  catFixed: `${DUE.A} garde sa catégorie : pour une autre, modifie ${DUE.the}.`,
   times: 'Indique un nombre de fois.',
-  dueDate: 'Choisis la date de cette échéance.',
+  dueDate: `Choisis la date de ${DUE.this}.`,
   idTaken: 'Identifiant déjà utilisé.',
   badColor: 'Couleur inconnue.',
   badCurrency: 'Devise inconnue.',
@@ -81,9 +82,9 @@ const archivedWallet = name => `Le portefeuille ${name} est archivé.`;
 /** @param {string} name */
 const archivedCat = name => `La catégorie ${name} est archivée.`;
 /** @param {string} name */
-const openReserves = name => `${name} a des réserves ouvertes : clos-les d’abord.`;
+const openReserves = name => `${name} a des ${RES.many} ouvert${RES.e}s : clos-les d’abord.`;
 /** Une dépense refusée sur une épargne (D17). @param {string} name */
-const savingsNoSpend = name => `${name} est une épargne : on n’y dépense pas. Passe par une réserve, ou active « Permettre les dépenses » dans sa fiche.`;
+const savingsNoSpend = name => `${name} est une épargne : on n’y dépense pas. Passe par ${RES.a}, ou active « Permettre les dépenses » dans sa fiche.`;
 /** Une catégorie qui n'est pas du type de l'opération. @param {string} kind */
 const catOfKind = kind => (kind === 'income' ? 'Choisis une catégorie de revenus.' : M.pickExpenseCat);
 /** Une date qui ne peut pas être passée (« La fin », « La première date »…). @param {string} what */
@@ -205,7 +206,7 @@ function savingsChanges(s, w, c, ctx) {
       if (on !== null && on !== cur.goal_on && on < ctx.today) fail(notPast('La date de l’objectif'), 'goal_date');
       // une épargne a des réserves ou un objectif, pas les deux (2026-11-20, avec l'utilisateur : deux calculs se
       // contredisaient) ; un ancien objectif posé avant ses réserves peut rester tel quel (il n'est plus suivi)
-      if (w && (g.amount !== cur.goal_amount || on !== cur.goal_on) && reservesOf(s, { wallet: w.id, open: true }).length) fail(`${w.name} a des réserves : un objectif va dans une autre épargne.`, 'goal_reserves');
+      if (w && (g.amount !== cur.goal_amount || on !== cur.goal_on) && reservesOf(s, { wallet: w.id, open: true }).length) fail(`${w.name} a des ${RES.many} : un objectif va dans une autre épargne.`, 'goal_reserves');
       if (g.amount !== cur.goal_amount) ch.goal_amount = g.amount;
       if (on !== cur.goal_on) ch.goal_on = on;
     }
@@ -215,7 +216,7 @@ function savingsChanges(s, w, c, ctx) {
     const holder = c.emergency ? [...s.accounts.values()].find(a => a.kind === 'wallet' && a.emergency && !a.deleted_at && a.id !== w?.id) : null;
     if (holder) fail(`${holder.name} est déjà ton fonds d’urgence.`, 'emergency_taken');
     // le fonds d'urgence est de l'argent libre pour les coups durs : pas de réserve dedans (2026-11-10)
-    if (c.emergency && w && reservesOf(s, { wallet: w.id, open: true }).length) fail(`${w.name} a des réserves : il ne peut pas être ton fonds d’urgence.`, 'emergency_reserves');
+    if (c.emergency && w && reservesOf(s, { wallet: w.id, open: true }).length) fail(`${w.name} a des ${RES.many} : il ne peut pas être ton fonds d’urgence.`, 'emergency_reserves');
     ch.emergency = !!c.emergency;
   }
   return { ch, before };
@@ -411,7 +412,7 @@ const DECIDERS = {
       // (ses montants changeraient de valeur, et la rétablir mélangerait deux devises)
       if (currencyLockCount(s, id)) fail('Ce portefeuille a des opérations : sa devise ne change plus.', 'currency_locked');
       // ni sous une échéance (D18) : ses montants sont dans l'ancienne devise
-      if (schedulesOf(s).some(x => x.wallet === id || x.to === id)) fail('Des échéances utilisent ce portefeuille : sa devise ne change pas.', 'currency_locked');
+      if (schedulesOf(s).some(x => x.wallet === id || x.to === id)) fail(`Des ${DUE.many} utilisent ce portefeuille : sa devise ne change pas.`, 'currency_locked');
       ch.currency = changes.currency;
     }
     if (Object.keys(ch).length) events.push({ type: 'wallet.updated', payload: { id, changes: ch } });
@@ -613,7 +614,7 @@ const DECIDERS = {
     if (moveCount(s, id)) fail('Cette catégorie a des opérations : archive-la plutôt.', 'used');
     // une échéance s'y tient (D18) : supprimée, elle ne pourrait plus se confirmer (sa catégorie est figée)
     const held = schedulesOf(s).find(r => r.category === id);
-    if (held) fail(`L’échéance « ${held.note || c.name} » utilise cette catégorie : archive la catégorie, ou supprime l’échéance.`, 'due');
+    if (held) fail(`${DUE.The} « ${held.note || c.name} » utilise cette catégorie : archive la catégorie, ou supprime ${DUE.the}.`, 'due');
     return [{ type: 'category.deleted', payload: { id } }];
   },
 
@@ -624,7 +625,7 @@ const DECIDERS = {
     if (tx.reserve != null) {
       const r = reservesOf(s).find(x => x.id === tx.reserve) || fail(M.noReserve, 'not_found');
       if (r.closed) fail(M.closed, 'closed');
-      if (tx.type !== 'expense' || r.wallet !== tx.accountId || tx.planned) fail('Une réserve s’utilise par une dépense depuis son épargne.', 'reserve');
+      if (tx.type !== 'expense' || r.wallet !== tx.accountId || tx.planned) fail(`${RES.A} s’utilise par une dépense depuis son épargne.`, 'reserve');
       // revu le 2026-11-19 (avec l'utilisateur : chacun fait ce qu'il veut de son argent) : une réserve paie ce qu'on veut,
       // la seule limite est le solde de l'épargne ; la répartition (calculée) se refait d'elle-même. En une fois : seulement
       // quand l'épargne a de quoi la payer entièrement
@@ -655,7 +656,7 @@ const DECIDERS = {
     const rule = e.schedule_id ? scheduleById(s, e.schedule_id) : null;
     if (rule) {
       if (tx.type != null && tx.type !== e.kind) fail(M.typeFixed, 'type');
-      if (tx.planned) fail('Une échéance réglée ne redevient pas prévue.', 'planned');
+      if (tx.planned) fail(`${DUE.A} réglé${DUE.e} ne redevient pas à venir.`, 'planned');
       const old = linesToMove(e.kind, oldD.lines, x => isWallet(s, x));
       const was = old?.categoryId ?? null;
       if (e.kind !== 'transfer' && (tx.categoryId ?? null) !== was) fail(M.catFixed, 'category');
@@ -687,7 +688,7 @@ const DECIDERS = {
     if (e.status !== 'void') return [];
     // la date d'une échéance qu'elle confirmait, réglée depuis par une autre opération (D18) : pas deux fois
     if (e.schedule_id && e.due_on && [...s.entries.values()].some(x => x.id !== id && x.status !== 'void' && x.schedule_id === e.schedule_id && x.due_on === e.due_on)) {
-      fail('Cette échéance a déjà été réglée par une autre opération.', 'done');
+      fail(`${DUE.This} a déjà été réglé${DUE.e} par une autre saisie.`, 'done');
     }
     const d = draftOf(s, e);
     const back = { ...d, status: e.status_before_void || 'posted' };
@@ -742,36 +743,57 @@ const DECIDERS = {
   },
 
   // --- réserves (D17) : charges préparées à l'avance, dans un portefeuille d'épargne ---
-  // c : wallet, name, amount, due, mode ('once' | 'gradual'), from (la réserve terminée qu'on reconduit, D17)
+  // c : wallet, name, amount, due, mode ('once' | 'gradual'), from (la réserve terminée qu'on reconduit, D17), every et
+  // interval (son rythme, facultatif : la date de la fois suivante quand on la reconduit ; reconduite, elle garde celui d'avant),
+  // by (chaque mois lu « le 2e lundi », « le dernier vendredi », « le dernier jour » : la fois suivante aussi)
+  // sans date (due vide, 2026-11-24, avec l'utilisateur) : elle naît en pause — reserve.created daté du jour, puis
+  // reserve.paused (rien à garder) : une version qui ne connaît pas la pause y voit un format plus récent, pas un journal
+  // abîmé (un reserve.created sans date serait illisible pour elle)
   'reserve.create'(s, c, ctx) {
     const w = wallet(s, c.wallet);
-    if (!w.savings) fail('Une réserve se crée dans une épargne.', 'savings');
-    if (w.emergency) fail(`${w.name} est ton fonds d’urgence : pas de réserve dedans.`, 'emergency');
+    if (!w.savings) fail(`${RES.A} se crée dans une épargne.`, 'savings');
+    if (w.emergency) fail(`${w.name} est ton fonds d’urgence : pas ${RES.of} dedans.`, 'emergency');
     if (w.archived_at) fail(archivedWallet(w.name), 'archived');
     // des réserves ou un objectif, pas les deux (2026-11-20, avec l'utilisateur) : la première réserve d'une épargne qui a
     // un objectif le retire, une fois l'utilisateur prévenu (dropGoal) ; sans cet accord, refusée
     const dropGoal = w.goal_amount != null && !reservesOf(s, { wallet: w.id, open: true }).length;
-    if (dropGoal && !c.dropGoal) fail(`${w.name} a un objectif : une réserve le retire.`, 'goal');
+    if (dropGoal && !c.dropGoal) fail(`${w.name} a un objectif : ${RES.a} le retire.`, 'goal');
     const id = c.id || ctx.newId();
     if (s.reserves.has(id)) fail(M.idTaken);
-    const r = reserveFields(c, ctx, null, s);
-    if (c.from != null && !reservesOf(s).some(x => x.id === c.from && x.closed)) fail('On ne reconduit qu’une réserve terminée.', 'from');
+    const paused = c.due == null || c.due === '';
+    const r = reserveFields(paused ? { ...c, due: ctx.today } : c, ctx, null, s);
+    const prev = c.from != null ? reservesOf(s).find(x => x.id === c.from && x.closed) : null;
+    if (c.from != null && !prev) fail(`On ne reconduit qu’${RES.a} terminé${RES.e}.`, 'from');
+    // son rythme (2026-11-25) : donné (every, interval ; every null = sans), sinon celui de la fois d'avant qu'on reconduit
+    const rh = 'every' in c ? reserveRhythm(c.every, c.interval) : prev?.every ? { every: prev.every, interval: prev.interval } : null;
+    // sa lecture par mois (by, « le 2e lundi », préparée depuis une telle règle), donnée ou celle d'avant : permise par sa
+    // date ; donnée et pas permise : refusée ; héritée (ou sans date) : le quantième
+    const want = 'every' in c ? c.by ?? null : prev?.by ?? null;
+    if (want != null && !['weekday', 'lastweekday', 'lastday'].includes(want)) fail('Jour du mois inconnu.', 'by');
+    const by = !paused && rh?.every === 'month' && want && byOptions(r.due).includes(want) ? want : null;
+    if (want && !by && 'by' in c && !paused) fail('Ce jour du mois ne va pas avec sa date.', 'by');
     return [...(dropGoal ? [{ type: 'wallet.updated', payload: { id: w.id, changes: { goal_amount: null, goal_on: null } } }] : []),
-      { type: 'reserve.created', payload: { id, wallet: w.id, name: r.name, amount: r.amount, start: ctx.today, due: r.due, mode: r.mode, ...(c.from ? { from: c.from } : {}), ...(r.category ? { category: r.category } : {}) } }];
+      { type: 'reserve.created', payload: { id, wallet: w.id, name: r.name, amount: r.amount, start: ctx.today, due: r.due, mode: r.mode, ...(c.from ? { from: c.from } : {}), ...(r.category ? { category: r.category } : {}),
+        ...(rh ? { every: rh.every, ...(rh.interval > 1 ? { interval: rh.interval } : {}), ...(by ? { by } : {}) } : {}) } },
+      ...(paused ? [{ type: 'reserve.paused', payload: { id, keep: 0 } }] : [])];
   },
 
   // changes : name, amount, due (Repousser), mode, category (« Montant fixé » retiré : la répartition est enregistrée)
+  // due vide sur une datée (2026-11-24, avec l'utilisateur : sans date = en pause) : la met en pause (reserve.paused, après
+  // le reste) ; une date à une réserve en pause la reprend (comme reserve.resume)
   'reserve.update'(s, { id, changes = {} }, ctx) {
     const r = openReserve(s, id);
     /** @type {Record<string, any>} */
     const ch = {};
-    const f = reserveFields({ name: r.name, amount: r.amount, due: r.due, mode: r.mode, category: r.category, ...changes }, ctx, r, s);
+    const pause = 'due' in changes && (changes.due == null || changes.due === '') && !!r.due;
+    const f = reserveFields({ name: r.name, amount: r.amount, due: r.due, mode: r.mode, category: r.category, ...changes, ...(pause ? { due: r.due } : {}) }, ctx, r, s);
     if (f.name !== r.name) ch.name = f.name;
     if (f.amount !== r.amount) ch.amount = f.amount;
     if (f.due !== r.due) ch.due = f.due;
     if (f.mode !== r.mode) ch.mode = f.mode;
     if (f.category !== r.category) ch.category = f.category;
-    return Object.keys(ch).length ? [{ type: 'reserve.updated', payload: { id, changes: ch } }] : [];
+    return [...(Object.keys(ch).length ? [{ type: 'reserve.updated', payload: { id, changes: ch } }] : []),
+      ...(pause ? DECIDERS['reserve.pause'](s, /** @type {any} */ ({ id }), ctx) : [])];
   },
 
   // « Réduire au montant atteint » : le montant visé devient ce qui est mis de côté (saved, calculé par l'écran)
@@ -802,8 +824,8 @@ const DECIDERS = {
   // Reprendre : lui redonner une date (comme Repousser : pas dans le passé)
   'reserve.resume'(s, { id, due }, ctx) {
     const r = openReserve(s, id);
-    if (r.due) fail('Cette réserve n’est pas en pause.', 'due');
-    if (!validDate(due)) fail('Choisis la date d’échéance.', 'due');
+    if (r.due) fail(`${RES.This} n’est pas en pause.`, 'due');
+    if (!validDate(due)) fail('Choisis la date.', 'due');
     return DECIDERS['reserve.update'](s, /** @type {any} */ ({ id, changes: { due } }), ctx);
   },
 
@@ -813,9 +835,10 @@ const DECIDERS = {
     return [{ type: 'reserve.closed', payload: { id, on: ctx.today } }];
   },
 
-  // --- échéances et opérations récurrentes (D18) : une règle ; ses dates sont calculées ; rien ne s'écrit tout seul ---
+  // --- échéances et opérations programmées (D18) : une règle ; ses dates sont calculées ; rien ne s'écrit tout seul ---
   // c : kind ('expense', 'income', 'transfer'), amount, accountId, toAccountId, categoryId, note, start, every ('day', 'week',
-  // 'month', 'year' ou null), interval (tous les combien, 1 par défaut), end, times, reserve
+  // 'month', 'year' ou null), interval (tous les combien, 1 par défaut), end, times, reserve, days, by (une règle par mois
+  // d'un seul jour lue « le 2e lundi », « le dernier vendredi », « le dernier jour » : 'weekday', 'lastweekday', 'lastday')
   'due.create'(s, c, ctx) {
     const id = c.id || ctx.newId();
     if (s.schedules.has(id)) fail(M.idTaken);
@@ -836,16 +859,21 @@ const DECIDERS = {
   'due.update'(s, { id, changes = {} }, ctx) {
     const r = scheduleById(s, id) || fail(M.noDue, 'not_found');
     // une règle déjà continuée par une autre, ou arrêtée : ses retards se règlent un par un ; on modifie la plus récente
-    if (schedulesOf(s).some(x => x.from === id)) fail('Cette échéance a été modifiée depuis : modifie la version la plus récente.', 'continued');
-    if (r.stopped) fail('Cette échéance est arrêtée : ses retards se règlent un par un (Confirmer ou Passer).', 'stopped');
+    if (schedulesOf(s).some(x => x.from === id)) fail(`${DUE.This} a été modifié${DUE.e} depuis : modifie la version la plus récente.`, 'continued');
+    if (r.stopped) fail(`${DUE.This} est arrêté${DUE.e} : ses retards se règlent un par un (Confirmer ou Passer).`, 'stopped');
     const merged = { kind: r.kind, amount: r.amount, accountId: r.wallet, toAccountId: r.to, categoryId: r.category, note: r.note,
-      start: r.start, every: r.every, interval: r.interval, end: r.end, times: r.times, reserve: r.reserve, days: r.days, ...changes };
+      start: r.start, every: r.every, interval: r.interval, end: r.end, times: r.times, reserve: r.reserve, days: r.days, by: r.by, ...changes };
     // une unité sans intervalle : chaque (comme avant le rythme libre)
     if ('every' in changes && !('interval' in changes)) merged.interval = 1;
-    const ended = () => fail('Cette échéance est finie : il n’y a plus de date à modifier.', 'ended');
+    // sa lecture (« le 2e lundi ») reste tant qu'elle va encore (par mois, un seul jour, permise par la date) ; sinon, sans
+    // lecture donnée, le quantième
+    if (merged.by && !('by' in changes) && (rhythmOf(merged.every, merged.interval)[0] !== 'month' || merged.days?.length || !byOptions(merged.start).includes(merged.by))) merged.by = null;
+    const ended = () => fail(`${DUE.This} est ${DUE.adj('fini')} : il n’y a plus de date à modifier.`, 'ended');
     const notBefore = (/** @type {string} */ d) => fail(`Choisis une première date à partir du ${shortDate(d)} : avant, c’est déjà réglé.`, 'start');
     const [every, interval] = rhythmOf(merged.every, merged.interval);
-    const reshaped = every !== r.every || (every ? interval : 1) !== (r.every ? r.interval : 1);
+    const reshaped = every !== r.every || (every ? interval : 1) !== (r.every ? r.interval : 1) || (merged.by ?? null) !== (r.by ?? null);
+    // une lecture « le 2e lundi » (l'ancienne ou la nouvelle) : la suite part de la prochaine date, sans jour d'ancrage
+    const byAny = !!(merged.by || r.by);
     // le nombre de fois voulu pour toute l'échéance (undefined : inchangé ; null : sans fin), et les fois des règles d'avant
     const total = 'times' in changes ? changes.times ?? null : undefined;
     if (total != null && (!Number.isSafeInteger(total) || total < 1 || total > 999)) fail(M.times, 'times');
@@ -858,13 +886,13 @@ const DECIDERS = {
     };
     /** Son nombre de fois à elle, compté depuis son ancrage (begins : les rangs d'avant comptent). @param {number|null} n @param {string} start @param {string|null} begins */
     const perRule = (n, start, begins) => (!every || n === null ? null
-      : n + (begins ? indexAt(/** @type {any} */ ({ start, every, interval, times: null }), begins) : 0));
+      : n + (begins ? indexAt(/** @type {any} */ ({ start, every, interval, by: merged.by, times: null }), begins) : 0));
     /** Le rang d'une date dans la grille de cette règle (sans son nombre de fois ni sa fin). @param {string} d */
     const gridAt = d => indexAt(/** @type {any} */ ({ ...r, times: null }), d);
     const done = doneOf(s);
     const handled = handledDates(s, r, done);
     // le type ne change plus dès qu'une fois est réglée (D18, revu le 2026-11-12) : pour un autre, une autre échéance
-    if ('kind' in changes && changes.kind !== r.kind && settledIn(s, id)) fail('Une date est déjà réglée : le type ne change plus. Pour un autre type, crée une autre échéance.', 'kind');
+    if ('kind' in changes && changes.kind !== r.kind && settledIn(s, id)) fail(`Une date est déjà réglée : le type ne change plus. Pour un autre type, crée ${DUE.adj('un', 'une')} ${DUE.other}.`, 'kind');
     const inPlace = () => {
       // une suite (from) ne revient pas avant sa coupe : ce qui est avant appartient à la règle d'avant
       const floor = r.begins || (r.from ? scheduleById(s, r.from)?.stopped ?? null : null);
@@ -878,30 +906,37 @@ const DECIDERS = {
           const own = nthDate(r, k0);
           if (!own) ended();
           if (!every) fail(M.dueDate, 'start');
-          ({ start, begins } = continueAt(r.start, /** @type {string} */ (own), /** @type {any} */ (every), interval, r.every));
+          ({ start, begins } = continueAt(r.start, /** @type {string} */ (own), /** @type {any} */ (every), interval, r.every, byAny));
         }
       }
       const times = perRule(ownLeft(prior, r.times == null ? null : r.times - k0), start, begins);
       const f = scheduleFields(s, { ...merged, start, times }, ctx, r, { anchored: !!begins });
       // il lui reste au moins une date
-      if (!dateAfter({ ...r, ...f, interval: f.interval || 1, begins, skips: [] }, addDays(begins || f.start, -1))) ended();
+      if (!dateAfter({ ...r, ...f, interval: f.interval || 1, by: f.by ?? null, begins, skips: [] }, addDays(begins || f.start, -1))) ended();
       /** @type {Record<string, any>} */
       const ch = {};
       const now = { kind: r.kind, amount: r.amount, currency: r.currency, wallet: r.wallet, to: r.to, category: r.category, note: r.note,
         start: r.start, every: r.every, interval: r.every && r.interval > 1 ? r.interval : null, end: r.end, times: r.times, reserve: r.reserve };
       for (const k of /** @type {(keyof typeof now)[]} */ (Object.keys(now))) if ((f[k] ?? null) !== (now[k] ?? null)) ch[k] = f[k] ?? null;
       if (JSON.stringify(f.days || []) !== JSON.stringify(r.days || [])) ch.days = f.days || null;
+      if ((f.by ?? null) !== (r.by ?? null)) ch.by = f.by ?? null;
       // le rythme s'écrit en entier (unité et intervalle) : un ancien « tous les 3 mois » ne se lit plus comme tel
       if ('every' in ch || 'interval' in ch) { ch.every = f.every; ch.interval = f.interval; }
       if ((begins ?? null) !== (r.begins ?? null)) ch.begins = begins;
       return Object.keys(ch).length ? [{ type: 'schedule.updated', payload: { id, changes: ch } }] : [];
     };
     if (!r.every) {
-      if (handled.length) fail('Cette échéance est déjà réglée : modifie l’opération dans le Journal.', 'done');
-      return inPlace();
+      if (handled.length) fail(`${DUE.This} est déjà réglé${DUE.e} : modifie l’opération dans le Journal.`, 'done');
+      // une seule fois : son montant ou sa date changés dans la règle remplacent un montant changé pour elle
+      /** @type {NewEvent[]} */
+      const out = inPlace();
+      const ch = out[0]?.payload.changes || {};
+      const adj = adjustedOn(s, r, r.start);
+      if (adj != null && ('amount' in ch || 'start' in ch)) out.push({ type: 'schedule.adjusted', payload: { id: rootOf(s, id), on: r.start, amount: null } });
+      return withStaleAdjusts(s, id, out, ctx);
     }
     const past = datesOf(r, r.start, addDays(ctx.today, -1)).length > 0;
-    if (!past && !handled.length) return inPlace();
+    if (!past && !handled.length) return withStaleAdjusts(s, id, inPlace(), ctx);
     // le point de coupe
     const last = handled.filter(d => d >= ctx.today).pop();
     const P = last ? dateAfter(r, last) || addDays(last, 1) : ctx.today;
@@ -924,12 +959,12 @@ const DECIDERS = {
       // la prolonge), le jour d'ancrage gardé
       const from = nthDate(r, gridAt(P));
       if (!from) ended();
-      ({ start, begins } = continueAt(r.start, /** @type {string} */ (from), /** @type {any} */ (every), interval, r.every));
+      ({ start, begins } = continueAt(r.start, /** @type {string} */ (from), /** @type {any} */ (every), interval, r.every, byAny));
     }
     const f = scheduleFields(s, { ...merged, start, times: perRule(left, start, begins) }, ctx, begins ? r : null, { anchored: !!begins });
-    if (begins && !dateAfter({ ...r, ...f, every: f.every, interval: f.interval || 1, begins, stopped: null, skips: [], id: '' }, addDays(begins, -1))) ended();
+    if (begins && !dateAfter({ ...r, ...f, every: f.every, interval: f.interval || 1, by: f.by ?? null, begins, stopped: null, skips: [], id: '' }, addDays(begins, -1))) ended();
     events.push({ type: 'schedule.created', payload: { id: ctx.newId(), ...f, ...(begins ? { begins } : {}), from: id } });
-    return events;
+    return withStaleAdjusts(s, id, events, ctx);
   },
 
   // Arrêter : plus de dates à partir d'aujourd'hui ; les retards restent à régler ; les opérations confirmées restent
@@ -963,6 +998,25 @@ const DECIDERS = {
     if (!validDate(on) || !isDateOf(r, on)) fail(M.notDateOf, 'date');
     if (!isPending(s, r, on)) fail(M.settled, 'done');
     return [{ type: 'schedule.skipped', payload: { id, on } }];
+  },
+
+  // Un autre montant pour une seule fois encore à régler — à venir, du jour ou en retard (2026-11-24, avec l'utilisateur :
+  // « c'est juste une occurrence ») — ou le retour au montant de la règle (amount null, ou le même que la règle). Aucun
+  // solde n'est regardé : c'est une prévision ; Confirmer, lui, peut être refusé. Le montant changé compte partout pour
+  // cette date (Disponible, à payer, ce que Confirmer préremplit) ; il est gardé sur la première règle de l'échéance
+  // (adjustsOf), et survit donc à une modification qui garde la date et la devise (withStaleAdjusts).
+  'due.adjust'(s, { id, on, amount = null }) {
+    const r = scheduleById(s, id) || fail(M.noDue, 'not_found');
+    if (!validDate(on) || !isDateOf(r, on)) fail(M.notDateOf, 'date');
+    if (!isPending(s, r, on)) fail(M.settled, 'done');
+    if (amount != null) {
+      if (Number.isSafeInteger(amount) && amount > MAX_AMOUNT) fail(M.tooBig, 'amount');
+      if (!isPositiveAmount(amount)) fail(M.amount, 'amount');
+    }
+    const cur = adjustedOn(s, r, on);
+    const want = amount == null || amount === r.amount ? null : amount;
+    if (want === cur) return [];
+    return [{ type: 'schedule.adjusted', payload: { id: rootOf(s, id), on, amount: want } }];
   },
 
   // Rétablir une date passée par erreur
@@ -1004,14 +1058,14 @@ const DECIDERS = {
     if (s.accounts.get(r.wallet)?.currency !== r.currency && !tx.amount) fail('Ce portefeuille a changé de devise : indique le montant.', 'currency');
     const range = confirmRange(s, ctx.today, { schedule: r.id, entry: null, date: on });
     /** @type {Record<string, any>} */
-    const base = { type: r.kind, amount: r.amount, accountId: r.wallet, toAccountId: r.to, categoryId: r.category, note: r.note,
+    const base = { type: r.kind, amount: adjustedOn(s, r, on) ?? r.amount, accountId: r.wallet, toAccountId: r.to, categoryId: r.category, note: r.note,
       date: clampDate(on < ctx.today ? on : ctx.today, range) };
     confirmDate(tx.date ?? base.date, range);
     const res = r.reserve ? reserveFor(s, r) : null;
     if (r.kind === 'expense' && r.reserve) {
       const overridden = tx.accountId && tx.accountId !== r.wallet;
       if (res && !overridden) base.reserve = res.id, base.accountId = res.wallet;
-      else if (!overridden) fail('Sa réserve est close : reconduis-la, ou choisis un portefeuille courant.', 'reserve_closed');
+      else if (!overridden) fail(`${RES.Its} est ${RES.adj('clos', 'close')} : reconduis-${RES.her}, ou choisis un portefeuille courant.`, 'reserve_closed');
     }
     const draft = { ...base, ...tx, planned: false };
     if (tx.accountId && tx.accountId !== base.accountId) delete draft.reserve;
@@ -1041,16 +1095,31 @@ function fixedFields(tx, kind, category) {
 function sameCurrency(s, accountId, from, cur) {
   if (!accountId || accountId === from) return;
   const want = cur || s.accounts.get(from)?.currency;
-  if (want && s.accounts.get(accountId)?.currency !== want) fail('Choisis un portefeuille dans la devise de l’échéance.', 'currency');
+  if (want && s.accounts.get(accountId)?.currency !== want) fail(`Choisis un portefeuille dans la devise ${DUE.ofThe}.`, 'currency');
 }
 /** La date d'une confirmation dans ce qui est permis (confirmRange). @param {any} d @param {{ min: string|null, max: string }} range */
 function confirmDate(d, { min, max }) {
   if (!validDate(d)) fail('Choisis la date.', 'date');
-  if (d > max) fail('Une échéance se confirme au plus tard aujourd’hui.', 'date');
-  if (min && d < min) fail(`Choisis une date à partir du ${shortDate(min)} : les dates de l’échéance se règlent dans l’ordre.`, 'date');
+  if (d > max) fail(`${DUE.A} se confirme au plus tard aujourd’hui.`, 'date');
+  if (min && d < min) fail(`Choisis une date à partir du ${shortDate(min)} : les dates ${DUE.ofThe} se règlent dans l’ordre.`, 'date');
 }
 /** @param {string} d @param {{ min: string|null, max: string }} range */
 const clampDate = (d, { min, max }) => (d > max ? max : min && d < min ? min : d);
+
+/**
+ * Le rythme d'une dépense prévue (2026-11-25), validé : null sans rythme ; sinon l'unité ('day', 'week', 'month',
+ * 'year' ; trimestre et semestre donnés en mois) et tous les combien.
+ * @param {any} every @param {any} interval @returns {{ every: string, interval: number }|null}
+ */
+function reserveRhythm(every, interval) {
+  if (every == null) return null;
+  const old = /** @type {Record<string, number>} */ ({ quarter: 3, half: 6 })[every] || 0;
+  const unit = old ? 'month' : every;
+  if (!EVERY.includes(unit)) fail('Répétition inconnue.', 'every');
+  const n = interval ?? 1;
+  if (!Number.isSafeInteger(n) || n < 1 || n > MAX_INTERVAL) fail('Indique tous les combien (un nombre entier).', 'interval');
+  return { every: unit, interval: (old || 1) * n };
+}
 
 /** Un rythme comme la règle le garde : un ancien trimestre ou semestre en mois, chaque = 1. @param {any} every @param {any} interval @returns {[string|null, number]} */
 function rhythmOf(every, interval) {
@@ -1061,7 +1130,7 @@ function rhythmOf(every, interval) {
 }
 
 /**
- * Champs validés d'une opération récurrente (D18). cur : la règle modifiée (sa première date passée reste permise, ses
+ * Champs validés d'une opération programmée (D18). cur : la règle modifiée (sa première date passée reste permise, ses
  * comptes archivés depuis aussi). anchored : la première date n'est qu'un ancrage (ses dates ne comptent qu'à partir de
  * begins), elle peut être passée.
  * @param {State} s @param {Record<string, any>} c @param {Ctx} ctx @param {import('./dues.js').Schedule|null} cur @param {{ anchored?: boolean }} [o]
@@ -1092,9 +1161,9 @@ function scheduleFields(s, c, ctx, cur, { anchored = false } = {}) {
     // la réserve qui paie une dépense (depuis son épargne), ou que remplit un virement (vers son épargne) ; jamais une rentrée
     const r = reservesOf(s).find(x => x.id === c.reserve) || fail(M.noReserve, 'not_found');
     if (r.closed && r.id !== cur?.reserve) fail(M.closed, 'closed');
-    if (kind === 'income') fail('Un revenu ne passe pas par une réserve.', 'reserve');
-    if (kind === 'expense' && r.wallet !== w.id) fail('Une réserve paie depuis son épargne : choisis ce portefeuille.', 'reserve');
-    if (kind === 'transfer' && r.wallet !== to) fail('Une réserve se remplit par un virement vers son épargne.', 'reserve');
+    if (kind === 'income') fail(`Un revenu ne se rattache pas à ${RES.a}.`, 'reserve');
+    if (kind === 'expense' && r.wallet !== w.id) fail(`${RES.A} paie depuis son épargne : choisis ce portefeuille.`, 'reserve');
+    if (kind === 'transfer' && r.wallet !== to) fail(`${RES.A} se remplit par un virement vers son épargne.`, 'reserve');
     reserve = r.id;
   } else if (kind === 'expense' && w.savings && !w.spend_ok && !w.emergency) {
     fail(savingsNoSpend(w.name), 'savings');
@@ -1115,13 +1184,19 @@ function scheduleFields(s, c, ctx, cur, { anchored = false } = {}) {
   const days = [...new Set(/** @type {number[]} */ (raw))].sort((a, b) => a - b);
   if (days.length > 62) fail('Choisis au plus 63 jours.', 'days');
   if (every && days.length && addDays(c.start, days[days.length - 1]) >= /** @type {string} */ (nthDate({ start: c.start, every, interval }, 1))) fail('Choisis des jours dans une même période (une semaine, un mois…).', 'days');
+  // la lecture d'une règle par mois d'un seul jour (« le 2e lundi », « le dernier jour ») : permise par sa première date
+  const by = c.by ?? null;
+  if (by !== null) {
+    if (every !== 'month' || days.length) fail('« Le 2e lundi », « le dernier jour » : seulement pour un seul jour, chaque mois ou tous les N mois.', 'by');
+    if (!byOptions(c.start).includes(by)) fail(by === 'weekday' ? 'Un 5e jour de la semaine n’existe pas chaque mois : choisis « le dernier ».' : by === 'lastweekday' ? 'Ce jour n’est pas dans la dernière semaine de son mois.' : 'Ce jour n’est pas le dernier de son mois.', 'by');
+  }
   const end = c.end ?? null, times = c.times ?? null;
   if (end !== null && times !== null) fail('Une fin : une date ou un nombre de fois, pas les deux.', 'end');
   if (end !== null && (!validDate(end) || end < c.start)) fail('La fin ne peut pas venir avant la première date.', 'end');
   if (times !== null && (!Number.isSafeInteger(times) || times < 1 || (times > 999 && !anchored))) fail(M.times, 'times');
   return { kind, amount: c.amount, currency: w.currency, wallet: w.id, to, category: cat, note: clean(c.note, 120), start: c.start,
     every, interval: every && interval > 1 ? interval : null, end: every ? end : null, times: every ? times : null, reserve,
-    ...(days.length ? { days } : {}) };
+    ...(days.length ? { days } : {}), ...(by ? { by } : {}) };
 }
 
 /** @param {State} s @param {string} id */
@@ -1143,9 +1218,9 @@ function reserveFields(c, ctx, cur, s) {
   // en pause (D17 revu) : une réserve sans date se modifie sans en recevoir une (Reprendre la lui redonne)
   const stillPaused = !!cur && !cur.due && !c.due;
   if (!stillPaused) {
-    if (!validDate(c.due)) fail('Choisis la date d’échéance.', 'due');
-    if (c.due !== cur?.due && c.due < ctx.today) fail(notPast('L’échéance'), 'due');
-    if (c.due < (cur?.start ?? ctx.today)) fail('L’échéance ne peut pas venir avant le début.', 'due');
+    if (!validDate(c.due)) fail('Choisis la date.', 'due');
+    if (c.due !== cur?.due && c.due < ctx.today) fail(notPast('La date'), 'due');
+    if (c.due < (cur?.start ?? ctx.today)) fail('La date ne peut pas venir avant le début.', 'due');
   }
   const mode = c.mode === 'gradual' ? 'gradual' : c.mode === 'once' || c.mode == null ? 'once' : fail('Mode inconnu.');
   let cat = c.category || null;
@@ -1195,6 +1270,32 @@ function budgetForm(s, b, ctx, cur) {
     if (len > xl && b.amount < x.amount) fail(`Un budget plus long ne peut pas être plus petit que le plus court : ${what}.`, 'amount', { id: x.id });
   }
   return { category: c.id, amount: b.amount, start: b.start, end: b.end, repeat: b.repeat };
+}
+
+/**
+ * Une modification ne laisse pas de montant changé pour une seule fois (2026-11-24) qui ne vaut plus : celui d'une date
+ * qui n'existe plus dans l'échéance (sinon il reviendrait si la date réapparaissait), ou celui d'une fois encore à régler
+ * dont la devise change (12 000 F ne deviennent pas 120,00 €). Les événements de la modification sont rejoués sur une
+ * copie de l'état ; ces fois reprennent le montant de la règle (« schedule.adjusted », amount null, dans la même
+ * commande). Une fois réglée ou passée qui reste garde le sien.
+ * @param {State} s @param {string} id @param {NewEvent[]} events @param {Ctx} ctx @returns {NewEvent[]}
+ */
+function withStaleAdjusts(s, id, events, ctx) {
+  const root = rootOf(s, id);
+  if (!events.length || !Object.keys(scheduleById(s, root)?.amounts || {}).length) return events;
+  const t = cloneState(s);
+  events.forEach((ev, i) => apply(t, { seq: s.head.seq + i + 1, id: '', type: ev.type, v: 1, at: s.head.at || ctx.today, device: '', data: ev.payload }));
+  const before = chainOf(s, root), after = chainOf(t, root);
+  const done = doneOf(t);
+  /** @type {NewEvent[]} */
+  const out = [...events];
+  for (const d of Object.keys(scheduleById(t, root)?.amounts || {}).sort()) {
+    const was = before.find(r => isDateOf(r, d));
+    const now = after.find(r => isDateOf(r, d));
+    if (now && was && (now.currency === was.currency || !isPending(t, now, d, done))) continue;
+    out.push({ type: 'schedule.adjusted', payload: { id: root, on: d, amount: null } });
+  }
+  return out;
 }
 
 /**

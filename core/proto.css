@@ -1,17 +1,9 @@
-/* Style « Proto » (D1, 2026-11-17, avec l'utilisateur ; essayé d'abord dans une copie, « Protofinance ») : monospace carrée
-   pour les chiffres et les petites étiquettes (seules en capitales), la police de Bougette pour les noms et les phrases ; nuit #101015, bleu ardoise #506385, crème #F1F0E1, gris chaud des tuiles claires, coins presque carrés.
+/* Style « Proto » (D1, 2026-11-17, avec l'utilisateur ; essayé d'abord dans une copie, « Protofinance ») : les mêmes
+   textes et la même police que Carnet (2026-11-24, avec l'utilisateur : plus de monospace ni de capitales forcées) ; nuit #101015, bleu ardoise #506385, crème #F1F0E1, gris chaud des tuiles claires, coins presque carrés.
    Chargé après theme.css et screens.css, actif seulement quand html[data-style="proto"] (Moi › Affichage › Style) : il redéfinit
    les jetons et quelques règles communes. L'accueil en tuiles (.pf-*, src/screens/home.js) a la même structure dans les deux
    styles ; chacun y garde ses couleurs, ses polices et ses coins (D1, 2026-11-21).
-   Capitales et monospace seulement pour les petites étiquettes et les chiffres (tout en capitales se lisait mal). */
-
-@font-face {
-  font-family: 'ShareTechMono';
-  src: url('../fonts/sharetechmono.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: block;
-}
+   Ce qui change : les couleurs, les coins et les icônes. */
 
 html[data-style="proto"] {
   --paper: #101015; --card: #1C1C22; --field: #26262D;
@@ -21,29 +13,11 @@ html[data-style="proto"] {
   --brand: #506385; --brand-ink: #F1F0E1;
   --dock: #16161B; --dock-ink: #F1F0E1; --dock-ring: #26262D;
   --stone: #BDBCB0; --on-stone: #101015;
-  --tile-gap: var(--sp-3); /* coins carrés : les tuiles de l'accueil se serrent */
-  --mono: 'ShareTechMono', ui-monospace, 'Roboto Mono', monospace; }
-html[data-style="proto"] .eyebrow,
-html[data-style="proto"] .label,
-html[data-style="proto"] .section-h h2,
-html[data-style="proto"] .dock .lbl,
-html[data-style="proto"] :is(.pf-l, .pf-d, .pf-s, .pf-top, .pf-ring span) {
-  font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; }
-/* un titre de section qui est un lien (Plan : Échéances, Budgets…) : le bouton remet la casse à zéro, il suit son h2 */
-html[data-style="proto"] .section-h .sh-link { text-transform: inherit; letter-spacing: inherit; }
-/* les capitales espacées de Proto paraissent plus grandes : une taille en dessous (titres de section 13 px au lieu de 17,
-   étiquettes des tuiles 11 au lieu de 13, serrées pour tenir sur une ligne dans une demi-tuile) */
-html[data-style="proto"] .section-h h2 { font-size: var(--fs-2nd); }
-html[data-style="proto"] .big,
-html[data-style="proto"] .amt,
-html[data-style="proto"] .mrow .v,
-html[data-style="proto"] .hero .big,
-html[data-style="proto"] :is(.pf-v, .pf-ring b, .pf-wl span:last-child) {
-  font-family: var(--mono); font-weight: 400 !important; letter-spacing: -.01em; }
+  --tile-gap: var(--sp-3); /* coins carrés : les tuiles de l'accueil se serrent */ }
 html[data-radius="square"] *:not(.pill):not(.dot):not(.switch):not(.switch *):not(.round):not(.fab-add):not(.pf-arr):not(.goal-ring) { border-radius: var(--r-xs) !important; }
 
-/* l'accueil en tuiles (D1, D3) : la structure, commune aux deux styles ; le Carnet a Geist, l'écriture normale et des
-   coins ronds, Proto la monospace en capitales (règles ci-dessus) et ses coins carrés (data-radius) */
+/* l'accueil en tuiles (D1, D3) : la structure, commune aux deux styles ; le Carnet des
+   coins ronds, Proto ses coins carrés (data-radius) */
 .pf-home { padding-top: calc(var(--sat) + var(--sp-7)); }
 .pf-top { display: flex; align-items: center; gap: var(--sp-5); margin: 0 var(--sp-1) var(--sp-6); font-size: var(--fs-2nd); color: var(--ink-2); }
 .pf-brand { display: flex; align-items: center; gap: var(--sp-3); color: var(--ink); }
@@ -59,7 +33,7 @@ html[data-radius="square"] *:not(.pill):not(.dot):not(.switch):not(.switch *):no
 .pf-t.stone { background: var(--stone); color: var(--on-stone); min-height: 84px; }
 .pf-l { display: flex; justify-content: space-between; gap: var(--sp-4); font-size: var(--fs-2nd); color: var(--ink-2); }
 .pf-t.blue .pf-l, .pf-t.list .pf-l { color: inherit; }
-html[data-style="proto"] .pf-l { font-size: 11px; letter-spacing: .04em; color: inherit; } /* hors échelle : capitales mono dans une demi-tuile */
+html[data-style="proto"] .pf-l { color: inherit; }
 .pf-l i { font-style: normal; color: var(--ink-2); }
 .pf-t.blue .pf-l i { color: inherit; }
 .pf-l em { font-style: normal; }
@@ -69,8 +43,6 @@ html[data-style="proto"] .pf-l em.on { font-weight: 400; }
 .pf-col { display: flex; flex-direction: column; }
 .pf-v { font-size: 40px; font-weight: 600; line-height: .95; letter-spacing: -.04em; white-space: nowrap; } /* hors échelle : chiffre */
 .pf-v.sm { font-size: 30px; } /* hors échelle : chiffre */
-/* la monospace pose ses grands chiffres 3 px plus haut dans leur ligne : ramenés sur la ligne de ce qui les suit (« / 30 nov », barres) */
-html[data-font-num="mono"] .pf-v:not(.sm, .md) { margin-bottom: -3px; } /* hors échelle : chiffre */
 html .pf-grid .pf-t .pf-v.md { font-family: var(--sans); font-weight: 500 !important; font-size: 22px; line-height: 1.1; letter-spacing: -.01em; } /* hors échelle : chiffre */
 .pf-v.loss { color: var(--loss); }
 .pf-d { margin-left: auto; font-size: var(--fs-meta); color: var(--ink-2); white-space: nowrap; }
@@ -78,7 +50,7 @@ html .pf-grid .pf-t .pf-v.md { font-family: var(--sans); font-weight: 500 !impor
 .pf-t.stone .pf-d { color: inherit; opacity: .7; }
 .pf-s { font-size: var(--fs-meta); color: var(--ink-2); }
 /* html .pf-t : passe devant la règle Proto des petites étiquettes (:is() compte son sélecteur le plus lourd) */
-html .pf-t .pf-s.pf-next { font-family: var(--sans); text-transform: none; letter-spacing: 0; font-size: var(--fs-meta); margin-top: var(--sp-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html .pf-t .pf-s.pf-next { font-family: var(--sans); font-size: var(--fs-meta); margin-top: var(--sp-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pf-bars { display: flex; align-items: flex-end; gap: var(--sp-3); height: 64px; margin: 0 0 var(--sp-2) auto; } /* posées sur la ligne du chiffre, pas sur le bord */
 .pf-bars i { width: 18px; border-radius: var(--r-sm); background: var(--stone); }
 .pf-bars i.on { background: var(--accent); }
@@ -104,17 +76,10 @@ html .pf-t .pf-s.pf-next { font-family: var(--sans); text-transform: none; lette
 .pf-rise .pf-t:nth-child(6) { animation-delay: .2s; } .pf-rise .pf-t:nth-child(7) { animation-delay: .24s; }
 html.locked .pf-rise :is(.pf-top, .pf-t) { animation-play-state: paused; }
 
-/* L'affichage réglé à la main (2026-11-20, Moi › Affichage) : la police des chiffres, celle de tout le texte. Les coins
-   carrés sont la règle data-radius ci-dessus (le style Proto la met par défaut). Valent aussi pour l'accueil, dans les deux styles. */
-:root { --mono: 'ShareTechMono', ui-monospace, 'Roboto Mono', monospace; }
-html[data-font-num="mono"] :is(.big, .amt, .mrow .v, .hero .big, .pf-v, .pf-ring b, .pf-wl span:last-child) {
-  font-family: var(--mono); font-weight: 400; letter-spacing: -.01em; }
-html[data-font-num="geist"] :is(.big, .amt, .mrow .v, .hero .big, .pf-v, .pf-ring b, .pf-wl span:last-child) {
-  font-family: var(--sans); }
-/* les grands montants en Geist (2026-11-23, avec l'utilisateur : en grand, la graisse 600 et l'interlettrage serré
-   alourdissaient et collaient les chiffres) : graisse 500, interlettrage moins serré, chiffres de même largeur */
-html[data-font-num="geist"] :is(.big, .hero .big, .pf-v:not(.md)) { font-weight: 500; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-html[data-font-text="mono"] body, html[data-font-text="mono"] body *:not(svg):not(svg *) { font-family: var(--mono) !important; }
+/* Les chiffres, dans les deux styles (2026-11-24 : une seule police) : les grands montants en graisse 500, interlettrage
+   peu serré, chiffres de même largeur (2026-11-23, avec l'utilisateur : la graisse 600 et l'interlettrage serré alourdissaient) */
+:is(.big, .amt, .mrow .v, .hero .big, .pf-v, .pf-ring b, .pf-wl span:last-child) { font-family: var(--sans); }
+:is(.big, .hero .big, .pf-v:not(.md)) { font-weight: 500; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 /* Le rythme face à d'habitude (2026-11-23, avec l'utilisateur ; remplace l'anneau « F / jour ») : l'écart, une petite
    courbe (ce mois-ci par-dessus d'habitude), et ce qu'il dit ; le détail au toucher */
 .pf-t.habit { min-height: 140px; }
@@ -129,7 +94,7 @@ html[data-font-text="mono"] body, html[data-font-text="mono"] body *:not(svg):no
 :is(.pf-curve, .hb-curve) .tick { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 3; }
 :is(.pf-curve, .hb-curve) .dot { fill: var(--accent-text); stroke: var(--card); stroke-width: 2; }
 /* la phrase du rythme, comme la prochaine échéance d'« À payer » : en écriture normale, Geist, même en Proto */
-html .pf-t .pf-s.pf-say { font-family: var(--sans); text-transform: none; letter-spacing: 0; font-size: var(--fs-meta); margin-top: var(--sp-4); }
+html .pf-t .pf-s.pf-say { font-family: var(--sans); font-size: var(--fs-meta); margin-top: var(--sp-4); }
 .hb-axis { display: flex; justify-content: space-between; color: var(--ink-3); font-size: var(--fs-meta); margin: var(--sp-2) 0 var(--sp-6); position: relative; }
 .hb-axis .today { position: absolute; top: 0; transform: translateX(-50%); color: var(--ink-2); }
 .hb-nums { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-6); margin: var(--sp-4) 0 var(--sp-6); }

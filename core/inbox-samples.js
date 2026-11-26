@@ -4,6 +4,7 @@
 // du sujet) ; « Choisir » d'une réserve n'a rien de réel derrière. Les clés commencent par « sample- » : rien de réel
 // n'est remplacé, et « Retirer les exemples » ne retire qu'eux.
 import { messages, resolve, putAll } from './inbox.js';
+import { RES } from '../domain/words.js';
 
 /** @type {Array<Omit<import('./inbox.js').Message, 'at'|'read'>>} */
 const SAMPLES = [
@@ -18,12 +19,12 @@ const SAMPLES = [
   { key: 'sync-fork', kind: 'info', title: '« Mon espace » en deux versions', body: 'Ton compte garde les deux, sans les mélanger.' },
   { key: 'sync-spaces', kind: 'info', title: 'Nouvel espace : Famille', body: 'Ouvre-le depuis Moi.' },
   // mise à jour (core/update.js)
-  { key: 'update', kind: 'info', title: 'Nouvelle version', body: 'Prête à installer.', action: { label: 'Installer', id: 'update' } },
+  { key: 'update', kind: 'info', title: 'Nouvelle version', body: 'Importante : installe-la.', action: { label: 'Installer', id: 'update' } },
   // rentrée à répartir (core/assign.js)
   { key: 'assign', kind: 'warn', title: '150 000 F à répartir', body: 'Arrivés le 20 nov.', action: { label: 'Répartir', id: 'assign' } },
   // épargne (core/reserve-alerts.js)
-  { key: 'res-ready', kind: 'ok', title: 'Rentrée scolaire est prête', body: 'Tu la dépenses quand ?', action: { label: 'Choisir', id: 'when:sample' } },
-  { key: 'res-ready-many', kind: 'ok', title: '4 réserves prêtes', body: 'Choisis quand tu les dépenses.', action: { label: 'Voir', id: 'savings' } },
+  { key: 'res-ready', kind: 'ok', title: 'Rentrée scolaire est prête', body: 'Tout est de côté.', action: { label: 'Voir', id: 'when:sample' } },
+  { key: 'res-ready-many', kind: 'ok', title: `${RES.count(4)} prêt${RES.e}s`, body: 'Tout est de côté.', action: { label: 'Voir', id: 'savings' } },
   { key: 'goal-ok', kind: 'ok', title: 'Objectif atteint', body: 'Fonds d’urgence : 300 000 F.' },
   { key: 'goal-many', kind: 'ok', title: '4 objectifs atteints', body: '' },
 ];

@@ -3,6 +3,19 @@
    se séparent par l'espace et leurs titres, les listes par des filets fins décalés sous le texte. Seules les feuilles du
    bas sont des surfaces (--card) ; champs, touches et segments gardent --field. */
 
+/* Satoshi, la police par défaut (gardée le 2026-11-24, avec l'utilisateur, après Geist et un essai de JetBrains Mono) : variable, graisses 300 à 900,
+   accents. Indian Type Foundry, licence ITF Free Font License (Fontshare) : crédit dans Moi › À propos › Licences. Son
+   x est un peu plus bas que celui de Geist (0,50 contre 0,53) : pas de taille à corriger. */
+@font-face {
+  font-family: 'Satoshi';
+  src: url('../fonts/satoshi.woff2') format('woff2');
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: block;
+}
+/* Les autres polices au choix (Moi › Affichage › Police, src/core/fonts.js) : seule celle qui sert est téléchargée.
+   Geist et Geist Serif : Vercel et basement.studio, OFL 1.1, paquet officiel `geist` 1.9.2. Geist Serif n'a qu'une
+   graisse (le gras est dessiné par le navigateur). Roboto est celle du téléphone : rien d'embarqué. */
 @font-face {
   font-family: 'Geist';
   src: url('../fonts/geist.woff2') format('woff2');
@@ -10,6 +23,7 @@
   font-style: normal;
   font-display: block;
 }
+@font-face { font-family: 'Geist Serif'; src: url('../fonts/geist-serif-regular.woff2') format('woff2'); font-weight: 400; font-display: block; }
 
 /* ---------- jetons D1 : thème sombre seul (indigo sur nuit) ---------- */
 :root {
@@ -28,7 +42,7 @@
   --mix: 24%;  /* D8 : teinte mêlée à la surface (pastilles) */
   --lift: 30%; /* D8 : icône dans la teinte éclaircie de 30 % de blanc */
   --surface: var(--paper); /* fond sous les pastilles : le papier, ou la feuille du bas */
-  --sans: 'Geist', -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --sans: 'Satoshi', -apple-system, 'Segoe UI', Roboto, sans-serif; /* la police de tout, au choix : html[data-font] */
   /* D5 : une seule courbe, et une pour les petits retours */
   --spring: cubic-bezier(.32, .72, 0, 1);
   --ease-out: cubic-bezier(.2, .8, .2, 1);

@@ -12,8 +12,8 @@ export const TABLES = {
   budgets: ['id', 'account_id', 'amount', 'currency', 'valid_from', 'start_on', 'end_on', 'repeats', 'from_id'],
   settings: ['key', 'value'],
   entry_history: ['id', 'seq', 'entry_id', 'at', 'action', 'before', 'after'],
-  reserves: ['id', 'wallet_id', 'name', 'amount', 'used', 'currency', 'start_on', 'due_on', 'mode', 'repeats', 'pinned', 'closed_on', 'created_at', 'from_id', 'uses', 'category_id', 'held'],
-  schedules: ['id', 'kind', 'amount', 'currency', 'wallet_id', 'to_wallet_id', 'category_id', 'note', 'start_on', 'every', 'end_on', 'times', 'reserve_id', 'stopped_on', 'skips', 'from_id', 'begins_on', 'created_at', 'interval', 'days'],
+  reserves: ['id', 'wallet_id', 'name', 'amount', 'used', 'currency', 'start_on', 'due_on', 'mode', 'repeats', 'pinned', 'closed_on', 'created_at', 'from_id', 'uses', 'category_id', 'held', 'every', 'interval', 'by_day'],
+  schedules: ['id', 'kind', 'amount', 'currency', 'wallet_id', 'to_wallet_id', 'category_id', 'note', 'start_on', 'every', 'end_on', 'times', 'reserve_id', 'stopped_on', 'skips', 'from_id', 'begins_on', 'created_at', 'interval', 'days', 'amounts', 'by_day'],
 };
 /**
  * Type de chaque colonne, comme SQLite la stocke : 'text' / 'int' (NOT NULL), suffixe « ? » si NULL est permis,
@@ -40,11 +40,13 @@ export const COLUMN_TYPES = {
   reserves: {
     id: 'text', wallet_id: 'text', name: 'text', amount: 'int', used: 'int', currency: 'text', start_on: 'text', due_on: 'text', mode: ['once', 'gradual'],
     repeats: 'int', pinned: 'int?', closed_on: 'text?', created_at: 'text', from_id: 'text?', uses: 'text?', category_id: 'text?', held: 'int?',
+    every: ['day', 'week', 'month', 'year', null], interval: 'int?', by_day: ['weekday', 'lastweekday', 'lastday', null],
   },
   schedules: {
     id: 'text', kind: ['expense', 'income', 'transfer'], amount: 'int', currency: 'text', wallet_id: 'text', to_wallet_id: 'text?', category_id: 'text?',
     note: 'text', start_on: 'text', every: ['day', 'week', 'month', 'quarter', 'half', 'year', null], end_on: 'text?', times: 'int?', reserve_id: 'text?',
-    stopped_on: 'text?', skips: 'text?', from_id: 'text?', begins_on: 'text?', created_at: 'text', interval: 'int?', days: 'text?',
+    stopped_on: 'text?', skips: 'text?', from_id: 'text?', begins_on: 'text?', created_at: 'text', interval: 'int?', days: 'text?', amounts: 'text?',
+    by_day: ['weekday', 'lastweekday', 'lastday', null],
   },
 };
 /**
@@ -68,8 +70,8 @@ export function badColumn(table, r) {
  * l'empreinte d'un ancien journal (qui ne les connaît pas) reste exactement la même.
  * @type {Partial<Record<Table, string[]>>}
  */
-export const LATE_COLUMNS = { accounts: ['parent_id', 'checked_at', 'off_total', 'savings', 'spend_ok', 'goal_amount', 'goal_on', 'emergency', 'alloc'], entries: ['schedule_id', 'due_on'], budgets: ['start_on', 'end_on', 'repeats', 'from_id'], reserves: ['from_id', 'uses', 'category_id', 'held'], schedules: ['interval', 'days'] };
-/** Projections ajoutées après coup (006 : réserves ; 010 : opérations récurrentes) : absentes de l'empreinte d'état quand elles sont vides. @type {Table[]} */
+export const LATE_COLUMNS = { accounts: ['parent_id', 'checked_at', 'off_total', 'savings', 'spend_ok', 'goal_amount', 'goal_on', 'emergency', 'alloc'], entries: ['schedule_id', 'due_on'], budgets: ['start_on', 'end_on', 'repeats', 'from_id'], reserves: ['from_id', 'uses', 'category_id', 'held', 'every', 'interval', 'by_day'], schedules: ['interval', 'days', 'amounts', 'by_day'] };
+/** Projections ajoutées après coup (006 : réserves ; 010 : opérations programmées) : absentes de l'empreinte d'état quand elles sont vides. @type {Table[]} */
 export const LATE_TABLES = ['reserves', 'schedules'];
 /** Ordre d'écriture (parents avant enfants) ; l'effacement se fait dans l'ordre inverse. @type {Table[]} */
 export const TABLE_ORDER = ['accounts', 'entries', 'postings', 'budgets', 'settings', 'entry_history', 'reserves', 'schedules'];

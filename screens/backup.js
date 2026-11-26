@@ -14,7 +14,7 @@ import { esc, shortDate, iso, dayLabel, today, addDays } from '../core/format.js
 import { inspect, restore, verifyData, healPlan, heal, stateAt, firstDay, lastReturn, stay } from '../core/backup.js';
 import { pickDate } from './pickers.js';
 import { driveJournal } from '../core/cloud.js';
-import { messages, markAllRead } from '../core/inbox.js';
+import { messages, markAllRead, resolve } from '../core/inbox.js';
 import { googleAvailable, account } from '../core/google.js';
 import { syncLine } from './google.js';
 import { startOverFlow } from './spaces.js';
@@ -221,10 +221,12 @@ export function openInboxSheet() {
     else if (m.action.id === 'update') setTimeout(() => window.dispatchEvent(new CustomEvent('bougette:open-update')), 280);
     else if (m.action.id === 'assign') setTimeout(() => { location.hash = '#/mois'; }, 280);
     else if (m.action.id === 'savings') setTimeout(() => { location.hash = '#/epargne'; }, 280);
-    else if (m.action.id.startsWith('review:')) setTimeout(() => { location.hash = `#/epargne?w=${encodeURIComponent(m.action.id.slice(7))}&revoir=1`; }, 280);
-    // une réserve prête (2026-11-19) : « Tu la dépenses quand ? »
+    // « tes versements ne suffisent plus » : la page de l'épargne (2026-11-25, avec l'utilisateur : tout s'y fait)
+    else if (m.action.id.startsWith('review:')) setTimeout(() => { location.hash = `#/epargne?w=${encodeURIComponent(m.action.id.slice(7))}`; }, 280);
+    // une réserve prête : son menu, le même partout (2026-11-25)
     else if (m.action.id.startsWith('when:')) {
       const id = m.action.id.slice(5);
+      resolve(m.key); // vue, la nouvelle « prête » part de la cloche (elle ne revient pas : readySeen)
       setTimeout(() => window.dispatchEvent(new CustomEvent('bougette:reserve', { detail: { id } })), 280);
     }
   }));

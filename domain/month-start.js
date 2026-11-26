@@ -59,3 +59,35 @@ export function monthStartLabel(rule) {
   const x = RULE.exec(String(rule));
   return x ? `Le ${RANK[/** @type {'1'|'2'|'3'|'4'|'L'} */ (x[1])]} ${DAY[Number(x[2])]}` : 'Le 1er';
 }
+
+// Les mêmes lectures pour une échéance par mois (2026-11-25, avec l'utilisateur : tontines, associations, église), tirées
+// de sa première date : 'weekday' le Nᵉ même jour de la semaine (le lundi 14 : « le 2e lundi » ; N de 1 à 4 : un 5ᵉ
+// n'existe pas chaque mois), 'lastweekday' le dernier (« le dernier vendredi »), 'lastday' le dernier jour du mois.
+/** @typedef {'weekday'|'lastweekday'|'lastday'} By */
+/** Le nombre de jours du mois d'une date. @param {string} d */
+const monthLength = d => new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)), 0)).getUTCDate();
+/** Le rang d'une date parmi les mêmes jours de la semaine de son mois (le 14 : 2 ; un 29, 30 ou 31 : 5). @param {string} d */
+export const weekRank = d => Math.ceil(Number(d.slice(8, 10)) / 7);
+/**
+ * Les lectures qu'une date permet : le Nᵉ jour de la semaine jusqu'au 28 ; le dernier jour de la semaine dans les 7
+ * derniers jours du mois ; le dernier jour du mois quand c'en est un (un 31 aussi : une règle « le dernier jour » y tombe
+ * sept mois sur douze, son quantième y tombe déjà chaque dernier jour du mois). @param {string} d @returns {By[]}
+ */
+export function byOptions(d) {
+  const day = Number(d.slice(8, 10)), len = monthLength(d);
+  /** @type {By[]} */
+  const out = [];
+  if (day <= 28) out.push('weekday');
+  if (day > len - 7) out.push('lastweekday');
+  if (day === len) out.push('lastday');
+  return out;
+}
+/**
+ * La date, n mois après la date d'ancrage (n peut être négatif), lue comme elle (by). @param {string} anchor @param {By} by @param {number} n
+ */
+export function byMonth(anchor, by, n) {
+  const y = Number(anchor.slice(0, 4)), m = Number(anchor.slice(5, 7)) - 1 + n;
+  if (by === 'lastday') return startOn(y, m, 'last');
+  const D = dow(Number(anchor.slice(0, 4)), Number(anchor.slice(5, 7)) - 1, Number(anchor.slice(8, 10)));
+  return startOn(y, m, `w:${by === 'lastweekday' ? 'L' : Math.min(4, weekRank(anchor))}:${D}`);
+}

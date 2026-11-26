@@ -16,6 +16,7 @@ import {
   settings, moves, account, accounts, category, byDateDesc, txCur, topOf, categoryLabel, allCategories,
   balances, totalBalance, otherTotals, reserveById, dueItems,
 } from '../core/store.js';
+import { RES } from '../domain/words.js';
 import { dueRowsHTML, wireDues } from './dues-ui.js';
 import { money, esc, today, period, parse, windowOf, shiftWindow, windowFor, tabLabel, dayLabel, shortDate, addDays, yearDate } from '../core/format.js';
 import { icon, catIcon } from '../core/icons.js';
@@ -374,7 +375,7 @@ export function render(app, ctx) {
       <div class="big${bal < 0 ? ' neg' : ''}">${splitAmount(Math.abs(bal), { cur, neg: bal < 0 })}</div>
       ${others.length ? `<div class="sub">et ${others.length} autre${others.length > 1 ? 's' : ''} devise${others.length > 1 ? 's' : ''}</div>` : ''}
       <button type="button" class="ops-wal" data-wal>${acc ? '' : icon('wallet')}<span>${esc(acc ? acc.name : 'Tous les portefeuilles')}</span>${icon('caret-down')}</button>
-      ${res ? `<button type="button" class="fchip on ops-res" data-resx aria-label="Retirer le filtre : réserve ${esc(res.name)}">${res.category ? catIcon(category(res.category)?.icon || 'dots-three') : icon('piggy-bank')}<span>${esc(res.name)}</span>${icon('x')}</button>` : ''}
+      ${res ? `<button type="button" class="fchip on ops-res" data-resx aria-label="Retirer le filtre : ${RES.one} ${esc(res.name)}">${res.category ? catIcon(category(res.category)?.icon || 'dots-three') : icon('piggy-bank')}<span>${esc(res.name)}</span>${icon('x')}</button>` : ''}
     </section>
     <div data-period></div>
     <div data-list></div>

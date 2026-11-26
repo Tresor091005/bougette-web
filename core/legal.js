@@ -6,6 +6,8 @@
 
 export const SITE = 'https://tresor091005.github.io/bougette-web/';
 export const UPDATED = '24 novembre 2026';
+/** La dernière version Android, toujours (le fichier de la dernière publication, tools/release.mjs). */
+export const LATEST_APK = 'https://github.com/Tresor091005/bougette-releases/releases/latest/download/Bougette.apk';
 /** Le support : WhatsApp (pas de serveur, pas d'e-mail ; avec l'utilisateur). */
 export const SUPPORT_WHATSAPP = '2290159130917';
 
@@ -42,9 +44,9 @@ export const TERMS = {
 /** Les licences de ce que Bougette embarque. @type {{ name: string, by: string, license: string }[]} */
 export const LICENSES = [
   { name: 'Phosphor Icons', by: 'Helena Zhang et Tobias Fried', license: 'MIT' },
-  { name: 'Solar Icons (style Proto)', by: '480 Design', license: 'CC BY 4.0' },
-  { name: 'Geist', by: 'Vercel', license: 'SIL Open Font License 1.1' },
-  { name: 'Share Tech Mono (style Proto)', by: 'Carrois Apostrophe', license: 'SIL Open Font License 1.1' },
+  { name: 'Solar Icons', by: '480 Design', license: 'CC BY 4.0' },
+  { name: 'Satoshi', by: 'Indian Type Foundry (Fontshare)', license: 'ITF Free Font License' },
+  { name: 'Geist, Geist Serif', by: 'Vercel et basement.studio', license: 'SIL Open Font License 1.1' },
   { name: 'blobatar (têtes des espaces)', by: 'blobatar', license: 'MIT' },
   { name: 'sql.js (version web)', by: 'sql.js', license: 'MIT' },
 ];

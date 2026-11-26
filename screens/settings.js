@@ -1,12 +1,12 @@
 // Moi (onglet, D9) : « Mon argent » (Portefeuilles, Catégories, Monnaie et format), « L'app » (début du mois, affichage,
 // verrouillage, mises à jour, données et sauvegarde). Chaque ligne ouvre son écran ou sa feuille. Pas de compte : tout
-// reste sur le téléphone. La page Développeur est cachée (2026-11-21) : sept touchers sur la version (pied de page, ou
-// feuille Mises à jour) l'ouvrent ; ensuite, sur ce téléphone, sa ligne apparaît dans « Outils ».
+// reste sur le téléphone. La page Développeur est cachée (2026-11-21) : sept touchers sur la version (Moi › À propos)
+// l'ouvrent ; ensuite, sur ce téléphone, sa ligne apparaît dans « Outils ».
 import { settings, setSettings, totalBalance, uiStyle } from '../core/store.js';
 import { currency, money, ordinal, esc } from '../core/format.js';
 import { currentSpace } from '../core/spaces.js';
 import { icon } from '../core/icons.js';
-import { openSheet, buzz, switchHTML, $, $$ } from '../core/ui.js';
+import { openSheet, buzz, toast, $, $$ } from '../core/ui.js';
 import { pickMonthStart, monthStartLabel } from './pickers.js';
 import { openSpacesSheet } from './spaces.js';
 import { spaceAvatar } from '../core/avatar.js';
@@ -15,67 +15,52 @@ import { hasCode, lockAtOpen } from '../core/lock.js';
 import { googleAvailable, account } from '../core/google.js';
 import { syncLine } from './google.js';
 import { reviewItems } from '../core/review.js';
-import { versionTaps, devUnlocked } from './developer.js';
+import { devUnlocked } from './developer.js';
 import { rowHTML, sectionHTML, sheetHead } from './parts.js';
-import { versionLabel, updateAvailable, checkUpdate, installUpdate, installDownloaded, autoUpdate, setAutoUpdate } from '../core/update.js';
+import { versionLabel, updateAvailable, checkUpdate, installUpdate, installDownloaded } from '../core/update.js';
 
 // le numéro de version en clair (D20 : une version porte sa date et son heure)
 const VERSION = versionLabel(APP_VERSION);
 
 /**
- * Mises à jour (D20) : chercher la dernière version publiée ; plus récente, ses notes, sa taille, puis « Télécharger et
- * installer » (une copie de sécurité d'abord, puis l'installation d'Android). Le seul accès à internet de l'app.
+ * Mises à jour (D20, revu le 2026-11-24, avec l'utilisateur : qui touche le bouton veut mettre à jour) : on cherche tout
+ * de suite. Rien de plus récent : un mot (« Tu as la dernière version »). Une version plus récente : une feuille, sa date,
+ * sa taille, ses notes, et « Télécharger et installer » (une copie de sécurité d'abord, puis l'installation d'Android).
+ * Ouverte depuis la cloche ou le toast d'une version importante, la version est déjà là (preset).
  */
-export function openUpdateSheet(/** @type {any} */ preset = null) {
+export async function openUpdateSheet(/** @type {any} */ preset = null) {
+  let u = preset?.newer ? preset : null;
+  if (!u) {
+    toast('Recherche d’une mise à jour…');
+    try { u = await checkUpdate(); } catch (e) { toast(/** @type {Error} */ (e).message); return; }
+    if (!u.newer) { toast(u.none ? 'Aucune version publiée.' : 'Tu as la dernière version.'); return; }
+  }
+  const found = u;
+  const mo = found.size ? ` · ${Math.round(found.size / 1e6)} Mo` : '';
   const s = openSheet(`<div class="confirm upd">
-    ${sheetHead({ title: 'Mises à jour' })}
-    <p class="muted" data-u data-version>Tu as la version du ${esc(VERSION)}.</p>
-    <p class="muted upd-note">Bougette regarde seulement s’il y a une version plus récente : rien n’est envoyé.</p>
-    ${rowHTML({ attrs: 'data-auto', title: 'Chercher tout seul', sub: 'Une fois par jour, à l’ouverture', end: switchHTML(autoUpdate()) })}
-    <button class="btn primary" data-go>Chercher une mise à jour</button>
-    <button class="btn ghost" data-no>Fermer</button></div>`, { label: 'Mises à jour' });
+    ${sheetHead({ title: 'Nouvelle version' })}
+    <p class="muted" data-u><b>Version du ${esc(versionLabel(found.tag || ''))}</b>${mo}${found.notes ? `<br>${esc(found.notes).replace(/\n/g, '<br>')}` : ''}</p>
+    <button class="btn primary" data-go>Télécharger et installer</button>
+    <button class="btn ghost" data-no>Plus tard</button></div>`, { label: 'Nouvelle version' });
   const msg = /** @type {HTMLElement} */ ($('[data-u]', s.el)), go = /** @type {HTMLButtonElement} */ ($('[data-go]', s.el));
   $('[data-no]', s.el).onclick = () => s.close();
-  versionTaps(msg, () => s.close());
-  const auto = /** @type {HTMLElement} */ ($('[data-auto]', s.el));
-  auto.onclick = () => { const on = !autoUpdate(); setAutoUpdate(on); auto.querySelector('.switch')?.classList.toggle('on', on); buzz(8); };
-  /** @type {{ url?: string }|null} */
-  let found = null, waitingPermission = false;
-  // ouverte depuis le message « Nouvelle version · Installer » (recherche du jour) : la version est déjà là
-  const show = (/** @type {any} */ u) => {
-    found = u;
-    const mo = u.size ? ` · ${Math.round(u.size / 1e6)} Mo` : '';
-    msg.innerHTML = `<b>Version du ${esc(versionLabel(u.tag || ''))}</b>${mo}${u.notes ? `<br>${esc(u.notes).replace(/\n/g, '<br>')}` : ''}`;
-    go.textContent = 'Télécharger et installer';
-  };
-  if (preset?.newer) show(preset);
+  let waitingPermission = false;
   go.onclick = async () => {
     buzz(8);
-    if (waitingPermission) { if (!installDownloaded()) { msg.textContent = 'La mise à jour téléchargée n’est plus là : recommence.'; waitingPermission = false; go.textContent = 'Chercher une mise à jour'; } return; }
-    if (found?.url) {
-      go.disabled = true;
-      try {
-        const r = await installUpdate(found.url, (step, pct) => {
-          if (step === 'copy') msg.textContent = 'Copie de sécurité de tes données…';
-          else if (step === 'progress') msg.textContent = pct != null && pct >= 0 ? `Téléchargement… ${pct} %` : 'Téléchargement…';
-          else if (step === 'ready') msg.textContent = 'Installation… L’app va se fermer : rouvre-la ensuite. Tes données restent. Android peut te demander de confirmer.';
-        });
-        if (r === 'permission') {
-          waitingPermission = true;
-          msg.textContent = 'Autorise Bougette à installer des apps (une seule fois), puis reviens et touche Installer.';
-          go.textContent = 'Installer';
-        }
-      } catch (e) { msg.textContent = /** @type {Error} */ (e).message; }
-      go.disabled = false;
-      return;
-    }
+    if (waitingPermission) { if (!installDownloaded()) { msg.textContent = 'La mise à jour téléchargée n’est plus là : recommence.'; waitingPermission = false; go.textContent = 'Télécharger et installer'; } return; }
+    if (!found.url) return;
     go.disabled = true;
-    msg.textContent = 'Recherche…';
     try {
-      const u = await checkUpdate();
-      if (u.none) msg.textContent = 'Aucune version publiée.';
-      else if (!u.newer) msg.textContent = `Tu as déjà la dernière version (du ${esc(VERSION)}).`;
-      else show(u);
+      const r = await installUpdate(found.url, (step, pct) => {
+        if (step === 'copy') msg.textContent = 'Copie de sécurité de tes données…';
+        else if (step === 'progress') msg.textContent = pct != null && pct >= 0 ? `Téléchargement… ${pct} %` : 'Téléchargement…';
+        else if (step === 'ready') msg.textContent = 'Installation… L’app va se fermer : rouvre-la ensuite. Tes données restent. Android peut te demander de confirmer.';
+      });
+      if (r === 'permission') {
+        waitingPermission = true;
+        msg.textContent = 'Autorise Bougette à installer des apps (une seule fois), puis reviens et touche Installer.';
+        go.textContent = 'Installer';
+      }
     } catch (e) { msg.textContent = /** @type {Error} */ (e).message; }
     go.disabled = false;
   };

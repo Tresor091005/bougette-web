@@ -57,8 +57,8 @@ const ROUTES = {
   // depuis Plan
   'mois/echeance': { mod: duePage },
   'mois/echeances': { mod: allDuesScreen },
-  // toutes les réserves et toute l'épargne (2026-11-12) : les pages des sections de Plan, comme « Tous les budgets »
-  'mois/reserves': { mod: month.allReservesScreen },
+  // toute l'épargne (2026-11-12) : la page de la section de Plan, comme « Tous les budgets » ; plus de « Toutes les
+  // réserves » (2026-11-25) : le titre de la section ouvre la page de l'épargne ou celle-ci
   'mois/epargne': { mod: month.allSavingsScreen },
   // « Moi » (D9) est un onglet ; ce qui s'y ouvre (portefeuilles, monnaie, catégories) est une page avec un retour
   reglages: { mod: settingsScreen, tab: 'me' },
@@ -142,7 +142,7 @@ function budgetNeedsLook() {
     return savingsAccounts().some(a => {
       if (a.archived) return false;
       const r = savingsReport(a.id);
-      return r.free < 0 || r.reserves.some(v => v.status === 'none' || v.status === 'overdue');
+      return r.free < 0 || r.reserves.some(v => v.status === 'none' || v.status === 'overdue' || (v.full && (v.overdue || v.day)));
     });
   } catch (e) { console.error(e); return false; }
 }
@@ -169,8 +169,8 @@ function renderTabbar(active) {
   dock.querySelectorAll('.tab').forEach(a => {
     const on = a.dataset.tab === active;
     const t = TABS.find(x => x && x.id === a.dataset.tab);
-    // l'icône change avec l'onglet actif et avec le style (Proto : Solar, D1)
-    const key = `${on}:${document.documentElement.dataset.style}:${currentSpace().id}`;
+    // l'icône change avec l'onglet actif et avec les icônes choisies (Phosphor ou Solar)
+    const key = `${on}:${document.documentElement.dataset.icons}:${currentSpace().id}`;
     // l'onglet Moi porte la tête de l'espace ouvert, en couleur, sans rien autour (D19, revu le 2026-11-21) : on sait
     // toujours dans quel espace on est ; fermé, elle s'atténue comme les autres icônes
     if (a.dataset.on !== key) { a.innerHTML = t.id === 'me' ? `<span class="tab-ava">${spaceHead(currentSpace())}</span>` : icon(t.icon, '', on ? 'fill' : 'regular'); a.dataset.on = key; }
@@ -235,10 +235,10 @@ window.addEventListener('bougette:restyle', () => render({ keepScroll: true }));
 // mises à jour (D20) : la recherche du jour, un peu après l'ouverture ; son message ou la cloche ouvre la feuille
 setTimeout(() => { if (settings().onboarded) autoCheck(); }, 4000);
 window.addEventListener('bougette:open-update', e => openUpdateSheet(/** @type {CustomEvent} */ (e).detail || null));
-// la cloche d'une réserve prête (2026-11-19) : « Tu la dépenses quand ? »
+// la cloche d'une réserve prête : son menu, le même partout (2026-11-25, avec l'utilisateur)
 window.addEventListener('bougette:reserve', e => {
   const d = /** @type {CustomEvent} */ (e).detail || {};
-  import('../screens/reserves.js').then(R => R.askWhen(d.id, openEntry));
+  import('../screens/reserves.js').then(R => R.openReserveMenu({ id: d.id, openEntry, go: h => go(h) }));
 });
 /**
  * « Charger la démo » depuis un autre espace (D19) : l'app s'est rouverte sur l'espace Démo, on le remplit ici.

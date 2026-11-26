@@ -1,4 +1,5 @@
 // Morceaux d'écran partagés : ligne d'opération et son origine.
+import { DUE, RES } from '../domain/words.js';
 import { account, accounts, category, accCur, checkBalance, deleteTx, restoreTx, reserveOfEntry, txById, savingsReport, scheduleById } from '../core/store.js';
 import { UNTRACKED } from '../domain/defaults.js';
 import { balanceMessage } from '../domain/entry-rules.js';
@@ -23,12 +24,12 @@ export function originOf(t) {
   if (!t) return null;
   if (t.schedule) {
     const r = scheduleById(t.schedule);
-    const name = r?.note || (r?.kind === 'transfer' ? `Vers ${account(r.to || '')?.name || '…'}` : category(r?.category || '')?.name) || 'Échéance';
-    return { kind: 'due', icon: 'calendar-check', name, label: `Échéance ${name}${t.due ? ` · fois du ${shortDate(t.due)}` : ''}`,
+    const name = r?.note || (r?.kind === 'transfer' ? `Vers ${account(r.to || '')?.name || '…'}` : category(r?.category || '')?.name) || DUE.One;
+    return { kind: 'due', icon: 'calendar-check', name, label: `${DUE.One} ${name}${t.due ? ` · fois du ${shortDate(t.due)}` : ''}`,
       href: `#/mois/echeance?e=${encodeURIComponent(t.schedule)}${t.due ? `&at=${t.due}` : ''}` };
   }
   const res = t.type === 'expense' ? reserveOfEntry(t.id) : null;
-  if (res) return { kind: 'reserve', icon: 'piggy-bank', cat: res.category || null, name: res.name, label: `Réserve ${res.name}`, reserve: res };
+  if (res) return { kind: 'reserve', icon: 'piggy-bank', cat: res.category || null, name: res.name, label: `${RES.One} ${res.name}`, reserve: res };
   if (t.categoryId && (t.categoryId === UNTRACKED.expense || t.categoryId === UNTRACKED.income)) {
     return { kind: 'check', icon: 'check-circle', name: 'Vérification du solde', label: `Vérification du solde · ${account(t.accountId)?.name || '?'}`, href: '#/portefeuilles' };
   }

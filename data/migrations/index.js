@@ -17,6 +17,9 @@ export const MIGRATIONS = [
   { version: 10, file: '010_schedules.sql' },
   { version: 11, file: '011_schedule_interval.sql' },
   { version: 12, file: '012_schedule_days.sql' },
+  { version: 13, file: '013_schedule_amounts.sql' },
+  { version: 14, file: '014_reserve_rhythm.sql' },
+  { version: 15, file: '015_by_day.sql' },
 ];
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

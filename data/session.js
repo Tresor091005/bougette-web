@@ -23,7 +23,7 @@ import { syncPlan, merged, rebase, isPristine } from './sync.js';
 /** @typedef {import('../domain/events.js').StoredEvent} StoredEvent */
 /** @typedef {import('../domain/legacy.js').LegacyData} LegacyData */
 
-export const APP_VERSION = '0.261123.1040';
+export const APP_VERSION = '0.261126.1757';
 export const ALL_KEYS = ['accounts', 'categories', 'tx', 'budgets', 'settings'];
 /** @type {Record<string, string[]>} */
 const KEYS_BY_PREFIX = { entry: ['tx'], wallet: ['accounts'], category: ['categories', 'tx', 'budgets'], budget: ['budgets'], settings: ['settings'], app: ['settings'] };

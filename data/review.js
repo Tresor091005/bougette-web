@@ -2,6 +2,7 @@
 // ne s'appliquait plus après ceux d'un autre appareil), dit en clair : ce que c'était, pourquoi ça n'est pas passé, et pour
 // une opération, de quoi la refaire. Partie pure (l'état de l'app et l'événement) ; la liste vit dans src/core/review.js.
 import { linesToMove } from '../domain/ledger.js';
+import { DUE, RES } from '../domain/words.js';
 
 /** @typedef {{ id: string, type: string, payload: string, at: string, reason: string, savedAt: string }} ReviewItem */
 /** @typedef {import('../domain/projection.js').State} State */
@@ -48,8 +49,8 @@ export function describeReview(item, s, money) {
     'wallet.created': 'Un portefeuille créé', 'wallet.updated': 'Un portefeuille modifié', 'wallet.deleted': 'Un portefeuille supprimé',
     'wallet.archived': 'Un portefeuille archivé', 'category.created': 'Une catégorie créée', 'category.updated': 'Une catégorie modifiée',
     'category.deleted': 'Une catégorie supprimée', 'budget.created': 'Un budget créé', 'budget.updated': 'Un budget modifié',
-    'reserve.created': 'Une réserve créée', 'reserve.updated': 'Une réserve modifiée', 'reserve.used': 'Une réserve utilisée',
-    'schedule.created': 'Une échéance créée', 'schedule.updated': 'Une échéance modifiée', 'settings.changed': 'Un réglage changé',
+    'reserve.created': `${RES.A} créé${RES.e}`, 'reserve.updated': `${RES.A} modifié${RES.e}`, 'reserve.used': `${RES.A} utilisé${RES.e}`,
+    'schedule.created': `${DUE.A} créé${DUE.e}`, 'schedule.updated': `${DUE.A} modifié${DUE.e}`, 'settings.changed': 'Un réglage changé',
   }[item.type] || 'Un changement';
   const name = typeof p.name === 'string' ? ` · ${p.name}` : typeof p.note === 'string' && p.note ? ` · ${p.note}` : '';
   const ids = [p.id, p.wallet, p.account_id, p.category, p.entry].filter(x => typeof x === 'string');

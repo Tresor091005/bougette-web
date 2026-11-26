@@ -3,6 +3,7 @@
 // couleurs, ses polices et ses coins (src/core/proto.css, .pf-*). Jusqu'où tient l'argent (src/domain/pace.js (runway)),
 // Disponible, les dépenses du mois par semaine, le rythme face à d'habitude, les échéances à payer, les portefeuilles, la saisie.
 import { settings, accounts, countedAccounts, balances, transactions, budgetReport, txCur, category } from '../core/store.js';
+import { DUE } from '../domain/words.js';
 import { period, today, money, esc, parse, shortDate, stepOf } from '../core/format.js';
 import { buzz, dockTip, reducedMotion, openSheet, $, $$ } from '../core/ui.js';
 import { icon } from '../core/icons.js';
@@ -11,7 +12,7 @@ import { unread } from '../core/inbox.js';
 import { openInboxSheet } from './backup.js';
 import { openEntry } from './entry.js';
 import { openAccountSheet } from './accounts.js';
-import { isMain, currentSpace } from '../core/spaces.js';
+import { currentSpace } from '../core/spaces.js';
 import { spaceAvatar } from '../core/avatar.js';
 import { openSpacesSheet } from './spaces.js';
 
@@ -78,7 +79,7 @@ function openHabitSheet(h, day, cur, dates) {
     <div class="hb-nums"><div><span class="hb-l"><i class="hb-k now"></i>Ce mois-ci, au ${esc(day)}</span><b>${esc(money(h.now, { cur }))}</b></div>
       <div><span class="hb-l"><i class="hb-k usual"></i>D’habitude, au ${esc(day)}</span><b>${h.months ? esc(money(h.usual, { cur })) : '—'}</b></div></div>
     ${habitCurve(h, 'hb-curve', { big: true, ...dates })}
-    <p class="field-note">${h.months ? `D’habitude : la moyenne de ${h.months > 1 ? `tes ${h.months} derniers mois` : 'ton dernier mois'}, au même jour. ` : 'Pas encore de mois complet pour comparer : reviens le mois prochain. '}Toutes tes dépenses notées, échéances comprises, sans les prévues.</p>
+    <p class="field-note">${h.months ? `D’habitude : la moyenne de ${h.months > 1 ? `tes ${h.months} derniers mois` : 'ton dernier mois'}, au même jour. ` : 'Pas encore de mois complet pour comparer : reviens le mois prochain. '}Toutes tes dépenses notées, ${DUE.theMany} comprises, sans les opérations à venir.</p>
   </div>`, { label: 'Rythme' });
 }
 
@@ -123,21 +124,23 @@ export function render(app, { go }) {
   // échéances à payer d'ici la fin du mois
   const dues = report.dues;
   const next = dues[0];
-  const dueName = next ? (next.note || category(next.category || '')?.name || 'Échéance') : '';
+  const dueName = next ? (next.note || category(next.category || '')?.name || DUE.One) : '';
 
   // seulement les portefeuilles comptés dans le total (2026-11-18, avec l'utilisateur) ; les autres restent dans Portefeuilles.
   // Aucun portefeuille (D10) : la tuile ouvre la fiche de création.
   const wallets = countedAccounts().filter(a => !a.archived);
   const anyWallet = accounts().some(a => !a.archived);
   const bal = balances();
-  const head = isMain() ? 'Bougette' : currentSpace().name;
+  // le nom de l'espace ouvert, pour le premier aussi (2026-11-26, avec l'utilisateur : « Bougette » à la place de son nom,
+  // ce n'était pas bien)
+  const head = currentSpace().name;
   const n = unread();
 
   const rise = !risen && !reducedMotion();
   risen = true;
   app.innerHTML = `<div class="screen home pf-home${rise ? ' pf-rise' : ''}">
     <div class="pf-top">
-      <button type="button" class="pf-brand sp-go" data-spaces aria-label="Espace : ${esc(currentSpace().name)}, changer d’espace"><span class="pf-ava" aria-hidden="true">${spaceAvatar(currentSpace())}</span>${esc(head)}${icon('caret-down')}</button>
+      <button type="button" class="pf-brand sp-go" data-spaces aria-label="Espace : ${esc(currentSpace().name)}, changer d’espace"><span class="pf-ava" aria-hidden="true">${spaceAvatar(currentSpace())}</span><span class="pf-name">${esc(head)}</span>${icon('caret-down')}</button>
       <span class="pf-date">${esc(fmtHead.format(parse(t)).replace(/\./g, ''))}</span>
       <button type="button" class="iconbtn round bell" data-inbox aria-label="Notifications${n ? ` (${n} nouvelle${n > 1 ? 's' : ''})` : ''}">${icon('bell')}${n ? '<i class="dot" aria-hidden="true"></i>' : ''}</button>
     </div>

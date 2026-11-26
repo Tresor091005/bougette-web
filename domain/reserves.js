@@ -7,16 +7,18 @@
 import { walletBalances, settingsOf } from './queries.js';
 import { stepOf, approxUp } from './format.js';
 import { linesOf } from './projection.js';
-import { monthSpan } from './month-start.js';
+import { monthSpan, byOptions } from './month-start.js';
 // dues.js lit aussi reserves.js (reserveChain) : des fonctions seulement, appelées après le chargement des deux
-import { duesOf, dueItems, scheduleById, dateAfter } from './dues.js';
+import { duesOf, dueItems, scheduleById, dateAfter, nthDate } from './dues.js';
 
 /** @typedef {import('./projection.js').State} State */
 /** @typedef {import('./projection.js').Row} Row */
 /**
  * @typedef {{ id: string, wallet: string, name: string, amount: number, used: number, currency: string, start: string,
  *   due: string|null, mode: 'once'|'gradual', held: number, closed: string|null, from: string|null, uses: string[], category: string|null,
- *   created?: string, keep?: number }} Reserve keep : en pause, ce qu'elle garde (ce qu'elle avait à la pause)
+ *   created?: string, keep?: number, every: 'day'|'week'|'month'|'year'|null, interval: number,
+ *   by: import('./month-start.js').By|null }} Reserve keep : en pause, ce
+ *   qu'elle garde (ce qu'elle avait à la pause) ; every, interval : son rythme (2026-11-25), pour la fois suivante
  */
 /**
  * Ce que dit une réserve (D17 revu le 2026-11-20) : 'full' remplie ; 'overdue' échue sans être remplie ; 'ok' prête à
@@ -25,7 +27,8 @@ import { duesOf, dueItems, scheduleById, dateAfter } from './dues.js';
  * @typedef {'full'|'overdue'|'ok'|'later'|'short'|'none'|'paused'} ReserveStatus
  */
 /**
- * @typedef {{ reserve: Reserve, target: number, saved: number, pct: number, full: boolean, overdue: boolean, soon: boolean,
+ * day : c'est sa date aujourd'hui (2026-11-25 : le jour J, à utiliser).
+ * @typedef {{ reserve: Reserve, target: number, saved: number, pct: number, full: boolean, overdue: boolean, day: boolean, soon: boolean,
  *   short: number, ready: string|null, plan: boolean, own: number, status: ReserveStatus }} ReserveView
  */
 
@@ -60,8 +63,25 @@ export const isAbandoned = r => !!r.closed && !r.used;
 const reserveOf = r => ({
   id: r.id, wallet: r.wallet_id, name: r.name, amount: r.amount, used: r.used, currency: r.currency, start: r.start_on, due: r.due_on || null,
   mode: r.mode, held: r.held || 0, closed: r.closed_on ?? null, from: r.from_id ?? null, uses: r.uses ? JSON.parse(r.uses) : [], category: r.category_id ?? null,
-  created: r.created_at || '',
+  created: r.created_at || '', every: r.every ?? null, interval: r.every ? r.interval ?? 1 : 1, by: r.by_day ?? null,
 });
+
+/**
+ * La date de la fois suivante, quand on reconduit une dépense prévue (2026-11-25, avec l'utilisateur) : avec un rythme,
+ * sa date plus son rythme (autant de fois qu'il faut pour passer aujourd'hui ; en pause, à partir d'aujourd'hui) ; sans
+ * rythme, la règle de Reconduire : la même durée qu'avant (de son début à sa date), à partir d'aujourd'hui ; sans date
+ * ni rythme, dans 3 mois. Préparée depuis « le 2e lundi » (by), la fois suivante l'est aussi (sa date la permet : une
+ * date repoussée qui ne la permet plus revient au quantième).
+ * @param {{ start: string, due: string|null, every?: Reserve['every'], interval?: number, by?: Reserve['by'] }} r @param {string} today
+ */
+export function reconductDue(r, today) {
+  if (r.every) {
+    const start = r.due || today;
+    const rule = { start, every: r.every, interval: r.interval || 1, ...(r.every === 'month' && r.by && byOptions(start).includes(r.by) ? { by: r.by } : {}) };
+    for (let k = 1; k < 100000; k++) { const d = /** @type {string} */ (nthDate(rule, k)); if (d > today) return d; }
+  }
+  return r.due ? addDays(today, Math.max(1, daysBetween(r.start, r.due))) : addMonths(today, 3);
+}
 /** Réserves (ouvertes d'abord, par échéance). @param {State} s @param {{ wallet?: string, open?: boolean }} [o] */
 export function reservesOf(s, { wallet, open } = {}) {
   return [...s.reserves.values()].map(reserveOf)
@@ -127,16 +147,17 @@ export function expectedOf(r, today) {
 const byDue = (x, y) => (dueKey(x) < dueKey(y) ? -1 : dueKey(x) > dueKey(y) ? 1 : 0) || targetOf(x) - targetOf(y);
 
 /**
- * Répartition d'un argent entre les réserves ouvertes (revu le 2026-11-19, avec l'utilisateur). Simple : par échéance,
- * la plus proche d'abord, chacune reçoit **ce qu'il faut pour être où elle devrait être aujourd'hui** (expectedOf, au
- * rythme régulier, arrondi au pas de la devise par excès), puis la suivante ; s'il n'y a pas assez, les plus lointaines
- * restent à 0. Ce qui reste
- * quand toutes sont à leur niveau complète, dans le même ordre, jusqu'à ce qu'elles visent (être en avance, c'est bien) ;
- * au-delà, l'épargne libre. Le niveau attendu monte chaque jour : l'argent glisse de lui-même vers les échéances proches.
- * @param {number} amount @param {Reserve[]} open @param {string} today
+ * Répartition d'un argent entre les réserves ouvertes (revue le 2026-11-26, avec l'utilisateur : « dans la vie, c'est
+ * comme ça qu'on fait ») : **la plus proche d'abord, remplie avant la suivante**. S'il n'y a pas assez, ce sont les plus
+ * lointaines qui attendent : elles ont encore le temps (verser plus, repousser), et « Il manque X par mois » le dit tôt.
+ * Avant, chacune recevait d'abord son niveau du jour (expectedOf) : une lointaine en retard prenait l'argent d'une
+ * proche (le cas Caroline : 900 F pour février, 26 400 F pour septembre de l'année suivante). Les réserves en pause
+ * (sans date) : après toutes les datées, d'abord ce qu'elles avaient à la pause (keep), puis le reste ; au-delà,
+ * l'épargne libre.
+ * @param {number} amount @param {Reserve[]} open @param {string} _today (gardé pour les appels ; la règle ne dépend plus du jour)
  * @returns {{ parts: Record<string, number>, free: number }}
  */
-export function suggestSplit(amount, open, today) {
+export function suggestSplit(amount, open, _today) {
   /** @type {Record<string, number>} */
   const parts = {};
   let left = Math.max(0, amount);
@@ -147,12 +168,12 @@ export function suggestSplit(amount, open, today) {
     parts[r.id] += g;
     left -= g;
   };
-  // 1. chacune à son niveau, arrondi au pas de la devise par excès (les plus proches d'abord : elles passent avant)
-  for (const r of order) { const st = stepOf(r.currency); give(r, Math.min(Math.ceil(expectedOf(r, today) / st) * st, targetOf(r))); }
-  // 2. en pause (D17 revu) : une fois les datées à leur niveau, elle garde ce qu'elle avait à la pause (keep ; mettre en
-  // pause ne la vide pas) ; en cas de coup dur, les niveaux des datées passent avant ; au-delà, elle est servie en dernier
+  // 1. les datées, la plus proche d'abord : chacune remplie avant la suivante
+  for (const r of order) if (r.due) give(r, targetOf(r));
+  // 2. en pause (D17 revu) : une fois les datées remplies, elle garde ce qu'elle avait à la pause (keep ; mettre en pause
+  // ne la vide pas) ; en cas de coup dur, les datées passent avant ; 3. au-delà, elle est servie en dernier
   for (const r of order) if (!r.due) give(r, Math.min(r.keep || 0, targetOf(r)));
-  for (const r of order) give(r, targetOf(r)); // 3. le reste complète les datées, la plus proche d'abord
+  for (const r of order) give(r, targetOf(r));
   return { parts, free: left };
 }
 
@@ -189,7 +210,7 @@ export function reserveView(r, saved, today, look = null, own = 0) {
   /** @type {ReserveStatus} */
   const status = full ? 'full' : paused ? 'paused' : overdue ? 'overdue' : ready && ready <= /** @type {string} */ (r.due) ? 'ok' : ready ? 'later' : look?.plan ? 'short' : 'none';
   return {
-    reserve: r, target, saved, pct: target ? Math.min(100, Math.floor((saved * 100) / target)) : 100, full, overdue,
+    reserve: r, target, saved, pct: target ? Math.min(100, Math.floor((saved * 100) / target)) : 100, full, overdue, day: !paused && today === r.due,
     soon: !full && daysLeft >= 0 && daysLeft <= 7, short: look && !full ? look.short : 0, ready, plan: !!look?.plan, own, status,
   };
 }
@@ -440,6 +461,29 @@ export function shortfallOf(s, walletId, today, monthStart = 1) {
   let lo = 0, hi = Math.max(1, Math.ceil(most / step));
   if (holds(hi)) while (hi - lo > 1) { const mid = Math.floor((lo + hi) / 2); if (holds(mid)) hi = mid; else lo = mid; }
   return { gap: approxUp(hi * step, cur), next: first, inflow };
+}
+
+/**
+ * Le même manque, pour une dépense prévue qui n'existe pas encore (ou qu'on modifie) : shortfallOf sur un état où elle
+ * existe telle quelle (2026-11-26, avec l'utilisateur : la feuille dit ce que la dépense prévue demande avant qu'on
+ * l'enregistre). cand : son id (inconnu ou absent : une nouvelle), son montant, sa date (ou null), son mode ; si l'id
+ * existe, ces champs remplacent ceux de l'existante. Rien n'est modifié dans s : seule la table des réserves est copiée.
+ * @param {State} s @param {string} walletId @param {string} today @param {number|string} monthStart
+ * @param {{ id?: string|null, amount: number, due: string|null, mode: 'once'|'gradual' }} cand
+ */
+export function shortfallWith(s, walletId, today, monthStart, cand) {
+  const id = cand.id || '\u0000candidate';
+  const old = s.reserves.get(id);
+  const w = s.accounts.get(walletId);
+  const due = cand.due || '';
+  /** @type {Row} */
+  const row = old
+    ? { ...old, wallet_id: walletId, amount: cand.amount, due_on: due, mode: cand.mode, ...(old.due_on === '' && due ? { held: null } : {}) }
+    : { id, wallet_id: walletId, name: '', amount: cand.amount, used: 0, currency: w?.currency, start_on: today, due_on: due, mode: cand.mode, repeats: 0,
+      pinned: null, closed_on: null, created_at: '', from_id: null, uses: null, category_id: null, every: null, interval: null, by_day: null };
+  const reserves = new Map(s.reserves);
+  reserves.set(id, row);
+  return shortfallOf({ ...s, reserves }, walletId, today, monthStart);
 }
 
 /**

@@ -1,11 +1,12 @@
-// Échéances et opérations récurrentes (D18, décidé le 2026-11-11) : lectures pures sur l'état projeté.
-// Une opération récurrente est une règle (« Loyer, 35 000 F, le 1er de chaque mois ») ; une échéance est une de ses
+// Échéances et opérations programmées (D18, décidé le 2026-11-11) : lectures pures sur l'état projeté.
+// Une opération programmée est une règle (« Loyer, 35 000 F, le 1er de chaque mois ») ; une échéance est une de ses
 // dates (ou une règle sans répétition, ou une ancienne opération « Prévue »). Les dates sont calculées, jamais stockées :
 // une date est faite quand une opération la confirme (entries.schedule_id + due_on, non annulée) ou qu'elle est passée
 // (« Passer »). Rien ne s'écrit tout seul. Aucune dépendance au DOM, au stockage ni à l'horloge (« aujourd'hui » est passé).
 import { linesOf, isWallet } from './projection.js';
 import { linesToMove } from './ledger.js';
 import { reserveChain } from './reserves.js';
+import { byMonth } from './month-start.js';
 
 /** @typedef {import('./projection.js').State} State */
 /** @typedef {import('./projection.js').Row} Row */
@@ -14,10 +15,19 @@ import { reserveChain } from './reserves.js';
  * « tous les 23 jours » : every 'day', interval 23) ; end : dernière date permise ; times : nombre de fois ; stopped :
  * « Arrêter » (plus de dates à partir de ce jour) ; skips : dates passées ; reserve : la réserve qui paie (dépense) ou que
  * remplit (virement) ; from : la règle d'avant, coupée par une modification ; begins : ses dates ne comptent qu'à partir
- * de ce jour (une règle qui en continue une autre garde le jour d'ancrage et le compte des fois de la première date).
+ * de ce jour (une règle qui en continue une autre garde le jour d'ancrage et le compte des fois de la première date) ;
+ * amounts : les fois au montant changé (date → montant), tenues par la première règle de l'échéance (adjustsOf) ; by : la
+ * lecture d'une règle par mois (By ; null : le même quantième).
  * @typedef {{ id: string, kind: 'expense'|'income'|'transfer', amount: number, currency: string, wallet: string, to: string|null,
  *   category: string|null, note: string, start: string, every: Every|null, interval: number, end: string|null, times: number|null,
- *   reserve: string|null, stopped: string|null, skips: string[], from: string|null, begins: string|null, days: number[] }} Schedule
+ *   reserve: string|null, stopped: string|null, skips: string[], from: string|null, begins: string|null, days: number[],
+ *   amounts: Record<string, number>, by: By|null }} Schedule
+ */
+/**
+ * La lecture d'une règle par mois d'un seul jour, tirée de sa première date (month-start.js) : 'weekday' « le 2e lundi »,
+ * 'lastweekday' « le dernier vendredi », 'lastday' « le dernier jour » ; null : le même quantième, ramené au dernier
+ * jour d'un mois plus court (le 31 : chaque dernier jour du mois).
+ * @typedef {import('./month-start.js').By} By
  */
 /**
  * Unité d'un rythme. 'quarter' et 'half' (« tous les 3 mois », « tous les 6 mois ») sont les rythmes d'avant le rythme
@@ -29,9 +39,11 @@ import { reserveChain } from './reserves.js';
  * réponse ; paused : son portefeuille ou sa catégorie est archivé ou supprimé (en pause, une lecture) ; reserve : la
  * réserve ouverte qui la paie (ou qu'elle remplit), en suivant les réserves reconduites ; needsWallet : elle était payée
  * par une réserve qui est close sans suite (la prochaine fois se paie depuis un portefeuille courant, choisi en confirmant).
+ * amount : ce qu'elle compte (le montant changé pour cette fois, sinon celui de la règle) ; ruleAmount : celui de la
+ * règle ; adjusted : son montant a été changé pour cette fois seulement (2026-11-24).
  * @typedef {{ key: string, schedule: string|null, entry: string|null, date: string, kind: 'expense'|'income'|'transfer',
  *   amount: number, currency: string, wallet: string, to: string|null, category: string|null, note: string,
- *   reserve: string|null, needsWallet: boolean, late: boolean, paused: boolean }} Due
+ *   reserve: string|null, needsWallet: boolean, late: boolean, paused: boolean, ruleAmount: number, adjusted: boolean }} Due
  */
 
 /** Unités en mois (le jour et la semaine à part ; 'quarter' et 'half' : les anciens rythmes). */
@@ -59,8 +71,9 @@ export function addMonthsClamped(d, n) {
 /**
  * La k-ième date d'une règle (0 = la première), toujours calculée depuis la première (pas de dérive d'un mois court
  * à l'autre : tous les 2 mois depuis le 31, c'est le 31 ou le dernier jour du mois), ou null au-delà de la seule date
- * d'une échéance seule.
- * @param {{ start: string, every: Every|null, interval?: number|null, days?: number[] }} r @param {number} k
+ * d'une échéance seule. Une règle par mois lue autrement (by) : « le 2e lundi », « le dernier vendredi », « le dernier
+ * jour » de chacun de ses mois.
+ * @param {{ start: string, every: Every|null, interval?: number|null, days?: number[], by?: By|null }} r @param {number} k
  */
 export function nthDate(r, k) {
   // plusieurs jours de départ (D18 revu le 2026-11-18) : la première date et ses décalages (days) ; le rang k parcourt
@@ -71,7 +84,7 @@ export function nthDate(r, k) {
   const p = Math.floor(k / m), i = k % m;
   const n = r.interval || 1;
   const base = r.every === 'day' ? addDays(r.start, n * p) : r.every === 'week' ? addDays(r.start, 7 * n * p)
-    : addMonthsClamped(r.start, EVERY_MONTHS[r.every] * n * p);
+    : r.by ? byMonth(r.start, r.by, EVERY_MONTHS[r.every] * n * p) : addMonthsClamped(r.start, EVERY_MONTHS[r.every] * n * p);
   return i ? addDays(base, offs[i - 1]) : base;
 }
 
@@ -109,7 +122,8 @@ export function scheduleOf(r) {
     category: r.category_id ?? null, note: r.note || '', start: r.start_on, every: old ? 'month' : r.every ?? null,
     interval: r.every ? (old || 1) * (r.interval ?? 1) : 1, end: r.end_on ?? null,
     times: r.times ?? null, reserve: r.reserve_id ?? null, stopped: r.stopped_on ?? null, skips: r.skips ? JSON.parse(r.skips) : [],
-    from: r.from_id ?? null, begins: r.begins_on ?? null, days: r.days ? JSON.parse(r.days) : [],
+    from: r.from_id ?? null, begins: r.begins_on ?? null, days: r.days ? JSON.parse(r.days) : [], amounts: r.amounts ? JSON.parse(r.amounts) : {},
+    by: r.by_day ?? null,
   };
 }
 /** Toutes les règles, par première date. @param {State} s @returns {Schedule[]} */
@@ -118,6 +132,31 @@ export function schedulesOf(s) {
 }
 /** @param {State} s @param {string} id @returns {Schedule|null} */
 export const scheduleById = (s, id) => { const r = s.schedules.get(id); return r ? scheduleOf(r) : null; };
+
+/**
+ * Les montants changés pour une seule fois (2026-11-24, avec l'utilisateur), lus pour chaque règle : ils sont gardés sur
+ * la première règle de l'échéance, qui ne change pas quand on la modifie (une modification coupe la règle, D18) ; une fois
+ * dont la date et la devise restent garde ainsi son montant ; la modification efface ceux d'une date qui disparaît ou
+ * d'une devise qui change (withStaleAdjusts, commands.js). Les dates des règles d'une même échéance ne se recouvrent jamais.
+ * @param {State} s @returns {Map<string, Record<string, number>>} règle → { date: montant } (absente : aucune)
+ */
+export function adjustsOf(s) {
+  /** @type {Map<string, Record<string, number>>} */
+  const out = new Map();
+  for (const row of s.schedules.values()) {
+    let root = row;
+    const seen = new Set([row.id]);
+    while (root.from_id && s.schedules.has(root.from_id) && !seen.has(root.from_id)) { root = /** @type {Row} */ (s.schedules.get(root.from_id)); seen.add(root.id); }
+    if (root.amounts) out.set(row.id, JSON.parse(root.amounts));
+  }
+  return out;
+}
+/** Le montant changé d'une fois, ou null (celui de la règle). @param {State} s @param {Schedule} r @param {string} d */
+export function adjustedOn(s, r, d) {
+  const root = chainOf(s, r.id)[0];
+  const n = root ? root.amounts[d] : undefined;
+  return n == null ? null : n;
+}
 
 /** Dates confirmées : « règle@date » → l'opération (non annulée) qui la confirme. @param {State} s */
 export function doneOf(s) {
@@ -163,18 +202,20 @@ export function reserveFor(s, r) {
  */
 export function duesOf(s, today, until, wallet = null) {
   const done = doneOf(s);
+  const adj = adjustsOf(s);
   /** @type {Due[]} */
   const out = [];
   for (const r of schedulesOf(s)) {
     if (wallet && r.wallet !== wallet && r.to !== wallet) continue;
     const paused = pausedOf(s, r);
     const res = r.reserve ? reserveFor(s, r) : null;
+    const m = adj.get(r.id) || {};
     for (const { date } of datesOf(r, r.start, until)) {
       if (!isPending(s, r, date, done)) continue;
       out.push({
-        key: `${r.id}@${date}`, schedule: r.id, entry: null, date, kind: r.kind, amount: r.amount, currency: r.currency, wallet: r.wallet,
+        key: `${r.id}@${date}`, schedule: r.id, entry: null, date, kind: r.kind, amount: m[date] ?? r.amount, currency: r.currency, wallet: r.wallet,
         to: r.to, category: r.category, note: r.note, reserve: res ? res.id : null, needsWallet: !!r.reserve && !res && r.kind === 'expense',
-        late: date < today, paused,
+        late: date < today, paused, ruleAmount: r.amount, adjusted: m[date] != null,
       });
     }
   }
@@ -201,7 +242,7 @@ function plannedDues(s, today, until) {
     out.push({
       key: `entry:${e.id}`, schedule: null, entry: e.id, date: e.occurred_on, kind: /** @type {any} */ (e.kind), amount: mv.amount, currency: cur,
       wallet: mv.accountId, to: mv.toAccountId ?? null, category: mv.categoryId ?? null, note: e.note || '', reserve: null, needsWallet: false,
-      late: e.occurred_on < today, paused,
+      late: e.occurred_on < today, paused, ruleAmount: mv.amount, adjusted: false,
     });
   }
   return out;
@@ -297,8 +338,9 @@ export function indexAt(r, d) {
  * Une fois d'une échéance telle que l'écran la montre (D18) : state 'late' (passée sans réponse), 'today', 'soon' (à
  * venir), 'done' (confirmée : entry, l'opération, son montant et paidOn, sa date), 'skipped' (passée) ; rank / times :
  * « 3 sur 4 », comptés sur toute l'échéance (ses règles successives), quand elle se fait en un nombre de fois ;
- * planned / plannedCur : le montant prévu par sa règle et sa devise (une fois réglée avec un autre montant montre l'écart,
- * revu le 2026-11-12) ; pour une fois réglée, amount et currency sont ceux de son opération.
+ * planned / plannedCur : le montant prévu pour cette fois (celui de sa règle, ou celui changé pour elle) et sa devise (une
+ * fois réglée avec un autre montant montre l'écart, revu le 2026-11-12) ; pour une fois réglée, amount et currency sont
+ * ceux de son opération.
  * @typedef {Due & { state: 'late'|'today'|'soon'|'done'|'skipped', rank: number|null, times: number|null, paidOn: string|null, planned: number, plannedCur: string }} DueView
  */
 /**
@@ -370,15 +412,16 @@ export function ownCount(r) {
  * si `from` a été raccourcie (l'ancienne allait par mois ou par ans : le 31 → le 28 février) et que la nouvelle va aussi
  * par mois ou par ans — alors d'une date d'avant, au nouveau rythme, qui a le jour d'ancrage (le 31 reste le 31 là où
  * il existe), et ses dates ne comptent qu'à partir de `from` (begins). Une règle par jours ou par semaines n'a pas de
- * jour d'ancrage : la nouvelle part de `from`.
+ * jour d'ancrage : la nouvelle part de `from`. Une règle par mois lue autrement que par son quantième (by, l'ancienne
+ * ou la nouvelle) n'est jamais raccourcie : la nouvelle part de `from`.
  * @param {string} anchor (la première date de l'ancienne) @param {string} from @param {Every} every @param {number} interval
- * @param {Every|null} oldEvery (le rythme de l'ancienne)
+ * @param {Every|null} oldEvery (le rythme de l'ancienne) @param {boolean} [by] (l'une ou l'autre a une lecture By)
  * @returns {{ start: string, begins: string|null }}
  */
-export function continueAt(anchor, from, every, interval, oldEvery) {
+export function continueAt(anchor, from, every, interval, oldEvery, by = false) {
   const months = /** @type {Record<string, number>} */ (EVERY_MONTHS)[every];
   const shortened = !!(oldEvery && /** @type {Record<string, number>} */ (EVERY_MONTHS)[oldEvery]) && from.slice(8) !== anchor.slice(8);
-  if (!months || !shortened) return { start: from, begins: null };
+  if (!months || !shortened || by) return { start: from, begins: null };
   const step = months * (interval || 1);
   for (let j = 1; j <= 48; j++) {
     const at = addMonthsClamped(`${from.slice(0, 8)}01`, -step * j);
@@ -391,13 +434,16 @@ export function continueAt(anchor, from, every, interval, oldEvery) {
 /**
  * Une date d'une règle telle que l'écran la montre.
  * @param {State} s @param {Schedule} r @param {string} date @param {string} today @param {Map<string, string>} done
- * @param {{ paused: boolean, res: { id: string }|null }} c @param {number|null} rank @param {number|null} times
+ * @param {{ paused: boolean, res: { id: string }|null, amounts: Record<string, number> }} c (amounts : les montants changés, adjustsOf)
+ * @param {number|null} rank @param {number|null} times
  * @returns {DueView}
  */
 function viewOf(s, r, date, today, done, c, rank, times) {
   const eid = done.get(`${r.id}@${date}`) || null;
   const skipped = r.skips.includes(date);
-  let amount = r.amount, currency = r.currency, paidOn = null;
+  const a = c.amounts[date];
+  const planned = a ?? r.amount;
+  let amount = planned, currency = r.currency, paidOn = null;
   if (eid) {
     const e = s.entries.get(eid);
     const mv = e ? linesToMove(e.kind, linesOf(s, e.id), x => isWallet(s, x)) : null;
@@ -405,17 +451,18 @@ function viewOf(s, r, date, today, done, c, rank, times) {
     paidOn = e?.occurred_on || null;
   }
   return {
-    key: `${r.id}@${date}`, schedule: r.id, entry: eid, date, kind: r.kind, amount, currency, planned: r.amount, plannedCur: r.currency, wallet: r.wallet, to: r.to,
+    key: `${r.id}@${date}`, schedule: r.id, entry: eid, date, kind: r.kind, amount, currency, planned, plannedCur: r.currency, wallet: r.wallet, to: r.to,
     category: r.category, note: r.note, reserve: c.res ? c.res.id : null, needsWallet: !!r.reserve && !c.res && r.kind === 'expense',
     late: !eid && !skipped && date < today, paused: c.paused,
     state: eid ? 'done' : skipped ? 'skipped' : date < today ? 'late' : date === today ? 'today' : 'soon', rank, times, paidOn,
+    ruleAmount: r.amount, adjusted: a != null,
   };
 }
-/** @param {State} s @param {Schedule} r */
-const contextOf = (s, r) => ({ paused: pausedOf(s, r), res: r.reserve ? reserveFor(s, r) : null });
+/** @param {State} s @param {Schedule} r @param {Map<string, Record<string, number>>} adj */
+const contextOf = (s, r, adj) => ({ paused: pausedOf(s, r), res: r.reserve ? reserveFor(s, r) : null, amounts: adj.get(r.id) || {} });
 
 /**
- * Les échéances à régler, une ligne chacune (D18, revu le 2026-11-11) : une opération récurrente (ses règles
+ * Les échéances à régler, une ligne chacune (D18, revu le 2026-11-11) : une opération programmée (ses règles
  * successives comprises) ou une ancienne opération prévue, avec son étape en cours — la première fois qui reste à
  * régler : on ne parle pas de la suivante tant qu'elle ne l'est pas. Celles qui n'ont plus rien à régler n'y sont pas.
  * Retards d'abord (les plus anciens), puis le jour, puis par date, quel que soit le mois.
@@ -425,6 +472,7 @@ export function dueItems(s, today) {
   const done = doneOf(s);
   const all = schedulesOf(s);
   const continued = new Set(all.map(r => r.from).filter(Boolean));
+  const adj = adjustsOf(s);
   /** @type {DueItem[]} */
   const out = [];
   for (const head of all) {
@@ -439,7 +487,7 @@ export function dueItems(s, today) {
     }
     if (!first) continue;
     const total = chainTotal(chain);
-    out.push({ ...viewOf(s, first.r, first.date, today, done, contextOf(s, first.r), total != null ? first.i : null, total), head: head.id, lateCount: late });
+    out.push({ ...viewOf(s, first.r, first.date, today, done, contextOf(s, first.r, adj), total != null ? first.i : null, total), head: head.id, lateCount: late });
   }
   for (const d of plannedDues(s, today, '9999-12-31')) {
     out.push({ ...d, state: d.date < today ? 'late' : d.date === today ? 'today' : 'soon', rank: null, times: null, paidOn: null, planned: d.amount, plannedCur: d.currency, head: null, lateCount: d.date < today ? 1 : 0 });
@@ -507,7 +555,8 @@ export function occurrencesOf(s, today, id, { past = 24, ahead = 6 } = {}) {
   if (!chain.length) return [];
   const done = doneOf(s);
   const total = chainTotal(chain);
-  const ctx = new Map(chain.map(r => [r.id, contextOf(s, r)]));
+  const adj = adjustsOf(s);
+  const ctx = new Map(chain.map(r => [r.id, contextOf(s, r, adj)]));
   /** @type {DueView[]} */
   const out = [];
   let after = 0;
@@ -537,7 +586,7 @@ export function endedDues(s, today) {
   const done = doneOf(s);
   const all = schedulesOf(s);
   const continued = new Set(all.map(r => r.from).filter(Boolean));
-  const none = { paused: false, res: null };
+  const none = { paused: false, res: null, amounts: {} };
   /** @type {EndedDue[]} */
   const out = [];
   for (const head of all) {
@@ -563,7 +612,7 @@ export function endedDues(s, today) {
 /**
  * La première date d'un rythme qui tombe aujourd'hui ou après, au même jour d'ancrage (le 31 reste le 31, le lundi reste
  * le lundi) ; sans regarder sa fin, son nombre de fois ni son arrêt. Une échéance d'une fois : aujourd'hui.
- * @param {{ start: string, every: Every|null, interval?: number|null }} r @param {string} today
+ * @param {{ start: string, every: Every|null, interval?: number|null, by?: By|null }} r @param {string} today
  */
 export function firstDateFrom(r, today) {
   if (!r.every || r.start >= today) return r.every ? r.start : today;
@@ -586,7 +635,7 @@ export function renewalOf(r, today, last = null) {
   return {
     kind: r.kind, amount: r.amount, accountId: r.wallet, toAccountId: r.kind === 'transfer' ? r.to : null,
     categoryId: r.kind === 'transfer' ? null : r.category, note: r.note, start: firstDateFrom(r, from),
-    every: r.every, interval: r.every ? r.interval : 1,
+    every: r.every, interval: r.every ? r.interval : 1, ...(r.every && r.by ? { by: r.by } : {}),
   };
 }
 
@@ -629,8 +678,12 @@ export function twinsOf(s, id, today) {
   const done = doneOf(s);
   // en cours : une date encore à régler à partir d'aujourd'hui, et aucune avant une date déjà réglée d'avance (Modifier
   // coupe après la dernière réglée, Arrêter à la première à régler : entre les deux, un montant se perdrait)
+  // ni une fois à régler au montant changé (regroupée, elle ne prendrait pas la somme : un montant se perdrait)
+  const adj = adjustsOf(s);
   const live = (/** @type {Schedule|null} */ r) => {
     if (!r || r.stopped || pausedOf(s, r)) return false;
+    const m = adj.get(r.id);
+    if (m && Object.keys(m).some(d => d >= today && isDateOf(r, d) && isPending(s, r, d, done))) return false;
     const next = nextPending(s, r, today);
     const ahead = handledDates(s, r, done).filter(d => d >= today).pop();
     return !!next && (!ahead || next.date > ahead);
@@ -641,7 +694,7 @@ export function twinsOf(s, id, today) {
   const same = (/** @type {Schedule} */ a, /** @type {Schedule} */ b) => a.kind === b.kind && a.wallet === b.wallet && a.currency === b.currency
     && (a.kind === 'transfer' ? a.to === b.to : a.category === b.category) && (a.kind !== 'expense' || (a.reserve ?? null) === (b.reserve ?? null))
     && (a.every ?? null) === (b.every ?? null) && (a.every ? a.interval : 1) === (b.every ? b.interval : 1)
-    && JSON.stringify(a.days || []) === JSON.stringify(b.days || []);
+    && JSON.stringify(a.days || []) === JSON.stringify(b.days || []) && (a.by ?? null) === (b.by ?? null);
   const mine = aheadOf(s, head, today, done);
   return all.filter(r => r.id !== head.id && !continued.has(r.id) && live(r) && same(head, r) && aheadOf(s, r, today, done) === mine)
     .sort((a, b) => bornOf(s, a.id).localeCompare(bornOf(s, b.id)) || (a.id < b.id ? -1 : 1));

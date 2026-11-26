@@ -7,6 +7,7 @@ import { reserveOrder } from '../../domain/entry-rules.js';
 import { openCategorySheet } from '../categories.js';
 import { canUse, openOfWallet, usableReserves } from './state.js';
 import { pickEntryCategory, chooseReserve } from './sheets.js';
+import { RES } from '../../domain/words.js';
 
 /**
  * Dépense depuis une épargne (D17) : une ou deux gélules à la place des catégories — « Choisir une réserve » (feuille
@@ -19,12 +20,13 @@ export function paintReserves(E, host) {
   const list = usableReserves(E);
   if (st.reserveId && !list.some(v => v.reserve.id === st.reserveId)) st.reserveId = null;
   host.hidden = false;
-  host.setAttribute('aria-label', 'Utiliser une réserve');
+  host.setAttribute('aria-label', `Payer ${RES.a}`);
   const v = st.reserveId ? list.find(x => x.reserve.id === st.reserveId) : null;
   // 3 réserves au plus (2026-11-19, avec l'utilisateur) : chacune en ligne, à côté d'« Autre dépense », avec sa part
   // dans la répartition calculée et son mode ; au-delà, la feuille. Une réserve en une fois que l'épargne ne peut pas
   // encore payer entièrement est grisée.
-  const all = reserveOrder(openOfWallet(E), st.reserveId, canUse);
+  // l'ordre ne bouge pas quand on en choisit une (2026-11-26, avec l'utilisateur)
+  const all = reserveOrder(openOfWallet(E), canUse);
   // une gélule de réserve, la même partout (en ligne, ou choisie depuis la feuille au-delà de 3)
   const chipOf = (/** @type {any} */ x, pick = false) => {
     const r = x.reserve, on = st.reserveId === r.id, ok = canUse(x), rc = r.category ? category(r.category) : null;
@@ -33,12 +35,12 @@ export function paintReserves(E, host) {
   const pick = all.length && all.length <= 3 ? all.map(x => chipOf(x)).join('')
     // au-delà de 3 (2026-11-19, avec l'utilisateur) : un seul bouton ; la réserve choisie y prend sa gélule (teinte,
     // jauge), un toucher rouvre la feuille
-    : all.length ? (v ? chipOf(v, true) : `<button type="button" class="sc more" data-pickres>${icon('piggy-bank')}<span>Choisir une réserve</span>${icon('caret-down')}</button>`) : '';
+    : all.length ? (v ? chipOf(v, true) : `<button type="button" class="sc more" data-pickres>${icon('piggy-bank')}<span>Choisir ${RES.a}</span>${icon('caret-down')}</button>`) : '';
   const oc = st.other && st.categoryId ? category(st.categoryId) : null;
   // réserve choisie sans catégorie : on la demande d'un toucher (rien ne s'ouvre tout seul)
   const needCat = v && !st.categoryId ? `<button type="button" class="sc need" data-needcat>${icon('squares-four')}<span>Catégorie ?</span></button>` : '';
   const other = w.spendOk ? `<button type="button" class="sc${oc ? ' on' : ' more'}" data-other${oc ? ` style="--c:var(--${oc.color || 'c0'})"` : ''}>${icon('squares-four')}<span>${oc ? `Autre · ${esc(oc.name)}` : 'Autre dépense'}</span></button>` : '';
-  host.innerHTML = pick + needCat + other || `<p class="rs-none">Aucune réserve dans ${esc(w.name)}, et les autres dépenses n’y sont pas permises (voir sa fiche).</p>`;
+  host.innerHTML = pick + needCat + other || `<p class="rs-none">${RES.None} dans ${esc(w.name)}, et les autres dépenses n’y sont pas permises (voir sa fiche).</p>`;
   const none = () => { st.reserveId = null; st.categoryId = null; paintReserves(E, host); E.paintAmount(); };
   host.onclick = async e => {
     const t2 = /** @type {HTMLElement} */ (e.target);

@@ -7,8 +7,12 @@ import { today, esc, money, currencyOf } from '../../core/format.js';
 import { byAmountStart, proposeCategory, usualAmounts } from '../../domain/suggest.js';
 import { entryProblem, consequence, overText, goVerb } from '../../domain/entry-rules.js';
 import { openCheckSheet, checkSayHTML } from '../accounts.js';
-import { checking, cur, candidate, after, savingsSpend, padLocked, openOfWallet, validIds, impact } from './state.js';
+import { checking, cur, candidate, after, savingsSpend, padLocked, openOfWallet, validIds, impact, planning, ruleOf } from './state.js';
+import { planSay, planLack, paintAsk } from './plan.js';
 import { paintCats, paintImpact } from './cats.js';
+import { RES } from '../../domain/words.js';
+import { whenPhrase } from '../../domain/when.js';
+import { rhythmLabel, dayShort } from '../due-page.js';
 
 /** @typedef {import('./state.js').Entry} Entry */
 const m = (v, c) => money(v, { cur: c });
@@ -18,6 +22,14 @@ function findProblem(E) {
   const { st, tx, pad } = E;
   // la réserve utilisée : pas plus que ce qu'elle vise encore
   const v = savingsSpend(E) && st.reserveId ? openOfWallet(E).find(x => x.reserve.id === st.reserveId) : null;
+  // programmer : rien n'est noté maintenant — ni solde à contrôler, ni date à venir en défaut, seulement les erreurs de montant
+  if (planning(E)) {
+    return entryProblem({
+      expr: pad ? pad.expr() : '', amount: st.amount, type: st.type, accountId: st.accountId, toAccountId: st.toAccountId,
+      wallet: account(st.accountId), toWallet: st.toAccountId ? account(st.toAccountId) : null,
+      planned: false, date: today(), today: today(), cur: cur(E),
+    });
+  }
   return entryProblem({
     expr: pad ? pad.expr() : '', amount: st.amount, type: st.type, accountId: st.accountId, toAccountId: st.toAccountId,
     wallet: account(st.accountId), toWallet: st.toAccountId ? account(st.toAccountId) : null,
@@ -40,7 +52,7 @@ export function paintAmount(E, key = null) {
   const { st, el, pad, exprEl, resEl, sayEl } = E;
   // pré-choix (ROADMAP 1a) : tant que la catégorie n'a pas été choisie à la main, celle qui domine nettement pour ce
   // montant s'allume « proposée » (rien sinon) ; le bouton « Ajouter 800 F · Zem » dit ce qui sera enregistré
-  if (key && !E.editing && st.type !== 'transfer' && !savingsSpend(E) && (!st.categoryId || st.auto)) {
+  if (key && !E.editing && !planning(E) && st.type !== 'transfer' && !savingsSpend(E) && (!st.categoryId || st.auto)) {
     const p = proposeCategory(transactions(), { type: st.type, today: today(), hour: new Date().getHours(), amount: st.amount, valid: validIds(st.type) });
     st.categoryId = p;
     st.auto = !!p;
@@ -67,7 +79,8 @@ export function paintAmount(E, key = null) {
     sayEl.className = 'e-say';
     const a = account(st.accountId);
     const over = overText(impact(E), cur(E));
-    sayEl.innerHTML = consequence({ amount: st.amount, wallet: a, type: st.type, planned: st.planned, date: st.date, today: today(), after: a ? after(E, a.id) : 0 })
+    if (planning(E)) sayEl.innerHTML = `<span>${planSay(E)}</span>`;
+    else sayEl.innerHTML = consequence({ amount: st.amount, wallet: a, type: st.type, planned: st.planned, date: st.date, today: today(), after: a ? after(E, a.id) : 0 })
       + (over ? `<span class="e-over">${over}</span>` : '');
   }
   // erreur : le montant tremble une fois (seulement au passage dans l'état, en tapant)
@@ -76,7 +89,7 @@ export function paintAmount(E, key = null) {
   fitText(exprEl, '.e-expr', 24);
   paintGo(E);
   paintTemplates(E);
-  if ((!st.categoryId || st.auto) && key) paintCats(E);
+  if ((!st.categoryId || st.auto) && key && !planning(E)) paintCats(E);
   paintImpact(E, impact(E));
 }
 
@@ -102,11 +115,25 @@ function paintCheck(E, key) {
 /** @param {Entry} E */
 function paintGo(E) {
   const { st, problem, goBtn, goLbl } = E;
+  paintAsk(E); // ce que le bouton réclame s'entoure (programmer, montant tapé)
   const short = !!(problem && problem.short);
+  // programmer : « Programmer 35 000 F · chaque mois, le 1er » ; éteint tant qu'il manque les jours ou la catégorie
+  if (planning(E)) {
+    const lack = st.amount ? planLack(E) : '';
+    // court, pour tenir sur le bouton (la pastille « Quand ? » dit la règle en entier) : « chaque mois », « le 30 nov »
+    const rule = ruleOf(E);
+    const phrase = rule.every ? rhythmLabel(rule.every, rule.interval || 1) : rule.days?.length ? whenPhrase(rule) : `le ${dayShort(rule.start)}`;
+    if (problem && problem.label) goLbl.textContent = problem.label;
+    else if (lack) goLbl.textContent = lack;
+    else goLbl.innerHTML = `${icon('check')}<span class="go-t">${st.amount ? `Programmer <small>${m(st.amount, cur(E))}</small>` : 'Programmer'}</span>${st.amount ? `<span class="go-c">· ${esc(phrase.charAt(0).toLowerCase() + phrase.slice(1))}</span>` : ''}`;
+    goBtn.disabled = !st.amount || !!lack || !!(problem && problem.block);
+    goBtn.classList.toggle('need', !!lack);
+    return;
+  }
   // dépense depuis une épargne (D17) : il faut une réserve (ou « Autre dépense » si le portefeuille le permet)
   const needRes = savingsSpend(E) && !st.reserveId && !(st.other && st.categoryId);
   if (needRes) {
-    goLbl.textContent = account(st.accountId)?.spendOk ? 'Réserve ou autre dépense ?' : 'Choisis une réserve';
+    goLbl.textContent = account(st.accountId)?.spendOk ? `${RES.One} ou autre dépense ?` : `Choisis ${RES.a}`;
     goBtn.disabled = true;
     goBtn.classList.remove('need');
     return;
@@ -140,10 +167,10 @@ function paintTemplates(E) {
   const { st, el, pad } = E;
   const host = $('[data-tpl]', el);
   // dépense depuis une épargne (D17) : pas de modèles ni de montants habituels (ce ne sont pas ses dépenses)
-  const blank = !checking(E) && !st.amount && !(pad && pad.expr()) && !savingsSpend(E);
+  const blank = !checking(E) && !st.amount && !(pad && pad.expr()) && !savingsSpend(E) && !planning(E);
   const usual = blank && !E.editing && !E.due && st.type !== 'transfer' && st.categoryId && !st.auto
     ? usualAmounts(transactions(), { categoryId: st.categoryId, type: st.type, today: today() }) : [];
-  const typed = !checking(E) && !savingsSpend(E) && pad ? pad.expr() : '';
+  const typed = !checking(E) && !savingsSpend(E) && !planning(E) && pad ? pad.expr() : '';
   const digits = /^[1-9]\d*$/.test(typed) ? typed : '';
   const major = (/** @type {any} */ x) => String(Math.round(x.amount / 10 ** currencyOf(accCur(x.accountId)).dec));
   const list = usual.length || !digits || E.editing || E.due ? []

@@ -201,10 +201,10 @@ export const fabHTML = label => `<button type="button" class="fab-add" data-add 
 // Menu d'actions (bouton ⋯) : une ligne par action. title, label et note sont du HTML : l'appelant échappe les noms
 // saisis (esc). Idem pour confirmSheet (title, text). items : { key, icon, label, danger?, off? (éteinte), note? (raison
 // écrite dessous) }. Résout la clé choisie, ou null si on ferme.
-export function menuSheet({ title, items }) {
+export function menuSheet({ title, items, text = '' }) {
   return new Promise(resolve => {
     let picked = null;
-    const s = openSheet(`<h2 class="sheet-title">${title}</h2>
+    const s = openSheet(`<h2 class="sheet-title">${title}</h2>${text ? `<p class="muted menu-say">${text}</p>` : ''}
       <div class="group menu">${items.map(it => `<button type="button" class="row menu-row${it.danger ? ' danger' : ''}" data-k="${it.key}"${it.off ? ' disabled' : ''}>
         <span class="pill acc">${icon(it.icon)}</span><div class="main"><div class="t">${it.label}</div>${it.note ? `<div class="s wrap">${it.note}</div>` : ''}</div></button>`).join('')}</div>`, {
       label: title, onClose: () => resolve(picked),
@@ -256,7 +256,7 @@ export function promptSheet({ title, text = '', label = 'Nom', value = '', place
     input.onkeydown = e => { if (e.key === 'Enter') go(); };
     input.oninput = () => { err.hidden = true; };
     $('[data-no]', s.el).onclick = () => s.close();
-    setTimeout(() => input.focus(), 350);
+    setTimeout(() => focusEnd(input), 350);
   });
 }
 
@@ -659,6 +659,18 @@ export function wireSeg(el, onChange) {
     buzz(8);
     onChange(b.dataset.v);
   });
+}
+
+/**
+ * Met un champ en saisie, le curseur à la fin de ce qui y est déjà écrit (2026-11-26, avec l'utilisateur : pour reprendre
+ * une note ou un nom, il fallait d'abord ramener soi-même le curseur à la fin).
+ * @param {HTMLInputElement} input
+ */
+export function focusEnd(input) {
+  input.focus();
+  const n = input.value.length;
+  try { input.setSelectionRange(n, n); } catch { /* un type de champ sans sélection (nombre) */ }
+  input.scrollLeft = input.scrollWidth; // un texte plus long que le champ : sa fin en vue
 }
 
 // Tremblement d'erreur (une fois) + double vibration (D5).

@@ -12,6 +12,7 @@ import { icon, catIcon, searchIcons } from '../core/icons.js';
 import { openSheet, seg, wireSeg, buzz, toast, confirmSheet, chip, noticeHTML, enableReorder, afterSheets, wireArrange, arrangeBtnHTML, isArranging, fabHTML, $, $$ } from '../core/ui.js';
 import { pickColor, brushHTML } from './pickers.js';
 import { catTreeHTML, paintTree, catSearchHTML, wireCatSearch } from './catlist.js';
+import { editNote } from './entry/sheets.js';
 import { topbarHTML, wireBack, rowHTML, sectionHTML, fieldHTML, sheetHead, sheetActions } from './parts.js';
 
 let tab = 'expense';
@@ -48,8 +49,8 @@ export function openCategorySheet(id, type, { parent = null, name = '', onSaved 
   const noDelete = !c ? '' : subs.length ? `« ${esc(c.name)} » a des sous-catégories : supprime-les d’abord, ou archive-la.`
     : used ? `« ${esc(c.name)} » a des opérations : archive-la, elles sont gardées.` : '';
   const s = openSheet(`<div class="cat-sheet">
-    <div class="sheet-head"><div class="head-id cat-pv" data-pv></div></div>
-    ${fieldHTML({ label: 'Nom', control: `<input data-name maxlength="24" value="${esc(f.name)}" placeholder="${type === 'income' ? 'Ex. Tontine, Loyer perçu' : 'Ex. Zem, Coiffure, Loyer'}" autocomplete="off">` })}
+    <div class="sheet-head"><div class="head-id cat-pv"><span class="cat-pvic" data-pv></span><span class="cat-pvname" data-pvname></span></div></div>
+    ${fieldHTML({ label: 'Nom', attrs: 'data-namef', control: '<button type="button" class="field-btn" data-name></button>' })}
     ${fieldHTML({ label: 'Ranger dans', note: stayTop,
       control: `<button type="button" class="field-btn" data-par ${stayTop ? 'aria-disabled="true"' : ''}><b data-parl></b>${icon(stayTop ? 'lock-simple' : 'caret-right')}</button>${stayTop ? '' : '<small class="field-note" data-parn></small>'}` })}
     ${c && !c.parent ? fieldHTML({ label: 'Sous-catégories', attrs: 'data-subsf', control: `<div class="group plain cat-subs">${subs.map(x => rowHTML({ cls: x.archived ? 'dim' : '', attrs: `data-sub="${x.id}"`, pill: chip(x),
@@ -61,18 +62,18 @@ export function openCategorySheet(id, type, { parent = null, name = '', onSaved 
     <div data-err></div>
     ${sheetActions(`<button class="btn primary" data-save>${icon('check')}<span data-savel></span></button>`)}
     <div class="sheet-more">
-      ${c && !lastActive ? `<div class="btn-row">
-        <button class="btn ghost" data-arch>${icon('archive')}${c.archived ? 'Désarchiver' : 'Archiver'}</button>
-        <button class="btn ghost" data-del style="color:var(--loss)"${noDelete ? ' disabled' : ''}>${icon('trash')}Supprimer</button></div>
+      ${c && !lastActive ? `<div class="cat-links">
+        <button type="button" class="link" data-arch>${c.archived ? 'Désarchiver' : 'Archiver'}</button>
+        <button type="button" class="link cat-del" data-del${noDelete ? ' disabled' : ''}>Supprimer</button></div>
         ${noDelete ? `<p class="hint">${noDelete}</p>` : ''}` : ''}
       ${lastActive ? `<p class="hint">Garde au moins une catégorie de ${type === 'income' ? 'revenus' : 'dépenses'}.</p>` : ''}
     </div></div>`, { label: c ? `Modifier ${what}` : 'Nouvelle catégorie' });
-  const el = s.el, nameIn = $('[data-name]', el), errEl = $('[data-err]', el), iconsEl = $('[data-icons]', el);
+  const el = s.el, nameBtn = $('[data-name]', el), errEl = $('[data-err]', el), iconsEl = $('[data-icons]', el);
 
   function paint() {
     const p = par();
     // teinte : le pinceau sur la pastille (une sous-catégorie prend celle de sa catégorie : pas de pinceau)
-    $('[data-pv]', el).innerHTML = `${p ? chip({ color: color(), icon: f.icon }, 'lg') : `<button type="button" class="pv-btn" data-tint aria-label="Teinte">${chip({ color: color(), icon: f.icon }, 'lg')}${brushHTML()}</button>`}<h2 class="sheet-title">${esc(nameIn.value.trim() || (p ? 'Nouvelle sous-catégorie' : 'Nouvelle catégorie'))}</h2>`;
+    $('[data-pv]', el).innerHTML = `${p ? chip({ color: color(), icon: f.icon }, 'lg') : `<button type="button" class="pv-btn" data-tint aria-label="Teinte">${chip({ color: color(), icon: f.icon }, 'lg')}${brushHTML()}</button>`}`;
     $$('[data-icon]', el).forEach(b => { const on = b.dataset.icon === f.icon; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
     el.querySelector('.cat-sheet').style.setProperty('--c', `var(--${color()})`);
     $('[data-parl]', el).textContent = p ? p.name : 'Aucune : catégorie principale';
@@ -81,11 +82,28 @@ export function openCategorySheet(id, type, { parent = null, name = '', onSaved 
     // une sous-catégorie n'a pas de teinte à elle ; seule une principale déjà enregistrée montre ses sous-catégories
     const subsF = $('[data-subsf]', el);
     if (subsF) subsF.hidden = !!p;
-    $('[data-savel]', el).textContent = c ? 'Enregistrer' : p ? 'Ajouter la sous-catégorie' : 'Ajouter la catégorie';
+    // le nom ne se tape pas en haut : une ligne qui ouvre sa petite feuille ; sans nom, le bouton le dit, éteint, et la ligne s'entoure (2026-11-26, avec l'utilisateur)
+    const named = !!f.name.trim();
+    // vide : un exemple en gris, comme un champ (2026-11-26, avec l'utilisateur : la fiche était bizarre à la création)
+    nameBtn.innerHTML = `<b${named ? '' : ' class="muted"'}>${esc(named ? f.name.trim() : type === 'income' ? 'Ex. Tontine, Loyer perçu' : 'Ex. Zem, Coiffure, Loyer')}</b>${icon('caret-right')}`;
+    // le contour sur le champ lui-même (arrondi), pas sur le bloc avec son libellé (un rectangle à angles droits)
+    nameBtn.classList.toggle('ask', !named);
+    // l'aperçu dit aussi le nom ; sans nom, ce qu'on est en train de créer, en gris
+    const pv = $('[data-pvname]', el);
+    pv.textContent = named ? f.name.trim() : c ? '' : p ? 'Nouvelle sous-catégorie' : 'Nouvelle catégorie';
+    pv.classList.toggle('muted', !named);
+    const saveBtn = $('[data-save]', el);
+    saveBtn.disabled = !named;
+    saveBtn.classList.toggle('need', !named);
+    $('[data-savel]', el).textContent = !named ? 'Donne un nom' : c ? 'Enregistrer' : p ? 'Ajouter la sous-catégorie' : 'Ajouter la catégorie';
   }
   const paintIcons = () => { iconsEl.innerHTML = catalogHTML(f.q, f.icon); paint(); };
   paintIcons();
-  nameIn.oninput = paint;
+  nameBtn.onclick = async () => {
+    buzz(6);
+    const v = await editNote(f.name, { title: 'Nom', placeholder: type === 'income' ? 'Ex. Tontine, Loyer perçu' : 'Ex. Zem, Coiffure, Loyer', max: 24 });
+    if (v != null) { f.name = v; paint(); }
+  };
   $('[data-q]', el).oninput = e => { f.q = e.target.value; paintIcons(); };
   $('[data-pv]', el).addEventListener('click', async e => {
     if (!/** @type {HTMLElement} */ (e.target).closest('[data-tint]')) return;
@@ -106,15 +124,15 @@ export function openCategorySheet(id, type, { parent = null, name = '', onSaved 
   const err = (text, field) => { errEl.innerHTML = noticeHTML(text); buzz(14); if (field) field.focus(); };
   $('[data-save]', el).onclick = async () => {
     errEl.innerHTML = '';
-    const name = nameIn.value.trim().replace(/\s+/g, ' ');
-    if (!name) return err('Donne-lui un nom.', nameIn);
+    const name = f.name.trim().replace(/\s+/g, ' ');
+    if (!name) return err('Donne-lui un nom.');
     // un nom est unique dans le type, principales et sous-catégories confondues (D13)
     const p = par();
     const scope = p ? p.id : null;
     const twin = allCategories(type).find(x => x.id !== c?.id && !x.archived && x.name.toLowerCase() === name.toLowerCase());
     if (twin) {
       const tp = twin.parent ? category(twin.parent) : null;
-      return err(tp ? `« ${esc(twin.name)} » existe déjà, dans « ${esc(tp.name)} ».` : 'Une catégorie porte déjà ce nom.', nameIn);
+      return err(tp ? `« ${esc(twin.name)} » existe déjà, dans « ${esc(tp.name)} ».` : 'Une catégorie porte déjà ce nom.');
     }
     const data = p ? { name, icon: f.icon } : { name, color: f.own, icon: f.icon };
     // modifier : « parent » déplace la catégorie (le domaine refuse ce qui casserait les deux niveaux)

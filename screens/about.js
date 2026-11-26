@@ -6,7 +6,7 @@ import { icon } from '../core/icons.js';
 import { buzz, toast, $ } from '../core/ui.js';
 import { esc } from '../core/format.js';
 import { topbarHTML, wireBack, rowHTML, sectionHTML } from './parts.js';
-import { PRIVACY, TERMS, LICENSES, SITE, UPDATED, SUPPORT_WHATSAPP } from '../core/legal.js';
+import { PRIVACY, TERMS, LICENSES, SITE, UPDATED, SUPPORT_WHATSAPP, LATEST_APK } from '../core/legal.js';
 import { APP_VERSION } from '../data/session.js';
 import { versionTaps } from './developer.js';
 
@@ -22,6 +22,17 @@ export function openExternal(url) {
     if (a?.openUrl) { if (!a.openUrl(url)) toast('Impossible d’ouvrir le lien.'); return; }
   } catch (e) { /* le navigateur */ }
   window.open(url, '_blank', 'noopener');
+}
+/**
+ * Partager Bougette (2026-11-24, avec l'utilisateur) : les deux liens, la dernière version Android (l'APK) et la version
+ * web (iPhone, ordinateur). Android : son menu de partage ; navigateur : le partage du système, sinon copié.
+ */
+async function shareApp() {
+  const text = `Je suis mon argent avec Bougette.\nAndroid : ${LATEST_APK}\niPhone ou ordinateur : ${SITE}`;
+  const a = /** @type {any} */ (globalThis).BougetteAndroid;
+  try { if (a?.shareText) { if (!a.shareText(text)) toast('Impossible de partager.'); return; } } catch (e) { /* le navigateur */ }
+  try { if (navigator.share) { await navigator.share({ title: 'Bougette', text }); return; } } catch (e) { if (/** @type {any} */ (e)?.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(text); toast('Liens copiés.'); } catch (e) { toast('Impossible de partager.'); }
 }
 /** WhatsApp, message prérempli. @param {'bug'|'idea'} kind */
 function writeUs(kind) {
@@ -39,8 +50,10 @@ export function render(app, { back, go }) {
   app.innerHTML = `<div class="screen settings no-tabs about-screen">
     ${topbarHTML({ title: 'À propos' })}
     ${sectionHTML({ title: 'Aide', body: `<div class="group">
+      ${ROW('data-guide', 'notebook', 'Comment utiliser Bougette', 'Bientôt : un guide par fonctionnalité')}
       ${ROW('data-bug', 'bug', 'Signaler un problème', 'Sur WhatsApp, avec la version de l’app')}
       ${ROW('data-idea', 'lightbulb', 'Proposer une idée', 'Sur WhatsApp')}
+      ${ROW('data-share', 'share-network', 'Partager Bougette', 'Android, iPhone ou ordinateur')}
     </div>` })}
     ${sectionHTML({ title: 'Règles', body: `<div class="group">
       ${ROW('data-go="#/reglages/confidentialite"', 'shield-check', 'Confidentialité', 'Tes données restent à toi')}
@@ -52,8 +65,11 @@ export function render(app, { back, go }) {
   wireBack(app, () => back('#/reglages'));
   // sept touchers sur la version ouvrent Développeur (le logo et la version ne sont plus qu'ici, 2026-11-24)
   versionTaps(/** @type {HTMLElement} */ ($('.about [data-version]', app)));
+  // les guides d'utilisation : la place est gardée (2026-11-24, avec l'utilisateur), le contenu viendra (ROADMAP)
+  $('[data-guide]', app).onclick = () => { buzz(6); toast('Les guides arrivent bientôt.'); };
   $('[data-bug]', app).onclick = () => { buzz(6); writeUs('bug'); };
   $('[data-idea]', app).onclick = () => { buzz(6); writeUs('idea'); };
+  $('[data-share]', app).onclick = () => { buzz(6); shareApp(); };
   app.querySelectorAll('[data-go]').forEach(b => (/** @type {HTMLElement} */ (b).onclick = () => { buzz(6); go(/** @type {string} */ (/** @type {HTMLElement} */ (b).dataset.go)); }));
 }
 

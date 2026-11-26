@@ -1,5 +1,5 @@
 // Section « Échéances » de l'écran Budget (D18, revue le 2026-11-11) : un résumé, comme les autres sections. Une ligne
-// par échéance — une opération récurrente (ses règles successives comprises) ou une ancienne opération prévue — avec son
+// par échéance — une opération programmée (ses règles successives comprises) ou une ancienne opération prévue — avec son
 // étape en cours : la première fois qui reste à régler (on ne parle pas de la suivante tant qu'elle ne l'est pas). En
 // retard et du jour toujours, avec Confirmer et Passer (un toucher chacun) ; puis les prochaines, la plus proche
 // d'abord, quel que soit le mois, jusqu'à 3 lignes ; le titre « Échéances » ouvre « Toutes les échéances », toujours
@@ -8,6 +8,7 @@
 // D0) : la toucher ouvre cette page (l'opération pour une ancienne opération prévue), où sont toutes ses actions ; seules
 // les actions du moment restent en clair (Confirmer, Passer). Rien ne s'écrit tout seul. « Échéances terminées » (2026-11-12) : en bas de
 // Budget, celles qui n'ont plus rien à régler ni à venir, pour les relire (leur page, en lecture seule).
+import { DUE, RES } from '../domain/words.js';
 import { account, category, dueItems, endedDues, budgetReport, duesUntil, settings } from '../core/store.js';
 import { esc, today, money, period } from '../core/format.js';
 import { chip, buzz, $, $$ } from '../core/ui.js';
@@ -22,7 +23,7 @@ import { titleLink, endedHTML, listPageHTML, wireListPage, sectionHTML, emptySta
 /** Ce qu'on dit sous le nom : l'étape en cours. @param {DueItem} d */
 function when(d) {
   const rank = d.rank && d.times ? ` · ${d.rank} sur ${d.times}` : '';
-  const flags = `${d.paused ? ' · en pause' : ''}${d.needsWallet ? ' · réserve close' : ''}`;
+  const flags = `${d.paused ? ' · en pause' : ''}${d.needsWallet ? ` · ${RES.one} ${RES.adj('clos', 'close')}` : ''}`;
   if (d.state === 'late') return `<span class="loss">${d.lateCount > 1 ? `${d.lateCount} retards, depuis le ${dayShort(d.date)}` : `En retard · le ${dayShort(d.date)}`}</span>${rank}${flags}`;
   if (d.state === 'today') return `Aujourd’hui${rank}${flags}`;
   return `Le ${dayShort(d.date)}${rank}${flags}`;
@@ -51,8 +52,8 @@ export const dueRowsHTML = items => items.map(d => rowHTML(d)).join('');
  */
 export function duesSectionHTML(items, { shown, any }) {
   const body = items.length ? `<div class="group">${items.filter((_, i) => shown[i]).map(d => rowHTML(d)).join('')}</div>`
-    : emptyState(any ? 'Rien à régler pour l’instant' : 'Pas encore d’échéance', { add: ['data-new-due', 'Nouvelle échéance'] });
-  return sectionHTML({ cls: 'b-dues', head: titleLink('Échéances', 'data-all-dues'), body });
+    : emptyState(any ? 'Rien à régler pour l’instant' : `Pas encore ${DUE.of}`, { add: ['data-new-due', DUE.New] });
+  return sectionHTML({ cls: 'b-dues', head: titleLink(DUE.Many, 'data-all-dues'), body });
 }
 
 /**
@@ -63,7 +64,7 @@ export function duesSectionHTML(items, { shown, any }) {
  * @param {EndedDue[]} list
  */
 function endedSectionHTML(list) {
-  return endedHTML('Échéances terminées', list.map(x => {
+  return endedHTML(`${DUE.Many} ${DUE.adj('terminé')}s`, list.map(x => {
     const pill = x.kind === 'transfer' ? accountPill(account(x.to || '') || { kind: 'cash' }, 'sm') : chip(x.category ? category(x.category) : null);
     return `<div class="row mrow"><button type="button" class="mrow-go" data-due-done="${esc(x.head)}" aria-label="${esc(dueTitle(x))} : ses fois">${pill}
         <span class="main"><span class="l1"><span class="t">${esc(dueTitle(x))}</span><span class="v${x.kind === 'income' ? ' in' : ''}">${x.paidCount && !x.mixed ? dueMoney({ kind: x.kind, amount: x.paid, currency: x.currency }) : ''}</span></span>
@@ -104,7 +105,7 @@ export const allDuesScreen = {
     const end = period(today(), settings().monthStart).end;
     const inflow = duesUntil(end).filter(d => d.kind === 'income' && !d.paused && d.currency === cur).reduce((n, d) => n + d.amount, 0);
     const sub = [late ? `<span class="loss">dont ${late} en retard</span>` : '', inflow ? `${money(inflow, { cur })} à recevoir` : ''].filter(Boolean).join(' · ');
-    app.innerHTML = listPageHTML({ title: 'Toutes les échéances', fab: 'Nouvelle échéance',
+    app.innerHTML = listPageHTML({ title: DUE.Many, fab: DUE.New,
       intro: items.length ? { label: 'Encore à payer ce mois-ci', big: money(rep.toPay, { cur }), sub } : null,
       body: sectionHTML({ cls: 'b-dues', body: items.length ? `<div class="group">${items.map(d => rowHTML(d)).join('')}</div>` : emptyState('Rien à régler pour l’instant') }),
       ended: endedSectionHTML(endedDues()) });

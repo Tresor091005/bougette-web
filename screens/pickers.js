@@ -41,7 +41,7 @@ export function fillsHTML(id) {
   const v = savingsReport(r.wallet).reserves.find(x => x.reserve.id === r.id);
   if (!v) return '';
   const cur = r.currency;
-  const tone = v.status === 'overdue' || v.status === 'none' ? ' over' : v.status === 'later' || v.status === 'short' ? ' warn' : '';
+  const tone = v.status === 'overdue' ? ' over' : v.status === 'none' || v.status === 'later' || v.status === 'short' ? ' warn' : ''; // rouge : déjà arrivé ; orange : va arriver (2026-11-25)
   const say = v.status === 'short' ? `<span class="rs-warn">il manquera ${money(approx(v.short, cur), { cur })}</span>`
     : v.status === 'later' ? `<span class="rs-warn">prête le ${dayShort(v.ready)}</span>` : `${money(v.saved, { cur })} sur ${money(v.target, { cur })}`;
   return `<span class="due-fills"><span class="bar rs-bar${tone}"><i style="width:${v.pct}%"></i></span>
@@ -154,19 +154,23 @@ export function pickCurrency({ current, title = 'Devise' } = {}) {
 // Date (D14) : calendrier maison, mois par mois (la semaine commence le lundi), « Aujourd'hui » pour revenir ; toucher
 // le titre montre les 12 mois de l'année (‹ › change d'année) pour sauter loin. Hier / Avant-hier se font sur l'écran de
 // saisie (‹ ›). Jours et mois à venir : éteints, sauf future = true (opération déjà prévue qu'on modifie). Résout
-// « AAAA-MM-JJ », ou null.
+// « AAAA-MM-JJ », ou null. none (2026-11-24, avec l'utilisateur : une date qu'on peut enlever) : une gélule de plus à côté
+// d'« Aujourd'hui » (son libellé, « Sans date »), allumée quand current est vide ; la toucher résout '' (sans date).
+// quick (2026-11-26, avec l'utilisateur : les raccourcis de la fin d'un budget passent ici) : des gélules { label, date }
+// à la place d'« Aujourd'hui », allumées quand leur date est current ; la rangée passe à la ligne si elle déborde.
 const fmtCalMonth = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' });
 const fmtMonthShort = new Intl.DateTimeFormat('fr-FR', { month: 'short' });
 const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
-/** @param {{ current?: any, title?: string, future?: boolean, min?: string|null }} [o] */
+/** @param {{ current?: any, title?: string, future?: boolean, min?: string|null, none?: string, quick?: { label: string, date: string }[] }} [o] */
 // future : les jours à venir se choisissent (fin d'un budget) ; min : rien avant cette date (grisé et éteint)
-export function pickDate({ current, title = 'Date', future = false, min = null } = {}) {
+export function pickDate({ current, title = 'Date', future = false, min = null, none = '', quick } = {}) {
   return new Promise(resolve => {
+    /** @type {string|null} */
     let picked = null;
     const t0 = today(), y0 = Number(t0.slice(0, 4));
-    let view = current.slice(0, 7), months = false;
+    let view = (current || t0).slice(0, 7), months = false;
     const s = openSheet(`${sheetHead({ title })}
-      <div class="dq"><button type="button" class="sc${t0 === current ? ' on' : ''}" data-d="${t0}">Aujourd’hui</button></div>
+      <div class="dq${quick ? ' wrap' : ''}">${quick ? quick.map(q => `<button type="button" class="sc${q.date === current ? ' on' : ''}" data-d="${q.date}">${esc(q.label)}</button>`).join('') : `<button type="button" class="sc${t0 === current ? ' on' : ''}" data-d="${t0}">Aujourd’hui</button>`}${none ? `<button type="button" class="sc${current ? '' : ' on'}" data-d="">${esc(none)}</button>` : ''}</div>
       <div class="cal">
         <div class="cal-h"><button type="button" class="iconbtn" data-m="-1">${icon('caret-left')}</button>
           <button type="button" class="cal-t" data-title aria-expanded="false"><b></b>${icon('caret-down')}</button>
@@ -228,7 +232,7 @@ export function pickDate({ current, title = 'Date', future = false, min = null }
       if (m && !m.disabled) { view = m.dataset.ym; months = false; buzz(6); paint(); return; }
       const b = e.target.closest('[data-d]');
       if (!b || b.disabled) return;
-      picked = b.dataset.d; buzz(10); s.close();
+      picked = b.dataset.d || ''; buzz(10); s.close();
     });
   });
 }

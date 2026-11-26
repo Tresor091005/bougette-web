@@ -1,12 +1,14 @@
 // Confirmer la semaine (D18 revu le 2026-11-18, avec l'utilisateur) : une échéance qui revient plusieurs fois par semaine
 // (le zem lundi, mardi, vendredi) se confirme par semaine, pas jour par jour. Une feuille montre ses jours de la semaine
-// jusqu'à aujourd'hui, tous cochés ; on décoche celui qui n'a pas eu lieu, on touche un montant pour le changer, le total
+// jusqu'à aujourd'hui, plus celui qu'on confirme d'avance, tous cochés ; on décoche celui qui n'a pas eu lieu, on touche un montant pour le changer, le total
 // suit ; « Confirmer N jours » (les décochés sont passés), tout décoché : « Passer cette semaine ». Un seul
 // enregistrement, tout ou rien.
+import { DUE } from '../domain/words.js';
 import { dueOccurrences, scheduleById, settleDues } from '../core/store.js';
-import { money, esc, readAmount, today } from '../core/format.js';
+import { money, esc, today } from '../core/format.js';
 import { icon } from '../core/icons.js';
-import { openSheet, buzz, toast, noticeHTML, promptSheet, fromMinor, afterSheets, $, $$ } from '../core/ui.js';
+import { openSheet, buzz, toast, noticeHTML, afterSheets, $, $$ } from '../core/ui.js';
+import { amountSheet } from './amount-sheet.js';
 import { addDays } from '../domain/dues.js';
 import { sheetHead, sheetActions } from './parts.js';
 
@@ -15,7 +17,7 @@ const cap = (/** @type {string} */ t) => t.charAt(0).toUpperCase() + t.slice(1);
 const monday = (/** @type {string} */ s) => addDays(s, -((new Date(`${s}T12:00:00`).getDay() + 6) % 7));
 
 /**
- * Les fois à régler de la semaine de d (du lundi au dimanche), jusqu'à aujourd'hui ; [] si l'échéance ne revient pas
+ * Les fois à régler de la semaine de d (du lundi au dimanche), jusqu'à aujourd'hui, et d elle-même ; [] si l'échéance ne revient pas
  * plusieurs fois par semaine.
  * @param {any} d (une fois : DueItem ou DueView) @returns {any[]}
  */
@@ -24,7 +26,10 @@ export function weekOf(d) {
   const r = scheduleById(d.schedule);
   if (!r || r.every !== 'week' || !r.days?.length) return [];
   const m = monday(d.date), t0 = today();
-  return dueOccurrences(d.schedule).filter(o => (o.state === 'late' || o.state === 'today') && o.date <= t0 && monday(o.date) === m && o.schedule);
+  // la fois qu'on confirme en fait toujours partie, même à venir (« Confirmer maintenant », 2026-11-26, avec
+  // l'utilisateur : la feuille s'ouvrait avec lundi et mardi en retard, sans le vendredi touché)
+  return dueOccurrences(d.schedule).filter(o => o.schedule && monday(o.date) === m
+    && ((o.state === 'late' || o.state === 'today') && o.date <= t0 || o.key === d.key));
 }
 
 /**
@@ -41,7 +46,7 @@ export function confirmWeekOr(d, fallback) {
 function openWeekSheet(list) {
   const cur = list[0].currency;
   const rows = list.map(o => ({ o, on: true, amount: o.amount }));
-  const name = list[0].note || 'Échéance';
+  const name = list[0].note || DUE.One;
   const s = openSheet(`<div class="wk">
     ${sheetHead({ title: `${esc(name)} · la semaine` })}
     <p class="muted wk-help">Décoche le jour qui n’a pas eu lieu. Touche un montant pour le changer.</p>
@@ -68,10 +73,10 @@ function openWeekSheet(list) {
     const a = /** @type {HTMLButtonElement|null} */ (t.closest('[data-a]'));
     if (!a || a.disabled) return;
     const x = rows[Number(a.dataset.a)];
-    const v = await promptSheet({ title: cap(DAY.format(new Date(`${x.o.date}T12:00:00`))), label: 'Montant', value: String(fromMinor(x.amount, cur)), mode: 'decimal', max: 15,
-      check: v => { const r = readAmount(v, cur); return r.error || (/** @type {number} */ (r.amount) > 0 ? null : 'Indique un montant.'); } });
-    if (v == null) return;
-    x.amount = /** @type {number} */ (readAmount(v, cur).amount);
+    const res = await amountSheet({ title: cap(DAY.format(new Date(`${x.o.date}T12:00:00`))), question: 'Combien, ce jour-là ?', value: x.amount, cur,
+      button: v => `Mettre ${money(v, { cur })}` });
+    if (!res || !('amount' in res)) return;
+    x.amount = res.amount;
     paint();
   };
   $('[data-go]', s.el).onclick = async () => {

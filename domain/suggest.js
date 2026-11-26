@@ -1,4 +1,4 @@
-// Suggestions de saisie (D14) : catégories probables, modèles des opérations qui reviennent, notes déjà écrites.
+// Suggestions de saisie (D14) : catégories probables, modèles des opérations qui reviennent.
 // Fonctions pures, à partir des opérations passées (forme TxView) : rien n'est stocké, tout se recalcule.
 
 /** @typedef {{ type: string, amount: number, accountId: string, toAccountId?: string|null, categoryId?: string|null, date: string, note?: string, planned?: boolean, createdAt?: number }} Move */
@@ -23,7 +23,7 @@ const hourOf = m => (m.createdAt ? new Date(m.createdAt).getHours() : null);
  *   valid : catégories proposables (actives, du bon type), dans l'ordre de repli
  * @returns {string[]}
  */
-export function suggestCategories(moves, { type, today, hour = 12, amount = 0, valid, limit = 6, days = 90 }) {
+export function suggestCategories(moves, { type, today, hour = 12, amount = 0, valid, limit = 3, days = 90 }) {
   const ok = new Set(valid);
   const dow = weekday(today);
   /** @type {Map<string, number>} */
@@ -140,33 +140,6 @@ export function templates(moves, { today, limit = 3 }) {
       type: m.type, amount, accountId: m.accountId, toAccountId: m.toAccountId || null,
       categoryId: m.categoryId || null, note: m.note || '', count,
     }));
-}
-
-/**
- * Notes déjà écrites qui commencent par ce qu'on tape (début d'un mot, sans accents) : celles de la catégorie choisie
- * d'abord, puis les plus fréquentes et récentes. Chaque note garde sa catégorie la plus fréquente.
- * @param {Move[]} moves @param {{ q?: string, categoryId?: string|null, today: string, limit?: number }} o
- * @returns {{ note: string, categoryId: string|null }[]}
- */
-export function noteSuggestions(moves, { q = '', categoryId = null, today, limit = 5 }) {
-  const t = fold(q);
-  /** @type {Map<string, { note: string, score: number, same: number, cats: Map<string, number> }>} */
-  const notes = new Map();
-  for (const m of moves) {
-    const k = fold(m.note);
-    if (!k || k === t) continue;
-    if (t && !` ${k}`.includes(` ${t}`)) continue;
-    const age = Math.max(0, daysBetween(m.date, today));
-    const n = notes.get(k) || { note: String(m.note).trim(), score: 0, same: 0, cats: new Map() };
-    n.score += Math.exp(-age / 60);
-    if (categoryId && m.categoryId === categoryId) n.same++;
-    if (m.categoryId) n.cats.set(m.categoryId, (n.cats.get(m.categoryId) || 0) + 1);
-    notes.set(k, n);
-  }
-  return [...notes.values()]
-    .sort((a, b) => (b.same > 0 ? 1 : 0) - (a.same > 0 ? 1 : 0) || b.score - a.score)
-    .slice(0, limit)
-    .map(n => ({ note: n.note, categoryId: [...n.cats].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null }));
 }
 
 /**

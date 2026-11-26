@@ -9,6 +9,10 @@
 // ouvert. Archiver ne touche qu'à ce téléphone : un espace archivé reste sur le compte Google (D21) et chez les autres
 // appareils ; seul l'espace ouvert se synchronise, il attend donc d'être rouvert. Une liste d'avant (sans « archived »)
 // se lit telle quelle : aucun espace n'y est archivé.
+// La tête d'un espace (2026-11-26, avec l'utilisateur) : un uuid v4 tiré au hasard à sa création (seed), propre à lui —
+// avant, elle venait de son identifiant, et le premier espace s'appelle « main » sur tous les téléphones : tout le monde
+// avait la même. Une liste d'avant reçoit ses têtes à la première lecture (elles changent donc une fois, c'est voulu).
+import { uuid4, isUuid4 } from '../data/uuid.js';
 
 const KEY = 'bougette:spaces';
 export const MAIN = 'main';
@@ -18,13 +22,30 @@ const NAME_MAX = 30;
 /** @typedef {{ id: string, name: string, cid?: string, seed?: string, nameAt?: number, cids?: Record<string, string>, owner?: string, archived?: string }} Space cid, seed, nameAt, cids : l'espace sur le compte Google lié (D21), et sur chaque compte déjà lié ; owner : le compte auquel il est attaché ; archived : date de l'archivage (ISO) */
 /** @typedef {{ current: string, list: Space[], gone?: string[] }} Registry gone : identifiants de compte des espaces retirés de la liste avant le 2026-11-21 (la synchro ne les rajoute pas) */
 
+/** La tête du premier espace tant que la liste n'a pas pu être enregistrée : la même tout le temps que l'app est ouverte. */
+let firstSeed = '';
+/** Chaque espace a sa tête : celui qui n'en a pas (ou qui a celle d'avant, son identifiant) en reçoit une, une fois. @param {Registry} v */
+function withHeads(v) {
+  let changed = false;
+  for (const s of v.list) if (!isUuid4(s.seed)) { s.seed = uuid4(); changed = true; }
+  if (changed) save(v);
+  return v;
+}
 /** @returns {Registry} */
 function load() {
+  /** @type {string|null|undefined} */
+  let raw;
   try {
-    const v = JSON.parse(localStorage.getItem(KEY) || 'null');
-    if (v && Array.isArray(v.list) && v.list.some((/** @type {Space} */ s) => s.id === MAIN)) return v;
-  } catch (e) { /* stockage indisponible : le premier espace seul */ }
-  return { current: MAIN, list: [{ id: MAIN, name: 'Mon espace' }] };
+    raw = localStorage.getItem(KEY);
+    const v = JSON.parse(raw || 'null');
+    if (v && Array.isArray(v.list) && v.list.some((/** @type {Space} */ s) => s.id === MAIN)) return withHeads(v);
+  } catch (e) { /* stockage indisponible, ou liste illisible : le premier espace seul */ }
+  firstSeed = firstSeed || uuid4();
+  const v = { current: MAIN, list: [{ id: MAIN, name: 'Mon espace', seed: firstSeed }] };
+  // rien d'enregistré encore : gardé tout de suite avec sa tête (sinon elle changerait à chaque ouverture). Une liste qui
+  // ne se lit pas n'est pas écrasée ici : comme avant, elle ne l'est qu'au premier changement
+  if (raw === null) save(v);
+  return v;
 }
 /** @param {Registry} v */
 function save(v) {
@@ -66,7 +87,7 @@ function cleanName(name, except = null) {
 /** Nouvel espace (pas encore ouvert). @param {string} name @returns {Space} */
 export function addSpace(name) {
   const v = load();
-  const s = { id: 'e' + Date.now().toString(36), name: cleanName(name) };
+  const s = { id: 'e' + Date.now().toString(36), name: cleanName(name), seed: uuid4() };
   v.list.push(s);
   save(v);
   return s;
@@ -75,7 +96,7 @@ export function addSpace(name) {
 export function demoSpace() {
   const v = load();
   let s = v.list.find(x => x.id === DEMO);
-  if (!s) { s = { id: DEMO, name: 'Démo' }; v.list.push(s); save(v); }
+  if (!s) { s = { id: DEMO, name: 'Démo', seed: uuid4() }; v.list.push(s); save(v); }
   else if (s.archived) { delete s.archived; save(v); }
   return s;
 }
@@ -103,10 +124,10 @@ export function renameSpace(id, name) {
 /**
  * Ce que la synchro a appris (D21), appliqué sur la liste du moment (pas sur celle lue au début de la synchro : un
  * renommage ou un archivage faits entre-temps restent) : l'identifiant de compte de l'espace synchronisé, les espaces
- * du compte ajoutés ici, les noms changés ailleurs plus récemment.
- * @param {{ email: string, me: Space, added: Space[], renamed: Space[] }} o
+ * du compte ajoutés ici, les noms changés ailleurs plus récemment, les têtes prises sur le compte (seeded).
+ * @param {{ email: string, me: Space, added: Space[], renamed: Space[], seeded?: Space[] }} o
  */
-export function applyCloud({ email, me, added, renamed }) {
+export function applyCloud({ email, me, added, renamed, seeded = [] }) {
   const v = load();
   const newer = (/** @type {Space} */ s, /** @type {Space} */ n) => (n.nameAt || 0) > (s.nameAt || 0) && n.name !== s.name;
   const cur = v.list.find(s => s.id === me.id);
@@ -117,6 +138,8 @@ export function applyCloud({ email, me, added, renamed }) {
     if (newer(cur, me)) { cur.name = me.name; cur.nameAt = me.nameAt; }
   }
   for (const n of renamed) { const s = v.list.find(x => x.id === n.id); if (s && newer(s, n)) { s.name = n.name; s.nameAt = n.nameAt; } }
+  // la tête du compte fait foi : la même sur tous les appareils
+  for (const n of seeded) { const s = v.list.find(x => x.id === n.id); if (s && n.seed) s.seed = n.seed; }
   for (const n of added) {
     if (!n.cid || v.list.some(s => s.cid === n.cid) || (v.gone || []).includes(n.cid)) continue;
     v.list.push({ id: n.id, name: n.name, cid: n.cid, seed: n.seed, nameAt: n.nameAt, cids: { [email]: n.cid }, owner: email.toLowerCase() });
@@ -183,7 +206,7 @@ export function reopenSpace(id) {
  */
 export function startOver(name, now = new Date()) {
   const v = load();
-  const s = { id: 'e' + now.getTime().toString(36), name: cleanName(name) };
+  const s = { id: 'e' + now.getTime().toString(36), name: cleanName(name), seed: uuid4() };
   const cur = v.list.find(x => x.id === v.current);
   if (cur) cur.archived = now.toISOString();
   v.list.push(s);

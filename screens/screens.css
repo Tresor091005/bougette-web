@@ -160,15 +160,9 @@
 .cl-none .btn { max-width: 100%; }
 .cl-c { display: inline-flex; min-width: 0; white-space: nowrap; }
 .cl-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-/* note : notes déjà écrites */
-.note-sugg { display: grid; margin: var(--sp-1) 0 var(--sp-5); }
-.ns { display: flex; align-items: center; gap: var(--sp-5); min-height: 44px; padding: 0 var(--sp-2); text-align: left; font-size: var(--fs-body); color: var(--ink); border-top: 1px solid var(--rule); }
-.ns:first-child { border-top: 0; }
-.ns .ic { width: 16px; height: 16px; color: var(--ink-3); flex: none; }
-.ns span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ns small { color: var(--ink-3); font-size: var(--fs-2nd); }
 /* date : « Aujourd'hui » et calendrier maison */
 .dq { display: flex; gap: var(--sp-3); margin: var(--sp-2) 0 var(--sp-7); }
+.dq.wrap { flex-wrap: wrap; } /* les raccourcis d'un calendrier passent à la ligne s'ils débordent (2026-11-26) */
 .cal-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-3); }
 .cal-h b { font-weight: 500; font-size: var(--fs-body); }
 .cal-t { display: inline-flex; align-items: center; gap: var(--sp-3); height: 40px; padding: 0 var(--sp-6); border-radius: var(--r-pill); color: var(--ink); }
@@ -198,19 +192,27 @@
 .when-g .cd.now { box-shadow: none; }
 .when-g .cd.now::after { content: ''; position: absolute; left: 50%; bottom: 5px; width: 4px; height: 4px; margin-left: -2px; border-radius: var(--r-pill); background: var(--accent); }
 .when-g .cd.on.now::after { background: var(--on-accent); }
-.when-g .cd.busy::before { content: ''; position: absolute; left: 50%; bottom: 5px; width: 4px; height: 4px; margin-left: -2px; border-radius: var(--r-pill); background: var(--ink-3); }
-.when-g .cd.on.busy::before { background: rgba(255,255,255,.7); }
-.when-g .cd.now.busy::before { margin-left: -7px; } /* hors échelle : les points d'attente */
-.when-g .cd.now.busy::after { margin-left: 3px; } /* hors échelle : les points d'attente */
+.when-g .cd.past { color: var(--ink-2); } /* un jour passé reste touchable : encre plus douce, pas d'opacité (2026-11-26) */
+.when-g .cd.on.past { color: var(--on-accent); }
+.when-g .cd.cur { box-shadow: inset 0 0 0 1.5px var(--accent); } /* la date de la saisie : un contour, sans être cochée (2026-11-26) */
 .when-g .cd.nx { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--ink); }
 .when-rep { display: flex; flex-wrap: wrap; gap: var(--sp-4); margin: var(--sp-1) 0 var(--sp-6); }
 .when-rep .sc { padding: 0 13px; } /* hors échelle : petite gélule */
 .when-rep .sc.sug { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent); }
 .when-rep .sc .ic { width: 14px; height: 14px; margin-left: -2px; }
+/* le jour du mois (« le 14 », « le 2e lundi »…) : sous la répétition, à l'écart d'une rangée */
+.when-rep:has(+ .when-by:not(:empty)) { margin-bottom: var(--sp-4); }
+.when-by:empty { display: none; }
 .when-say { min-height: 20px; margin: 0 0 var(--sp-4); font-size: var(--fs-body); line-height: 1.4; }
 .when-say b { font-weight: 600; }
-.when-also p { display: flex; align-items: flex-start; gap: var(--sp-4); margin: 0 0 var(--sp-3); font-size: var(--fs-2nd); color: var(--ink-2); line-height: 1.35; }
-.when-also .ic { flex: none; width: 15px; height: 15px; margin-top: 1px; color: var(--ink-3); }
+.when-say.idle { color: var(--ink-2); font-size: var(--fs-2nd); }
+.when-say small.means { color: var(--ink-2); } /* ce que le choix veut dire : plus lisible que le « puis… » */
+.when-say { scroll-margin-bottom: 100px; } /* hors échelle : la hauteur de la barre du bas, pour que la phrase revienne en vue au-dessus d'elle */
+/* « Effacer » sur la ligne du titre, à gauche de la croix (2026-11-26) : éteinte tant que rien n'est touché */
+.when-top .sc[disabled] { opacity: .35; pointer-events: none; }
+.sheet.has-x .when-top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); margin: var(--sp-2) 0 var(--sp-5); padding-right: 58px; } /* hors échelle : la place de la croix */
+.sheet.has-x .when-top .sheet-title { margin: 0; padding-right: 0; }
+.when [data-ok] .ok-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .when-say small { display: block; color: var(--ink-3); font-size: var(--fs-2nd); margin-top: var(--sp-1); }
 .when-btn b { white-space: normal; text-align: left; }
 /* Confirmer la semaine (D18 revu le 2026-11-18) : une ligne par jour, cochée ; le montant se touche pour le changer */
@@ -247,6 +249,12 @@
 .e-meta [data-datep] { min-width: 118px; justify-content: center; }
 .e-meta [data-notep] { max-width: 124px; }
 .mp.center { align-self: center; }
+/* programmer (2026-11-26) : la date dit la règle (« Chaque mois, le 1er »), la fin tient à côté sur la même rangée ; la catégorie (en couleur) et le nom commencent à la gouttière, comme les autres rangées */
+.e-meta [data-datep] b { overflow: hidden; text-overflow: ellipsis; }
+.entry.planning .e-meta [data-datep] { max-width: 200px; } /* hors échelle : la règle et la fin tiennent à 360 px */
+.e-meta [data-endp] { max-width: 130px; } /* hors échelle : la règle et la fin tiennent à 360 px */
+:is(.entry.planning, .budget-sheet, .rs-edit, .dv-edit, .cat-sheet, .acc-edit) .ask { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--ink); } /* ce que le bouton réclame : un contour d'accent, rien n'est faux ; aussi dans la feuille d'un budget et celle d'une dépense prévue, celle d'une opération programmée, celle d'une catégorie (2026-11-26) */
+.e-sugg.e-plan .mp { max-width: 200px; } /* hors échelle : deux pastilles tiennent sur une rangée à 360 px */
 
 .entry .keypad { gap: 7px; } /* hors échelle : pavé */
 .go { height: 52px; flex: none; position: relative; overflow: hidden; }
@@ -285,8 +293,8 @@
 
 /* feuille d'un budget */
 .budget-sheet, .check-sheet { display: flex; flex-direction: column; gap: var(--sp-5); padding-bottom: var(--sp-2); }
-:is(.budget-sheet, .check-sheet) .bs-id { display: flex; align-items: center; gap: var(--sp-6); min-width: 0; flex: 1; }
-:is(.budget-sheet, .check-sheet) .bs-id .sheet-title { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:is(.budget-sheet, .check-sheet, .rs-edit) .bs-id { display: flex; align-items: center; gap: var(--sp-6); min-width: 0; flex: 1; }
+:is(.budget-sheet, .check-sheet, .rs-edit) .bs-id .sheet-title { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 :is(.budget-sheet, .check-sheet) .e-stage { min-height: 96px; flex: none; }
 /* vérifier un solde (D9) : question, écart */
 .check-sheet .ck-q { margin: 0; font-size: var(--fs-body); color: var(--ink-2); }
@@ -504,22 +512,16 @@
 .b-hero .status { margin-top: var(--sp-5); font-size: var(--fs-2nd); }
 .b-aside { color: var(--accent-text); }
 /* feuille d'un budget */
-.bs-cat { display: flex; align-items: center; gap: var(--sp-5); min-width: 0; text-align: left; min-height: 44px; }
-.bs-cat > .ic { width: 16px; height: 16px; flex: none; color: var(--ink-2); }
 .bs-dates { display: flex; align-items: center; justify-content: center; gap: var(--sp-4); }
 .bs-dates .mp { max-width: none; color: var(--ink); }
 .bs-to .ic { width: 16px; height: 16px; color: var(--ink-3); display: block; }
-.bs-quick { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
-.bs-quick .mp { flex: 1 1 auto; justify-content: center; padding: 0 var(--sp-4); }
 .bs-rep { padding: 0; min-height: 44px; margin: -7px 0; } /* hors échelle : l'interrupteur à 10 px des dates, comme les autres rangées ; l'appui garde 44 px */
 /* après une rentrée */
 .income-sheet { padding-bottom: var(--sp-2); }
 .in-say { color: var(--ink-2); font-size: var(--fs-body); margin-bottom: var(--sp-8); }
 .in-say b { color: var(--ink); font-weight: 500; }
 .in-acts { display: flex; flex-direction: column; gap: var(--sp-4); }
-.acc-total { margin: -12px 0 var(--sp-5); } /* le titre de la ligne à 16 px du champ, comme un libellé */
 /* sans message d'erreur dessous : sa dernière ligne aussi près du filet des boutons que le dernier champ d'une autre feuille */
-.acc-total:has(+ [data-err]:empty) { margin-bottom: -12px; }
 :is(.month, .ops-dues) .mrow { gap: var(--sp-4); }
 :is(.month, .ops-dues) .mrow-go > .pill { width: 36px; height: 36px; }
 :is(.month, .ops-dues) .mrow-go > .pill .ic { width: 19px; height: 19px; }
@@ -744,14 +746,24 @@
 
 /* ================= Épargne et réserves (D17) ================= */
 .rs-wallet { display: grid; gap: var(--sp-5); }
-.rs-head { display: flex; align-items: center; gap: var(--sp-6); min-width: 0; }
-.rs-head .main { flex: 1; min-width: 0; display: grid; gap: var(--sp-1); }
-.rs-head .t { font-weight: 600; }
-.rs-head .s { font-size: var(--fs-2nd); color: var(--ink-2); }
-.rs-head .amt { font: 600 var(--fs-section)/1.2 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rs-head { display: grid; min-width: 0; }
+/* l'en-tête (2026-11-26) : « Solde », le solde, la barre, la phrase ; le crayon de l'objectif à droite du solde */
+.rs-top { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-6); min-width: 0; }
+.rs-head .main { min-width: 0; display: grid; gap: var(--sp-1); }
+.rs-head .t { font-size: var(--fs-2nd); color: var(--ink-2); }
+.rs-big { font-variant-numeric: tabular-nums; white-space: nowrap; } /* le solde : la taille de .bp-big, comme la carte */
 .rs-head .iconbtn { width: 40px; height: 40px; flex: none; }
-.rs-row { gap: var(--sp-2); }
-.rs-row .mrow-go { min-width: 0; }
+.rs-gauge { height: 6px; margin: var(--sp-4) 0 var(--sp-5); }
+.rs-head .s { font-size: var(--fs-2nd); color: var(--ink-2); line-height: 1.35; }
+.rs-head .rs-top + .s { margin-top: var(--sp-3); }
+/* une réserve : l'icône nue de sa catégorie, dans sa teinte, à hauteur du nom ; le reste sous le nom (2026-11-26) */
+.rs-row .mrow-go { min-width: 0; align-items: flex-start; gap: var(--sp-7); }
+.rs-cat { flex: none; color: color-mix(in srgb, var(--c), #fff var(--lift)); margin-top: -3px; } /* hors échelle : l'icône centrée sur le nom */
+.rs-cat .ic { width: 22px; height: 22px; }
+/* un nom trop long finit en « … » (le rognage net de .mrow ne le met pas) ; le retrait du bas garde ses jambages */
+.rs-row .l1 .t { overflow: hidden; text-overflow: ellipsis; padding-bottom: var(--sp-2); margin-bottom: -4px; }
+.rs-list > .row + .row::before { left: 36px; } /* hors échelle : le filet part du texte, après l'icône (22 + 14) */
+.rs-list > .row + .rs-free::before { left: 0; }
 /* l'état d'une réserve, sur sa ligne sous le niveau (2026-11-20) */
 /* même taille, même graisse et même écart que la ligne du niveau au-dessus (2026-11-20, avec l'utilisateur : plus gros et
    irrégulier, il cassait le calme des budgets) : seule la couleur le distingue */
@@ -768,6 +780,8 @@
 .rs-done summary::-webkit-details-marker, .b-done summary::-webkit-details-marker { display: none; }
 .rs-done summary::after, .b-done summary::after { content: '›'; margin-left: auto; color: var(--ink-3); transition: transform .2s; }
 .rs-done[open] summary::after, .b-done[open] summary::after { transform: rotate(90deg); }
+/* la page d'une épargne : l'en-tête qui ouvre les terminées est une cible de 44 px */
+.rs-done summary { min-height: 44px; padding: 0; align-items: center; }
 .b-done .mrow .btn { flex: none; padding: 0 var(--sp-6); }
 .rs-hist { margin: var(--sp-2) 0 var(--sp-5); }
 .rs-done .row .main, .rs-hist .row .main { min-width: 0; }
@@ -803,9 +817,9 @@
 .op-origin .ic { width: 15px; height: 15px; flex: none; }
 .op-origin .ic:last-child { width: 12px; height: 12px; opacity: .7; }
 .sc.need { box-shadow: inset 0 0 0 1px var(--loss); }
-/* page Épargne : la grille ne s'élargit jamais au-delà de l'écran ; boutons sur deux lignes (Réserve · Répartir, puis Mettre de côté) */
+/* page Épargne : la grille ne s'élargit jamais au-delà de l'écran */
 .rs-wallet { grid-template-columns: minmax(0, 1fr); }
-/* l'anneau de l'objectif autour de l'icône du portefeuille d'épargne (épaissi le 2026-11-18 : à 3 px il ne se lisait pas) */
+/* l'anneau de l'objectif autour de l'icône du portefeuille d'épargne, sur sa ligne dans Plan (épaissi le 2026-11-18 : à 3 px il ne se lisait pas) */
 .goal-ring { position: relative; display: inline-grid; place-items: center; flex: none; padding: var(--sp-2); margin: -4px; border-radius: 50%;
   background: conic-gradient(var(--accent-text) calc(var(--p) * 1%), var(--line) 0); }
 .goal-ring .pill { box-shadow: 0 0 0 2px var(--surface); }
@@ -847,9 +861,15 @@
 .sheet-head .pv-btn .brush .ic { width: 10px; height: 10px; }
 /* un virement ne sort ni n'entre : montant pâle et plus léger, à côté des dépenses en rouge */
 .row .amt.move { color: var(--ink-3); font-weight: 500; }
-/* réserve : le nom a toute la ligne du haut ; le montant visé passe sous le montant mis de côté */
-.rs-row .l2 .s { min-width: 0; overflow: visible; white-space: normal; } /* passe à la ligne plutôt que d'être coupé (2026-11-20) */
-.rs-acts { margin-top: var(--sp-3); }
+/* réserve : le nom a toute la ligne du haut ; « 18 000 F sur 30 000 F · 20 déc 2026 » passe à la ligne à « · » plutôt que d'être coupé */
+.rs-row .l2 .s { min-width: 0; overflow: visible; white-space: normal; }
+/* « Nouvelle dépense prévue » et « Mettre de côté » : deux colonnes égales, un filet entre elles (2026-11-26) */
+.rs-acts { display: grid; grid-template-columns: 1fr 1fr; margin-top: var(--sp-3); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.rs-acts.one { grid-template-columns: minmax(0, 1fr); }
+.rs-act { --press: color-mix(in srgb, var(--ink) 5%, transparent); min-height: 52px; min-width: 0; padding: var(--sp-4) var(--sp-6); font: 500 var(--fs-body)/1.25 var(--sans); color: var(--accent-text); text-align: center; }
+.rs-act + .rs-act { border-left: 1px solid var(--rule); }
+.rs-act:active { background: var(--press); }
+.rs-acts.one .rs-act { text-align: left; padding-left: 0; }
 .cats [data-findbox] .cat-find { position: relative; background: none; padding: 0; margin: 0 0 var(--sp-3); }
 .section.cl-sec { margin-top: var(--sp-8); } /* l'arbre des catégories, sous le sélecteur */
 .cats [data-findbox] .cat-find .ic { top: 12px; }
@@ -905,17 +925,10 @@
 .dv-acts:empty { display: none; }
 .dv-acts .btn { flex: none; padding: 0 var(--sp-7); height: 34px; border-radius: var(--r-pill); font-size: var(--fs-body); }
 .dv-other { font-size: var(--fs-2nd); color: var(--accent-text); padding: var(--sp-3) var(--sp-2); }
-/* regarder d'abord (revue du 2026-11-12) : la règle en une ligne sous ses fois, puis Modifier ; en modifiant, la bande
-   reste en haut, ses fois à venir en pointillé (l'aperçu), réglées et en retard avec un cadenas */
+/* regarder d'abord (revue du 2026-11-12) : la règle en une ligne sous ses fois, puis Modifier (une feuille, 2026-11-24) */
 .dv-bar { margin: 0 var(--bleed); padding: 0 var(--gutter); display: flow-root; }
-.due-sheet.editing .dv-bar { position: sticky; top: 0; z-index: 3; background: var(--card); }
-.due-sheet.editing .dv-tabs { -webkit-mask-image: none; mask-image: none; }
-/* la page d'une échéance (2026-11-12) : en modifiant, la bande de ses fois reste en haut de l'écran, sur le papier ;
-   un nom long rapetisse, puis se coupe par « … » */
-.due-page .due-sheet.editing .dv-bar { top: var(--sat); background: var(--paper); }
+/* la page d'une échéance (2026-11-12) : un nom long rapetisse, puis se coupe par « … » */
 .due-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dv-tab.ahead { text-decoration: underline dotted; text-underline-offset: 5px; text-decoration-thickness: 1.5px; }
-.dv-tab.locked { color: var(--ink-3); }
 .dv-note { flex-basis: 100%; margin: var(--sp-1) 0 0; font-size: var(--fs-2nd); line-height: 1.4; }
 .dv-rule { font-size: var(--fs-body); line-height: 1.45; margin: 0 0 var(--sp-3); overflow-wrap: anywhere; }
 .dv-sum { font-size: var(--fs-2nd); line-height: 1.4; margin: var(--sp-3) 0 var(--sp-1); color: var(--ink-2); }
@@ -925,12 +938,34 @@
 .dv-now { flex: none; display: flex; align-items: center; gap: var(--sp-3); padding: 0 var(--sp-3); font-size: var(--fs-meta); font-weight: 500; letter-spacing: .02em; color: var(--accent-text); white-space: nowrap; }
 .dv-now::before { content: ''; width: 1px; height: 18px; background: currentColor; opacity: .5; }
 .dv-plan { font: 400 var(--fs-meta)/1 var(--sans); letter-spacing: 0; color: var(--ink-3); margin-left: var(--sp-4); }
+.dv-adj { font-size: var(--fs-2nd); color: var(--ink-3); margin-bottom: var(--sp-1); }
 .seg.locked button:disabled { color: var(--ink-3); opacity: .55; }
 .seg.locked button.on:disabled { color: var(--ink); opacity: 1; }
-.due-sheet .due-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
-.due-sheet .due-fields[disabled] { opacity: .55; }
-.due-sheet .due-endd, .due-sheet .due-times { margin-top: var(--sp-4); }
-.due-sheet .due-times { width: 100%; }
+/* le formulaire d'une opération programmée au format de la saisie (2026-11-24) : le type, le portefeuille comme un
+   destinataire, le grand montant, les pastilles (sur deux rangées s'il le faut : toutes visibles), le pavé, le bouton */
+.dv-edit { display: flex; flex-direction: column; gap: var(--sp-5); }
+.dv-edit > .rs-say { margin: 0; }
+.dv-edit > [data-err]:empty { display: none; }
+/* le type est la première rangée de la feuille (2026-11-26) : il laisse sa place à la croix, à droite */
+.sheet.has-x .dv-edit > .dv-kind .due-kind { margin-right: 58px; } /* hors échelle : la place de la croix */
+.dv-from { display: flex; align-items: center; justify-content: center; gap: var(--sp-3); min-width: 0; min-height: 44px; }
+.dv-from .mp { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.dv-from .mp span { min-width: 0; }
+.dv-arrow { flex: none; display: grid; place-items: center; color: var(--ink-3); }
+.dv-arrow .ic { width: 16px; height: 16px; }
+.dv-stage { flex: none; min-height: 96px; }
+:is(.dv-meta, .acc-meta) { flex-wrap: wrap; justify-content: flex-start; overflow: visible; margin: 0; padding: 0; row-gap: var(--sp-5); } /* rangées collées à gauche, comme la saisie (2026-11-26) */
+:is(.dv-meta, .acc-meta) .mp { max-width: 100%; min-width: 0; }
+:is(.dv-meta, .acc-meta) .mp span { min-width: 0; }
+.dv-meta :is(.mp, .sc)[aria-disabled="true"] { pointer-events: none; }
+.dv-meta :is(.mp, .sc)[aria-disabled="true"] .ic:last-child { width: 14px; height: 14px; color: var(--ink-3); }
+.dv-edit .go .lbl { justify-content: center; }
+/* la fin (une petite feuille) : Sans fin, une date, ou un compteur − N + */
+.end-sheet { display: flex; flex-direction: column; gap: var(--sp-7); }
+.end-sheet .sheet-title { margin-bottom: 0; }
+.end-p { min-height: 52px; display: flex; flex-direction: column; justify-content: center; }
+.end-n input { text-align: center; font-size: var(--fs-title); font-variant-numeric: tabular-nums; }
+.end-say { margin: var(--sp-4) 0 0; font-size: var(--fs-2nd); line-height: 1.4; text-align: center; }
 
 /* Début du mois (2026-11-19) : un jour, un jour de la semaine, la fin du mois */
 .ms-mode { margin-bottom: var(--sp-4); }
@@ -967,7 +1002,12 @@
 /* en haut de l'accueil : la tête et le nom, un toucher ouvre les espaces */
 .pf-brand.sp-go { position: relative; border: 0; background: none; padding: var(--sp-2) var(--sp-3) var(--sp-2) 0; margin: -4px 0; font: inherit; cursor: pointer; }
 .pf-brand.sp-go::before { content: ''; position: absolute; inset: -7px 0; } /* l'appui de 44 px */
-.pf-brand .pf-ava { width: 22px; height: 22px; display: block; }
+.pf-brand .pf-ava { width: 22px; height: 22px; display: block; flex: none; }
+/* le nom de l'espace (30 caractères au plus) : coupé de points de suspension plutôt que de pousser la date et la cloche */
+.pf-brand.sp-go { min-width: 0; }
+.pf-brand .pf-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-brand .ic, .pf-top .pf-date, .pf-top .bell { flex: none; }
+.pf-top .pf-date { white-space: nowrap; }
 .pf-brand .pf-ava svg { width: 100%; height: 100%; display: block; }
 
 /* Compte Google (D21, 2026-11-20) */
@@ -1049,3 +1089,60 @@ html[data-radius="square"] .rv-item { border-radius: 0; }
 .legal-screen .lg-lead { color: var(--ink-2); font-size: var(--fs-body); line-height: 1.5; margin: var(--sp-2) 0 var(--sp-8); }
 .lg-body ol { margin: 0; padding-left: var(--sp-8); color: var(--ink-2); font-size: var(--fs-2nd); line-height: 1.55; display: flex; flex-direction: column; gap: var(--sp-3); }
 .lg-body li::marker { color: var(--ink-3); }
+/* la feuille montant (amount-sheet.js) : le lien qui retire, sous le bouton */
+.am-remove, .rs-closeres { align-self: center; margin: 0; color: var(--ink-2); }
+.amount-sheet .e-meta { justify-content: center; }
+/* la feuille d'une dépense prévue au format de la saisie (2026-11-24) : la catégorie en tête, l'état, le grand montant
+   visé, les pastilles (classes du formulaire d'une opération programmée), le pavé, le bouton, Clore en lien */
+.rs-edit { display: flex; flex-direction: column; gap: var(--sp-5); padding-bottom: var(--sp-2); }
+.rs-edit > .rs-say { margin: 0; }
+.rs-edit > [data-err]:empty { display: none; }
+.rs-edit .go .lbl { justify-content: center; }
+.rs-edit .e-meta .mp { max-width: 200px; } /* hors échelle : la catégorie et le nom tiennent sur une rangée à 360 px */
+.rs-edit .rs-hist { margin: var(--sp-4) 0 0; }
+/* le nom tapé en haut d'une feuille (2026-11-24, avec l'utilisateur) : il tient lieu de titre (opération programmée) ou
+   suit la catégorie (dépense prévue) ; un champ sans cadre, souligné d'un filet */
+.name-in { width: 100%; min-height: 44px; border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; background: transparent; color: var(--ink); padding: var(--sp-2) 0 var(--sp-4); outline: none; }
+.name-in::placeholder { color: var(--ink-3); }
+.name-in:focus { border-bottom-color: var(--accent-text); }
+.rs-name { font: 500 var(--fs-section)/1.3 var(--sans); }
+
+/* ── Fiche catégorie (categories.js) : nom en tête, Archiver / Supprimer en liens ── */
+.cat-sheet .sheet-head { display: flex; align-items: center; gap: var(--sp-6); }
+/* l'aperçu d'une catégorie : sa pastille et son nom, comme elle se lira partout (2026-11-26) ; pas un titre, pas un champ */
+.cat-pvic { display: inline-grid; flex: none; }
+.cat-pvname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-body); font-weight: 500; }
+.cat-pvname:empty { display: none; }
+.cat-links { display: flex; justify-content: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-8); }
+.cat-links .link { min-height: 44px; }
+.cat-links .cat-del { color: var(--loss); }
+.cat-links .link:disabled { opacity: .4; }
+
+/* feuille portefeuille (accounts.js) au format de la saisie (2026-11-26) : le type et la croix, la question et le grand
+   montant à la création, la phrase, des pastilles collées à gauche (nom, devise ; objectif, date ; interrupteurs), le pavé */
+.acc-edit { display: flex; flex-direction: column; gap: var(--sp-5); padding-bottom: var(--sp-2); }
+.acc-edit > [data-err]:empty { display: none; }
+.acc-edit .go .lbl { justify-content: center; }
+.acc-edit .e-q, .acc-edit .e-q .e-qt { display: block; } /* la question tient lieu de titre : elle reste même sur un écran bas */
+.acc-edit .e-q { margin: 0; }
+.acc-edit .acc-intro { margin: 0; }
+.acc-say { margin-top: 0; }
+.acc-edit .acc-meta .mp { max-width: 200px; } /* hors échelle : le nom et la devise, l'objectif et sa date tiennent sur une rangée à 360 px */
+.acc-meta :is(.mp, .sc)[aria-disabled="true"] .ic:last-child { width: 14px; height: 14px; color: var(--ink-3); }
+/* feuille d'un budget dans l'ordre de la saisie (2026-11-24) : montant, gélule de catégorie, pastilles (dates, répétition), pavé, bouton, lien */
+.budget-sheet { display: flex; flex-direction: column; gap: var(--sp-5); padding-bottom: var(--sp-2); }
+.budget-sheet > [data-err]:empty { display: none; }
+.budget-sheet .go .lbl { justify-content: center; }
+.budget-sheet .e-meta .bs-to { flex: none; display: inline-flex; align-items: center; }
+.budget-sheet .e-meta :is(.mp, .sc)[aria-disabled="true"] { pointer-events: none; }
+.bs-del { align-self: center; margin: 0; color: var(--ink-2); }
+
+/* Plan, la carte d'une épargne (2026-11-25, avec l'utilisateur) : le bloc d'un budget, ses dépenses prévues en liste simple */
+.sav-card + .sav-card { margin-top: var(--sp-5); }
+.sav-l { min-width: 0; }
+.sav-l .sav-n { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sav-l .sav-w { color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bp-dot.warn { background: var(--c3); }
+.bp-dot.loss { background: var(--loss); }
+.mrow .bp .bar.warn i { background: var(--c3); }
+.sav-card .bp-big { font-size: var(--fs-sheet); } /* sous le total de la page : plus petit que lui */

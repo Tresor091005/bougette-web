@@ -128,7 +128,7 @@ async function run(interactive) {
       schema, linkedAt: /** @type {import('./google.js').Account} */ (account()).linkedAt,
       onCid: me => applyCloud({ email, me, added: [], renamed: [] }),
     });
-    applyCloud({ email, me: r.me, added: r.added, renamed: r.renamed });
+    applyCloud({ email, me: r.me, added: r.added, renamed: r.renamed, seeded: r.seeded });
     if (r.skipped.length) {
       const n = r.skipped.length;
       keepSkipped(r.skipped);

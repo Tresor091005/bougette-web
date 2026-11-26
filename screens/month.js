@@ -8,13 +8,18 @@
 // « Budgets » (revu le 2026-11-10) : une liste simple de catégories de dépenses (budget-cats.js),
 // les plus importantes d'abord — ce qui va mal toujours (budget dépassé, dépense inhabituelle sans budget), le reste
 // jusqu'à 3 lignes ; « Tous les budgets » ouvre leur détail (tous les budgets, puis les habitudes) ; toucher une catégorie ouvre sa page (budgets, opérations). « Réserves » (D17) : toutes les réserves ouvertes,
-// tous portefeuilles d'épargne confondus (barre, si elle sera prête ; toucher = son menu), « Nouvelle réserve ».
-// « Épargnes » : une ligne par portefeuille d'épargne (solde, objectif, réserves échues ou sans rien de prévu), qui ouvre SA page
-// (#/epargne?w=<id>) ; invitation « Fonds d'urgence »
-// tant qu'aucun portefeuille ne porte ce rôle ; « Mettre de côté » ouvre la saisie en virement vers l'épargne.
+// « Épargnes » (2026-11-25, avec l'utilisateur : une seule section,
+// les dépenses prévues vivent dans une épargne — plus de section « Dépenses prévues » à part ; trois niveaux comme les
+// budgets) : ici un résumé, 3 lignes au plus (ce qui a un souci d'abord, puis les plus gros soldes, le fonds d'urgence
+// le dernier) — une ligne par épargne comme celles des budgets : son nom, son solde, et une seule chose dessous (ce qui
+// manque, sinon ce qu'elle prépare : « Fêtes, Ordinateur et 2 autres ») ; toucher = SA page (#/epargne?w=<id>). Le titre
+// ouvre toujours « Toutes les épargnes » : une carte par épargne (solde en grand, barre, la liste simple de ses dépenses
+// prévues, ce que disent ses versements ; le fonds d'urgence, ses mois couverts). La page d'une épargne a le détail.
+// Invitation « Fonds d'urgence » tant qu'aucun portefeuille ne porte ce rôle ; « Mettre de côté » : maintenant, une fois
+// plus tard, chaque mois.
 // Ce qui est terminé n'est plus sur Plan (2026-11-12) : en bas de « Toutes les échéances », « Tous les budgets » (les
-// catégories qui n'ont plus de budget ; les autres ont leurs budgets terminés sur leur page) et « Toutes les réserves »
-// (toutes les épargnes). Le titre de chaque section ouvre sa page, toujours (2026-11-13) : plus de + dans les titres
+// catégories qui n'ont plus de budget ; les autres ont leurs budgets terminés sur leur page) et la page de chaque épargne
+// (ses réserves terminées). Le titre de chaque section ouvre sa page, toujours (2026-11-13) : plus de + dans les titres
 // ni de lien « Toutes les … » en bas ; on crée par le + flottant de ces pages, ou par le + d'une section vide.
 // Échéances (D18, 2026-11-11) : l'écran suit le chemin de l'argent — Disponible, Échéances, Budgets, Réserves, Épargne.
 // Sous Disponible, une barre découpée de l'argent courant : échéances à payer, restes des budgets, libre (trois lignes
@@ -24,20 +29,22 @@
 // la page de l'échéance.
 // Tout est une lecture (src/domain/budgets.js) ; posé sur le papier, sans cartes (D0).
 import {
-  settings, budgetReport, countedAccounts, savingsAccounts,
-  savingsReport, emergencyAccount, pref, categoryBoard, dueItems, schedules, closedReserves,
+  settings, budgetReport, savingsAccounts,
+  savingsReport, emergencyAccount, pref, categoryBoard, dueItems, schedules,
 } from '../core/store.js';
 import { duesSectionHTML, wireDues } from './dues-ui.js';
-import { reserveRowHTML, closedRowHTML, openReserveSheet, coveredMonths, monthsRing, monthsLabel, wireReserveRows, goalRing, reservesRing } from './reserves.js';
+import { DUE, RES } from '../domain/words.js';
+import { openReserveSheet, coveredMonths, monthsRing, monthsPct, monthsLabel, goalRing, reservesRing, openAsideMenu, resTone, savTone, gapText, numDate } from './reserves.js';
 import { today, money, esc, approx } from '../core/format.js';
+import { dayShort } from './due-page.js';
 import { habitsLeft } from '../domain/budgets.js';
 import { icon } from '../core/icons.js';
-import { buzz, fitText, splitAmount, countUp, $, $$ } from '../core/ui.js';
+import { buzz, fitText, splitAmount, countUp, menuSheet, afterSheets, $, $$ } from '../core/ui.js';
 import { accountPill } from './pickers.js';
 import { openBudgetSheet } from './budget-sheet.js';
 import { openAccountSheet } from './accounts.js';
 import { listHTML, wireCatRows } from './budget-cats.js';
-import { titleLink, endedHTML, listPageHTML, wireListPage, rowHTML, sectionHTML, emptyState } from './parts.js';
+import { titleLink, listPageHTML, wireListPage, rowHTML, sectionHTML, emptyState } from './parts.js';
 
 const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
 // Sections courtes (2026-11-10, règle commune le 2026-11-12) : ce qui va mal s'affiche toujours (budget dépassé, réserve
@@ -50,40 +57,40 @@ function shortList(list, bad) {
   let others = 0;
   return list.map(x => bad(x) || others++ < room);
 }
+/** Une épargne qui a un souci : une réserve échue ou sans rien de prévu, ou des versements qui ne suffisent pas. @param {{ rep: any }} x */
+const savingsBad = x => x.rep.free < 0 || x.rep.versement?.gap > 0 || x.rep.reserves.some((/** @type {any} */ v) => resTone(v) === 'loss' || v.status === 'none' || (v.full && v.day));
+/** Les dépenses prévues d'une épargne, par date (en pause : en dernier). @param {any} rep */
+const byDue = rep => [...rep.reserves].sort((p, q) => { const dp = p.reserve.due || '9999', dq = q.reserve.due || '9999'; return dp < dq ? -1 : dp > dq ? 1 : 0; });
+/** Le genre d'une épargne pour le tri : avec des dépenses prévues, puis avec un objectif, puis sans rien. @param {{ rep: any }} x */
+const savKind = x => (x.rep.reserves.length ? 0 : x.rep.goal ? 1 : 2);
 /**
- * Les réserves ouvertes de tous les portefeuilles d'épargne, ce qui va mal d'abord (échues, rien de prévu, puis celles
- * qui ne seront pas prêtes à temps), puis par échéance.
- * @param {{ a: any, rep: any }[]} reports
- */
-function openReserves(reports) {
-  return reports.flatMap(x => x.rep.reserves.map((/** @type {any} */ v) => ({ v })))
-    .sort((p, q) => {
-      const u = (/** @type {any} */ x) => (x.v.status === 'overdue' ? 0 : x.v.status === 'none' ? 1 : x.v.status === 'short' || x.v.status === 'later' ? 2 : 3);
-      const dp = p.v.reserve.due || '9999-12-31', dq = q.v.reserve.due || '9999-12-31'; // en pause : en dernier
-      return u(p) - u(q) || (dp < dq ? -1 : dp > dq ? 1 : 0);
-    });
-}
-/** Une épargne qui a un souci : une réserve échue ou sans rien de prévu. @param {{ rep: any }} x */
-const savingsBad = x => x.rep.free < 0 || x.rep.reserves.some((/** @type {any} */ v) => v.status === 'overdue' || v.status === 'none');
-/**
- * Les portefeuilles d'épargne actifs, ceux qui ont un souci d'abord, puis les plus gros soldes ; le fonds d'urgence
- * toujours le dernier (2026-11-20, avec l'utilisateur). @param {any[]} savings
+ * Les portefeuilles d'épargne actifs : celles qui ont des dépenses prévues, puis un objectif, puis rien (2026-11-25, avec
+ * l'utilisateur) ; dans chaque groupe, un souci d'abord, puis les plus gros soldes ; le fonds d'urgence toujours le
+ * dernier (2026-11-20). @param {any[]} savings
  */
 const savingsReports = savings => savings.map(a => ({ a, rep: savingsReport(a.id) }))
-  .sort((p, q) => Number(p.a.emergency) - Number(q.a.emergency) || Number(savingsBad(q)) - Number(savingsBad(p)) || q.rep.balance - p.rep.balance);
+  .sort((p, q) => Number(p.a.emergency) - Number(q.a.emergency) || savKind(p) - savKind(q) || Number(savingsBad(q)) - Number(savingsBad(p)) || q.rep.balance - p.rep.balance);
 /**
- * Une ligne d'épargne (Plan, « Toutes les épargnes ») : son solde, son objectif, ses réserves, et seulement le rouge — les
- * échues, « Rien de prévu ». @param {{ a: any, rep: any }} x
+ * Une ligne d'épargne dans Plan (2026-11-25, avec l'utilisateur : le résumé) : son nom, son solde, et une seule chose
+ * dessous — le rouge (dates passées : déjà arrivé), sinon l'orange (ce qui manque aux versements, sinon celles qui ne
+ * seront pas prêtes à temps), sinon ce qu'elle prépare (« Fêtes, Ordinateur et 2 autres »), son objectif, ou rien de prévu. Le fonds d'urgence : ses mois couverts.
+ * @param {{ a: any, rep: any }} x
  */
 function savingsRowHTML({ a, rep }) {
-  const due = rep.reserves.filter((/** @type {any} */ v) => v.status === 'overdue').length;
-  const none = rep.reserves.some((/** @type {any} */ v) => v.status === 'none');
+  const cur = a.currency;
   const row = (/** @type {string} */ pill, /** @type {string} */ sub) => rowHTML({ attrs: `data-sav="${a.id}"`, pill, title: esc(a.name), sub, subCls: 'wrap',
-    end: `<span class="amt">${money(rep.balance, { cur: a.currency })}</span>` });
+    end: `<span class="amt">${money(rep.balance, { cur })}</span>` });
   if (a.emergency) return row(monthsRing(accountPill(a), coveredMonths(a)), monthsLabel(coveredMonths(a)));
-  const sub = [rep.goal ? `${rep.goal.pct} % de l’objectif` : '',
-    rep.reserves.length ? `${plural(rep.reserves.length, 'réserve', 'réserves')} · ${reservesRing(rep)?.pct} %` : '', due ? `<span class="loss">${plural(due, 'échue', 'échues')}</span>` : '',
-    none ? '<span class="loss">Rien de prévu</span>' : ''].filter(Boolean).join(' · ') || 'Aucune réserve';
+  const due = rep.reserves.filter((/** @type {any} */ v) => resTone(v) === 'loss').length;
+  const day = rep.reserves.find((/** @type {any} */ v) => v.full && v.day);
+  const names = byDue(rep).map(v => esc(v.reserve.name));
+  const gap = rep.versement?.gap;
+  const sub = due ? `<span class="loss">${plural(due, 'date passée', 'dates passées')}</span>`
+    : day ? `<span class="rs-warn">${esc(day.reserve.name)} : à utiliser aujourd’hui</span>`
+    : gap > 0 ? `<span class="rs-warn">${gapText(rep.versement, cur, true)}</span>`
+    : rep.reserves.some((/** @type {any} */ v) => resTone(v) === 'warn') ? `<span class="rs-warn">${plural(rep.reserves.filter((/** @type {any} */ v) => resTone(v) === 'warn').length, 'pas prête à temps', 'pas prêtes à temps')}</span>`
+    : names.length ? (names.length > 2 ? `${names.slice(0, 2).join(', ')} et ${plural(names.length - 2, 'autre', 'autres')}` : names.join(' et '))
+    : rep.goal ? `${rep.goal.pct} % de l’objectif` : RES.None;
   return row(goalRing(accountPill(a), rep.goal || reservesRing(rep)), sub);
 }
 /**
@@ -94,7 +101,7 @@ function savingsRowHTML({ a, rep }) {
 /** aside : « Mettre de côté » (pas dans Toutes les épargnes, 2026-11-20 : on n'y sait pas vers quelle épargne). @param {any[]} savings @param {{ aside?: boolean }} [o] */
 function savingsActionsHTML(savings, { aside = true } = {}) {
   if (!savings.length) return `<div class="group">${rowHTML({ attrs: 'data-create-sav', pill: `<span class="pill acc">${icon('piggy-bank')}</span>`,
-    title: 'Mettre ton épargne à part', sub: 'Un portefeuille pour ton épargne et tes réserves' })}</div>`;
+    title: 'Mettre ton épargne à part', sub: `Un portefeuille pour ton épargne et ${RES.yourMany}` })}</div>`;
   const invite = !emergencyAccount() && !pref('emergencyDismissed');
   // l'invitation suit les épargnes : le même trait qu'entre deux d'entre elles (« Mettre de côté », une action, a le trait plein)
   return `<div class="group plain">${invite ? rowHTML({ cls: 'rule', attrs: 'data-emergency', pill: accountPill({ kind: 'bank', savings: true, emergency: true }),
@@ -110,14 +117,63 @@ function wireSavings(app, ctx, savings) {
   $$('[data-sav]', app).forEach(b => (b.onclick = () => { buzz(6); ctx.go(`#/epargne?w=${encodeURIComponent(b.dataset.sav || '')}`); }));
   const createSav = $('[data-create-sav]', app);
   if (createSav) createSav.onclick = () => { buzz(6); openAccountSheet(null, { savings: true }); };
-  // Mettre de côté (D17) : un virement vers l'épargne (le fonds d'urgence d'abord, sinon le premier portefeuille d'épargne) ;
-  // on ne bloque jamais où va l'argent
+  // Mettre de côté (D17 ; 2026-11-25, avec l'utilisateur : une seule porte, ses trois choix — maintenant, une fois plus
+  // tard, chaque mois) vers l'épargne (le fonds d'urgence d'abord, sinon le premier portefeuille d'épargne) ; on ne bloque
+  // jamais où va l'argent
   $$('[data-aside]', app).forEach(b => (b.onclick = () => {
     const to = savings.find(a => a.emergency && a.currency === main) || savings.find(a => a.currency === main) || savings[0];
     if (!to) return;
     buzz(6);
-    putAside(ctx.openEntry, to);
+    openAsideMenu(to.id, ctx.openEntry);
   }));
+}
+
+const CARD_LINES = 4;
+
+/**
+ * La carte d'une épargne dans « Toutes les épargnes » (2026-11-25, avec l'utilisateur) : voir l'en-tête du fichier ; le
+ * fonds d'urgence : sa barre des 3 mois, ses mois couverts. Un seul geste : sa page.
+ * @param {{ a: any, rep: any }} x
+ */
+function savingsCardHTML({ a, rep }) {
+  const cur = a.currency;
+  if (a.emergency) {
+    const m = coveredMonths(a);
+    return `<div class="row mrow sav-card"><button type="button" class="mrow-go" data-sav="${a.id}" aria-label="${esc(a.name)} : sa page">
+      <span class="main bp"><span class="bp-k">${esc(a.name)}</span><span class="bp-big">${money(rep.balance, { cur })}</span>
+        <span class="bar"><i style="width:${monthsPct(m)}%"></i></span>
+        <span class="bp-l muted">${monthsLabel(m)}</span></span></button></div>`;
+  }
+  const ring = reservesRing(rep) || rep.goal;
+  // par date (en pause : en dernier) ; au-delà de 4, « et N autres »
+  const list = byDue(rep);
+  const dot = (/** @type {any} */ v) => (resTone(v) ? ` ${resTone(v)}` : '');
+  const lines = list.slice(0, CARD_LINES).map(v => `<span class="bp-l sav-l"><i class="bp-dot${dot(v)}"></i><span class="sav-n">${esc(v.reserve.name)}</span>
+    <span class="sav-w">${numDate(v.reserve.due)}</span></span>`).join('');
+  const more = list.length > CARD_LINES ? `<span class="bp-l muted">et ${plural(list.length - CARD_LINES, `autre ${RES.one}`, `autres ${RES.many}`)}</span>` : '';
+  const v = rep.versement;
+  // la couleur de la barre : celle de l'épargne (la plus grave de ses dépenses prévues) ; ou l'objectif passé sans être atteint
+  const tone = rep.reserves.length ? savTone(rep) : rep.goal && rep.goal.passed && !rep.goal.reached ? 'warn' : '';
+  const say = rep.reserves.length && v ? (v.gap > 0 ? `<span class="bp-l rs-warn">${gapText(v, cur, true)}</span>` : v.gap === 0 ? '<span class="bp-l muted">Tes versements suffisent</span>' : '')
+    : rep.goal ? `<span class="bp-l muted">Objectif ${money(rep.goal.amount, { cur })}${rep.goal.on ? ` pour le ${dayShort(rep.goal.on)}` : ''}</span>` : `<span class="bp-l muted">${RES.None}</span>`;
+  return `<div class="row mrow sav-card"><button type="button" class="mrow-go" data-sav="${a.id}" aria-label="${esc(a.name)} : sa page">
+    <span class="main bp"><span class="bp-k">${esc(a.name)}</span>
+      <span class="bp-big">${money(rep.balance, { cur })}</span>
+      ${ring ? `<span class="bar${tone === 'loss' ? ' over' : tone === 'warn' ? ' warn' : ''}"><i style="width:${Math.max(0, Math.min(100, ring.pct))}%"></i></span>` : ''}
+      ${lines}${more}${say}</span></button></div>`;
+}
+/**
+ * La section « Épargnes » de Plan (2026-11-25, avec l'utilisateur) : voir l'en-tête du fichier.
+ * @param {{ a: any, rep: any }[]} reports @param {any[]} savings
+ */
+function savingsSectionHTML(reports, savings) {
+  const plain = reports.filter(x => !x.a.emergency);
+  // une seule épargne, rien de prévu ni d'objectif : on invite à préparer une dépense
+  const empty = plain.length === 1 && !plain[0].rep.reserves.length && !plain[0].rep.goal
+    ? emptyState('Prépare à l’avance une dépense à venir : l’assurance, la rentrée, un téléphone.', { add: [`data-newres="${plain[0].a.id}"`, RES.New] }) : '';
+  const rows = empty ? reports.filter(x => x.a.emergency) : reports;
+  const shown = shortList(rows, savingsBad);
+  return `${empty}${rows.length ? `<div class="group">${rows.filter((_, i) => shown[i]).map(x => savingsRowHTML(x)).join('')}</div>` : ''}${savingsActionsHTML(savings)}`;
 }
 
 export function render(app, ctx) {
@@ -129,10 +185,6 @@ export function render(app, ctx) {
   // Épargne (D17) : les portefeuilles d'épargne actifs et leurs réserves
   const savings = savingsAccounts().filter(a => !a.archived);
   const reports = savingsReports(savings);
-  const savShown = shortList(reports, savingsBad);
-  // toutes les réserves ouvertes, ce qui va mal d'abord ; 3 au plus ici, toutes dans « Toutes les réserves »
-  const allRes = openReserves(reports);
-  const resShown = shortList(allRes, x => ['overdue', 'none', 'short', 'later'].includes(x.v.status));
   // liste simple, les plus importantes d'abord : ce qui va mal toujours (budgets dépassés, du plus dépassé au moins
   // dépassé, puis dépenses inhabituelles, de la plus forte à la plus faible), puis jusqu'à 3 lignes — les budgets les
   // plus entamés, puis les catégories sans budget qui dépensent le plus ce mois
@@ -165,12 +217,7 @@ export function render(app, ctx) {
       ${r.list.length ? '' : emptyState('Fixe un montant pour une catégorie : il ne compte plus dans Disponible.', { add: ['data-new', 'Créer un budget'] })}
       ${catItems.length ? `<div class="group" data-budgets>${listHTML(catItems)}</div>` : ''}` })}
 
-    ${savings.some(a => !a.emergency) ? sectionHTML({ head: titleLink('Réserves', 'data-all-res'), body: `
-      ${allRes.length ? `<div class="group">${allRes.filter((_, i) => resShown[i]).map(x => reserveRowHTML(x.v)).join('')}</div>` : emptyState('Prépare à l’avance une dépense à venir : l’assurance, la rentrée, un téléphone.', { add: ['data-newres', 'Nouvelle réserve'] })}` }) : ''}
-
-    ${sectionHTML({ head: titleLink('Épargnes', 'data-all-sav'), body: `
-      ${reports.length ? `<div class="group">${reports.filter((_, i) => savShown[i]).map(savingsRowHTML).join('')}</div>` : ''}
-      ${savingsActionsHTML(savings)}` })}
+    ${sectionHTML({ head: titleLink('Épargnes', 'data-all-sav'), body: savingsSectionHTML(reports, savings) })}
 
 
   </div>`;
@@ -183,11 +230,8 @@ export function render(app, ctx) {
   const habits = $('[data-habits]', app);
   if (habits) habits.onclick = () => { buzz(6); ctx.go('#/mois/categories'); };
   wireSavings(app, ctx, savings);
-  wireReserveRows(app, ctx.openEntry, ctx.go);
-  const newRes = $('[data-newres]', app);
-  if (newRes) newRes.onclick = () => { buzz(6); openReserveSheet({ openEntry: ctx.openEntry }); };
-  const allRes2 = $('[data-all-res]', app);
-  if (allRes2) allRes2.onclick = () => { buzz(6); ctx.go('#/mois/reserves'); };
+  $$('[data-newres]', app).forEach(b => (b.onclick = () => { buzz(6); openReserveSheet({ wallet: b.dataset.newres || null, openEntry: ctx.openEntry }); }));
+  // le titre : « Toutes les épargnes », toujours (comme « Tous les budgets »)
   const allSav = $('[data-all-sav]', app);
   if (allSav) allSav.onclick = () => { buzz(6); ctx.go('#/mois/epargne'); };
   fitText(app, '.hero .big, .mrow .v', 13);
@@ -214,51 +258,13 @@ function splitHTML(r, ahead = 0) {
       <div class="b-marge"><span>Marge</span><b class="${margin < 0 ? 'loss' : 'gain'}">${margin > 0 ? '+' : ''}${money(margin)}</b><span class="of">sur ${money(r.total)}</span></div>`
     : key('free', `${r.available > 0 ? `${money(r.available)} disponibles` : 'Rien de disponible'}, sur ${money(r.total)}`);
   return `<div class="b-split" aria-hidden="true">${seg(r.toPay, 'due')}${seg(r.inBudgets, 'bud')}${seg(free, 'free')}</div>
-    <div class="b-keys">${r.toPay ? key('due', `${money(r.toPay)} d’échéances à payer`) : ''}${r.list.length ? key('bud', `${money(r.inBudgets)} dans tes budgets`) : ''}
+    <div class="b-keys">${r.toPay ? key('due', `${money(r.toPay)} ${DUE.ofMany} à payer`) : ''}${r.list.length ? key('bud', `${money(r.inBudgets)} dans tes budgets`) : ''}
       ${tail}</div>`;
 }
 
 /**
- * « Mettre de côté » (D17) : la saisie s'ouvre en virement vers un portefeuille d'épargne, depuis le premier portefeuille
- * courant compté de la même devise (s'il y en a un ; sinon la saisie le fait choisir).
- * @param {(o: any) => any} openEntry @param {{ id: string, currency: string }} to
- */
-export function putAside(openEntry, to) {
-  const from = countedAccounts().find(a => !a.savings && a.currency === to.currency);
-  openEntry({ type: 'transfer', accountId: from ? from.id : null, toAccountId: to.id });
-}
-
-/**
- * « Toutes les réserves » (2026-11-12, comme « Toutes les échéances ») : toutes les réserves ouvertes, les mêmes lignes et
- * le même ordre que Plan (ce qui va mal d'abord, puis par échéance) ; + flottant pour une nouvelle ; en bas,
- * « Réserves terminées » de toutes les épargnes (2026-11-13 : avec peu de réserves en cours, rien d'autre n'y menait
- * sans passer par chaque épargne ; la toucher propose « Reconduire »).
- */
-export const allReservesScreen = {
-  /** @param {HTMLElement} app @param {any} ctx */
-  render(app, ctx) {
-    const savings = savingsAccounts().filter(a => !a.archived);
-    const list = openReserves(savingsReports(savings));
-    const closed = closedReserves(); // les plus récemment terminées d'abord
-    // l'intro (2026-11-20, avec l'utilisateur) : ce qui manque encore à toutes les réserves, et combien ne seront pas prêtes
-    const main = settings().currency;
-    const mine = list.filter(x => x.v.reserve.currency === main);
-    const missing = mine.reduce((n, x) => n + Math.max(0, x.v.target - x.v.saved), 0);
-    const bad = list.filter(x => ['overdue', 'none', 'short', 'later'].includes(x.v.status)).length;
-    app.innerHTML = listPageHTML({ title: 'Toutes les réserves', fab: 'Nouvelle réserve',
-      intro: list.length ? { label: 'Encore à mettre de côté', big: money(missing, { cur: main }),
-        sub: `pour ${plural(list.length, 'réserve', 'réserves')} · ${bad ? `<span class="rs-warn">${bad > 1 ? `${bad} pas prêtes à temps` : '1 pas prête à temps'}</span>` : list.length > 1 ? 'toutes prêtes à temps' : 'prête à temps'}` } : null,
-      body: sectionHTML({ body: list.length ? `<div class="group">${list.map(x => reserveRowHTML(x.v)).join('')}</div>`
-        : emptyState('Aucune réserve en cours') }),
-      ended: endedHTML('Réserves terminées', closed.map(closedRowHTML)) });
-    wireListPage(app, ctx, () => openReserveSheet({ openEntry: ctx.openEntry }));
-    wireReserveRows(app, ctx.openEntry, ctx.go);
-  },
-};
-
-/**
- * « Toutes les épargnes » (2026-11-12) : tous les portefeuilles d'épargne, les mêmes lignes et le même ordre que Plan (un
- * souci d'abord, puis les plus gros soldes), leur total en tête ; « Fonds d'urgence » et « Mettre de côté » toujours là.
+ * « Toutes les épargnes » (2026-11-12 ; ses cartes le 2026-11-25) : tous les portefeuilles d'épargne, une carte chacun, le même
+ * ordre que Plan (un souci d'abord, puis les plus gros soldes, le fonds d'urgence le dernier), leur total en tête ; « Fonds d'urgence » et « Mettre de côté » toujours là.
  */
 export const allSavingsScreen = {
   /** @param {HTMLElement} app @param {any} ctx */
@@ -270,12 +276,23 @@ export const allSavingsScreen = {
     const others = new Set(reports.filter(x => x.a.currency !== main).map(x => x.a.currency)).size;
     // l'intro (revue le 2026-11-20, avec l'utilisateur : « Ton épargne » répétait le titre) : comment ce total se répartit
     const split = reports.filter(x => x.a.currency === main).reduce((n, x) => ({ held: n.held + (x.rep.held || 0), free: n.free + Math.max(0, x.rep.balance - (x.rep.held || 0)) }), { held: 0, free: 0 });
-    app.innerHTML = listPageHTML({ title: 'Toutes les épargnes', fab: 'Nouveau portefeuille d’épargne',
+    // le + (2026-11-26, avec l'utilisateur) : avec une épargne qui peut porter une dépense prévue (ni fonds d'urgence, ni
+    // archivée), il propose les deux ; sinon il crée une épargne, comme avant
+    const canPlan = savings.some(a => !a.emergency);
+    app.innerHTML = listPageHTML({ title: 'Épargnes', fab: canPlan ? `Ajouter une épargne ou ${RES.a}` : 'Nouveau portefeuille d’épargne',
       intro: reports.length ? { label: 'Mis de côté en tout', big: money(total),
-        sub: [split.held ? `${money(split.held)} pour tes réserves` : '', split.free ? `${money(split.free)} d’épargne libre` : '', others ? `et ${plural(others, 'autre devise', 'autres devises')}` : ''].filter(Boolean).join(' · ') } : null,
-      body: sectionHTML({ body: `${reports.length ? `<div class="group">${reports.map(savingsRowHTML).join('')}</div>` : ''}
+        sub: [split.held ? `${money(split.held)} pour ${RES.yourMany}` : '', split.free ? `${money(split.free)} d’épargne libre` : '', others ? `et ${plural(others, 'autre devise', 'autres devises')}` : ''].filter(Boolean).join(' · ') } : null,
+      body: sectionHTML({ body: `${reports.length ? `<div class="group">${reports.map(x => savingsCardHTML(x)).join('')}</div>` : ''}
         ${savingsActionsHTML(savings, { aside: false })}` }) });
-    wireListPage(app, ctx, () => openAccountSheet(null, { savings: true }));
+    wireListPage(app, ctx, async () => {
+      if (!canPlan) return void openAccountSheet(null, { savings: true });
+      const k = await menuSheet({ title: 'Ajouter', items: [
+        { key: 'saving', icon: 'piggy-bank', label: 'Nouvelle épargne' },
+        { key: 'plan', icon: 'calendar-blank', label: 'Prévoir une dépense' },
+      ] });
+      if (k === 'saving') afterSheets(() => openAccountSheet(null, { savings: true }));
+      else if (k === 'plan') afterSheets(() => openReserveSheet({ openEntry: ctx.openEntry }));
+    });
     wireSavings(app, ctx, savings);
   },
 };

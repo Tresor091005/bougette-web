@@ -2,7 +2,7 @@
 // tools/build-icons.mjs, seulement les icônes utilisées). Couleur : currentColor.
 //   icon(nom, cls?)          interface, graisse regular        (ex. icon('caret-right'))
 //   icon(nom, cls, 'fill')   onglet actif du dock
-//   solarIcon(nom, cls?)     dessin Solar (style Proto)
+//   solarIcon(nom, cls?)     dessin Solar (au choix, Moi › Affichage › Icônes)
 //   catIcon(nom, cls?)       pastille de catégorie, duotone     (nom du catalogue src/domain/catalog.js)
 // Une icône absente du fichier généré est signalée en console et remplacée par dots-three : l'ajouter dans
 // tools/build-icons.mjs puis relancer npm run icons.
@@ -19,16 +19,17 @@ function missing(name, weight) {
 
 export function icon(name, cls = '', weight = 'regular') {
   if (name === 'logo') return logo(cls);
-  // style Proto (D1, D7, 2026-11-17) : les icônes d'interface dessinées par Solar « Broken » (tools/build-solar.mjs) ;
+  // au choix (Moi › Affichage › Icônes, 2026-11-24, avec l'utilisateur ; avant : le style Proto, D1, D7) : les icônes
+  // d'interface dessinées par Solar « Broken » (tools/build-solar.mjs) ;
   // l'onglet actif garde la même icône (sa couleur le dit), les catégories restent Phosphor (catIcon)
-  if (weight !== 'duotone' && SOLAR[name] && typeof document !== 'undefined' && document.documentElement.dataset.style === 'proto') return solarIcon(name, cls);
+  if (weight !== 'duotone' && SOLAR[name] && typeof document !== 'undefined' && document.documentElement.dataset.icons === 'solar') return solarIcon(name, cls);
   const table = weight === 'fill' ? FILL : weight === 'duotone' ? DUOTONE : REGULAR;
   const inner = table[name];
   if (inner) return svg(inner, cls);
   missing(name, weight);
   return svg(REGULAR[FALLBACK_ICON] || DUOTONE[FALLBACK_ICON], cls);
 }
-// Icône d'interface dessinée par Solar (style Proto) ; Phosphor si Solar ne l'a pas.
+// Icône d'interface dessinée par Solar ; Phosphor si Solar ne l'a pas.
 export function solarIcon(name, cls = '') {
   if (!SOLAR[name]) return icon(name, cls);
   return `<svg class="ic solar${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">${SOLAR[name]}</svg>`;

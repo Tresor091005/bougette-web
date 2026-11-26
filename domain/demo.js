@@ -12,8 +12,13 @@
 //   19–24 120 000 F, une prestation de temps en temps, une formation payée en quatre fois, le téléphone acheté sur sa
 //         réserve.
 // Échéances (D18) : Canal Box, l'abonnement d'IA, « Pour les parents », le salaire, la mise de côté et la formation en 4
-// fois sont des opérations récurrentes, confirmées chaque mois ; l'abonnement d'IA du mois en cours n'est pas encore
-// confirmé (une échéance en retard), « Pour les parents » du 25 est encore à venir.
+// fois sont des opérations programmées, confirmées chaque mois ; l'abonnement d'IA du mois en cours n'est pas encore
+// confirmé (une échéance en retard), « Pour les parents » du 25 est encore à venir ; le prochain Canal Box coûte plus
+// cher, une seule fois (bouquet sport : le montant d'une fois changé). La bonbonne de gaz (toutes les 6 semaines) date
+// d'avant la règle « ce qui ne tombe pas dans chaque mois se prépare » : elle reste une opération programmée.
+// Dépenses prévues (D17, revues le 2026-11-25) : le téléphone, l'assurance santé chaque année (utilisée, puis
+// reconduite pour l'année suivante, son rythme gardé), l'ordinateur petit à petit, les fêtes, et un voyage à Lomé sans
+// date (en pause).
 
 import { budgetMonth } from './budgets.js';
 
@@ -207,6 +212,27 @@ export function demoCommands(today) {
       reserves.push({ id: 'res-laptop', amount: 200000, held: 0, open: true });
       allocate(ds, null);
     }
+    // l'assurance santé, chaque année (une dépense qui ne tombe pas dans chaque mois : elle se prépare, D17) ; payée sur
+    // sa dépense prévue, puis reconduite pour l'année suivante (la date + son rythme)
+    if (m === 21 && dom === 1) {
+      const due = (/** @type {number} */ mm, /** @type {number} */ dd) => { const y = Math.floor((startMonth + mm) / 12), mon = (startMonth + mm) % 12; return `${y}-${pad(mon + 1)}-${pad(dd)}`; };
+      cmds.push({ type: 'reserve.create', id: 'res-health', wallet: 'savings', name: 'Assurance santé', amount: 20000, category: 'health', due: due(23, 1), every: 'year', at: at(ds, 20), today: ds });
+      reserves.splice(reserves.findIndex(v => v.id === 'res-laptop'), 0, { id: 'res-health', amount: 20000, held: 0, open: true }); // passe avant l'ordinateur
+      allocate(ds, null);
+    }
+    if (m === 23 && dom === 1) {
+      const x = reserves.find(v => v.id === 'res-health');
+      if (x && x.open && x.held >= x.amount && add(ds, { type: 'expense', amount: x.amount, accountId: 'savings', categoryId: 'health', note: 'Assurance santé', reserve: 'res-health' })) {
+        x.open = false; x.held = 0;
+        const next = `${Number(ds.slice(0, 4)) + 1}${ds.slice(4)}`;
+        cmds.push({ type: 'reserve.create', id: 'res-health-2', from: 'res-health', wallet: 'savings', name: 'Assurance santé', amount: 20000, category: 'health', due: next, at: at(ds, 20), today: ds });
+        reserves.splice(reserves.findIndex(v => v.id === 'res-laptop'), 0, { id: 'res-health-2', amount: 20000, held: 0, open: true });
+      }
+    }
+    // un voyage à Lomé, sans date pour l'instant (en pause : il ne retient rien)
+    if (ds === plusDays(today, -12)) {
+      cmds.push({ type: 'reserve.create', id: 'res-lome', wallet: 'savings', name: 'Voyage à Lomé', amount: 50000, category: 'transport-trip', due: null, at: at(ds, 20), today: ds });
+    }
     // les fêtes de fin d'année, préparées à partir de fin octobre du dernier automne
     if (m >= 22 && mo === 9 && dom === 25 && !reserves.some(v => v.id === 'res-party')) {
       cmds.push({ type: 'reserve.create', id: 'res-party', wallet: 'savings', name: 'Fêtes de fin d’année', amount: 30000, category: 'family-events', due: `${d.getUTCFullYear()}-12-20`, at: at(ds, 20), today: ds });
@@ -245,6 +271,8 @@ export function demoCommands(today) {
     if (m < 16 && dow === 6 && chance(student ? 0.5 : 0.8)) (bal.mtn >= 2000 ? momo(ds, pick(500, 2000, 500), 'phone-internet', 'Forfait internet') : cash(ds, 500, 'phone-internet', 'Forfait internet', chunk));
     if (m === 16 && dom === 6) rule(ds, 'due-canal', { amount: 15000, accountId: 'mtn', categoryId: 'phone-internet', note: 'Canal Box', every: 'month' });
     if (m >= 16 && dom === 6) confirm(ds, 'due-canal', { kind: 'expense', amount: 15000, accountId: 'mtn' });
+    // le prochain Canal Box, avec le bouquet sport : 20 000 F cette fois-là seulement (le montant d'une fois changé)
+    if (ds === today) { const nx = day(today); if (nx.getUTCDate() >= 6) nx.setUTCMonth(nx.getUTCMonth() + 1, 6); else nx.setUTCDate(6); cmds.push({ type: 'due.adjust', id: 'due-canal', on: iso(nx), amount: 20000, at: at(ds, 8), today: ds }); }
     if (m === 17 && dom === 10) rule(ds, 'due-ia', { amount: 7000, accountId: 'mtn', categoryId: 'fun-subs', note: 'Abonnement IA', every: 'month' });
     if (m >= 17 && dom === 10 && ds !== lastTen) confirm(ds, 'due-ia', { kind: 'expense', amount: chance(0.8) ? 7000 : 14000, accountId: 'mtn' }, 7000);
     // manger dehors un peu ; on mange surtout à la maison

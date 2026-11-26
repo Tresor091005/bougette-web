@@ -16,6 +16,7 @@ import { simulate } from '../domain/engine.js';
 import { txLines } from '../domain/ledger.js';
 import { detectCurrency, configureFormat, currencyOf, inPeriod, today } from './format.js';
 import { currentSpace, storageOf, MAIN } from './spaces.js';
+import { parseFont, fontStack, DEFAULT_FONT } from './fonts.js';
 export { KINDS, KIND_LABEL } from '../domain/defaults.js';
 
 // Les réglages et petites préférences sont ceux de l'espace ouvert (D19) ; le premier espace garde « cauri: ». Changer
@@ -27,7 +28,7 @@ let PREFIX = SPACE.prefix;
 export const openSpaceId = () => spaceId;
 // Le verrouillage (D16) protège l'app entière : ses préférences sont communes à tous les espaces, comme le style, les mises
 // à jour et la page Développeur ouverte (« dev », 2026-11-21).
-const GLOBAL_PREFS = new Set(['lock', 'lockOpen', 'lockFails', 'style', 'autoUpdate', 'updateCheckedAt', 'dev']);
+const GLOBAL_PREFS = new Set(['lock', 'lockOpen', 'lockFails', 'style', 'font', 'icons', 'updateCheckedAt', 'updateNotified', 'dev']);
 function read(key, fallback, prefix = PREFIX) {
   try {
     const v = localStorage.getItem(prefix + key);
@@ -372,7 +373,7 @@ export async function createBudget(data, { onError: own = null } = {}) {
 export const updateBudget = (id, changes, { onError: own = null } = {}) => runOwn([{ type: 'budget.update', id, changes }], own);
 export const deleteBudget = id => run([{ type: 'budget.delete', id }]);
 
-// --- échéances et opérations récurrentes (D18) : les dates sont calculées ; rien ne s'écrit tout seul ---
+// --- échéances et opérations programmées (D18) : les dates sont calculées ; rien ne s'écrit tout seul ---
 /** Les échéances à régler, une ligne chacune avec son étape en cours (écran Budget). */
 export const dueItems = () => lazy('dueItems:' + today(), s => D.dueItems(s, today()));
 /** Les échéances terminées (plus rien à régler ni à venir), les plus récentes d'abord : en lecture seule (D18). */
@@ -383,8 +384,6 @@ export const dueOccurrences = id => D.occurrencesOf(S(), today(), id);
 export const dueHead = id => D.headOf(S(), id);
 /** La première règle d'une échéance (elle ne change pas quand on la modifie). @param {string} id */
 export const dueRoot = id => D.rootOf(S(), id);
-/** Les règles d'une échéance, de la première à la plus récente. @param {string} id */
-export const dueChainIds = id => D.chainOf(S(), id).map(r => r.id);
 /** « En N fois » d'une échéance, compté sur toutes ses règles (null sans nombre de fois). @param {string} id */
 export const dueTimes = id => D.timesOf(S(), id);
 /** Les dates permises pour confirmer une fois (D18). @param {{ schedule: string|null, entry: string|null, date: string }} d */
@@ -479,6 +478,11 @@ export const settleDues = (list, { onError: own = null } = {}) => runOwn(list.ma
   ? { type: 'due.confirm', id: d.schedule, on: d.date, entry: d.entry, tx }
   : { type: 'due.skip', id: d.schedule, on: d.date, entry: d.entry })), own);
 export const unskipDue = (id, on) => run([{ type: 'due.unskip', id, on }]);
+/**
+ * Un autre montant pour une seule fois encore à régler, ou celui de la règle (amount null) ; aucun solde n'est regardé
+ * (2026-11-24). @param {{ schedule: string|null, date: string }} d @param {number|null} amount
+ */
+export const adjustDue = (d, amount, { onError: own = null } = {}) => runOwn([{ type: 'due.adjust', id: d.schedule, on: d.date, amount }], own);
 // --- épargne et réserves (D17) : tout ce qui est mis de côté pour une réserve est une lecture ---
 export const savingsAccounts = () => accounts().filter(a => a.savings);
 export const emergencyAccount = () => accounts().find(a => a.emergency) || null;
@@ -488,6 +492,8 @@ export const monthlySpend = () => lazy('monthlySpend:' + today(), s => V.monthly
 /** Ce que deviendrait la répartition d'une épargne après une dépense sur une réserve (rien n'est écrit). @param {string} w @param {string} r @param {number} amount */
 export const allocationAfter = (w, r, amount) => V.allocationAfter(S(), w, today(), r, amount);
 export const savingsReport = id => lazy('savings:' + id + ':' + today(), s => V.savingsReport(s, id, today(), { monthlySpend: monthlySpend() }));
+/** Le manque d'une épargne si cette dépense prévue existait telle quelle (2026-11-26) ; rien n'est écrit. @param {string} w @param {{ id?: string|null, amount: number, due: string|null, mode: 'once'|'gradual' }} cand */
+export const shortfallWith = (w, cand) => V.shortfallWith(S(), w, today(), Q.settingsOf(S()).monthStart, cand);
 /** Toutes les réserves (ouvertes d'abord, par échéance). */
 export const reservesOf = () => lazy('reserves', s => V.reservesOf(s));
 export const reserveById = id => lazy('reserves', s => V.reservesOf(s)).find(r => r.id === id) || null;
@@ -532,42 +538,6 @@ export const updateReserve = (id, changes, { onError: own = null } = {}) => runO
 export const reduceReserve = (id, to) => run([{ type: 'reserve.reduce', id, to }]);
 export const closeReserve = id => run([{ type: 'reserve.close', id }]);
 export const pauseReserve = id => run([{ type: 'reserve.pause', id }]);
-/**
- * « Revoir mon épargne » (D17 revu, 2026-11-23) : les commandes des gestes sur les réserves, puis le versement (le seul :
- * son montant ; aucun : il est programmé, chaque mois au prochain début de période ; plusieurs : ils ne changent pas ici).
- * @param {string} walletId @param {any[]} reserveCmds @param {{ amount: number|null, from: string|null }} v
- */
-function reviewCmds(walletId, reserveCmds, v) {
-  const rep = V.savingsReport(S(), walletId, today());
-  const list = rep.versement.list;
-  const cmds = [...reserveCmds];
-  const monthly = list.length === 1 && (() => { const r = D.scheduleById(S(), list[0].head); return !!r && r.every === 'month' && (r.interval || 1) === 1; })();
-  if (v.amount != null && monthly && v.amount !== list[0].amount) cmds.push({ type: 'due.update', id: list[0].head, changes: { amount: v.amount } });
-  if (v.amount && !list.length && v.from) {
-    const w = S().accounts.get(walletId);
-    cmds.push({ type: 'due.create', kind: 'transfer', amount: v.amount, accountId: v.from, toAccountId: walletId, note: `Versement ${w?.name || ''}`.trim().slice(0, 40), start: rep.versement.next, every: 'month', interval: 1 });
-  }
-  return cmds;
-}
-/**
- * Ce que deviendrait l'épargne avec ces gestes (rien n'est écrit) : son rapport, ou le refus du domaine.
- * @param {string} walletId @param {any[]} reserveCmds @param {{ amount: number|null, from: string|null }} v
- */
-export function previewSavings(walletId, reserveCmds, v = { amount: null, from: null }) {
-  const t = today();
-  let n = 0;
-  try {
-    const cmds = reviewCmds(walletId, reserveCmds, v).map(c => (c.type === 'due.create' ? { ...c, id: 'apercu-versement' } : c));
-    const next = simulate(S(), cmds, { today: t, newId: () => `apercu-${++n}` }, new Date().toISOString());
-    return { rep: V.savingsReport(next, walletId, t, { monthlySpend: monthlySpend() }), error: null };
-  } catch (e) {
-    if (e instanceof DomainError) return { rep: null, error: e.message };
-    console.error(e);
-    return { rep: null, error: 'Impossible de calculer ce que ça donnerait.' };
-  }
-}
-/** Valider « Revoir mon épargne » : tout d'un coup (tout ou rien). @param {string} walletId @param {any[]} reserveCmds @param {{ amount: number|null, from: string|null }} v */
-export const applySavingsReview = (walletId, reserveCmds, v) => run(reviewCmds(walletId, reserveCmds, v).map(c => (c.type === 'due.create' ? { ...c, id: uid() } : c)));
 export const resumeReserve = (id, due) => run([{ type: 'reserve.resume', id, due }]);
 export const setSettings = patch => run([{ type: 'settings.change', changes: patch }]);
 
@@ -597,7 +567,7 @@ export function pref(key, value) {
 // Style de l'app (D1, 2026-11-17) : « carnet » (par défaut) ou « proto » ; un réglage du téléphone, commun aux espaces.
 export const uiStyle = () => (pref('style') === 'proto' ? 'proto' : 'carnet');
 /** Change le style : le document le prend tout de suite (html[data-style]), l'écran ouvert est redessiné ; ses réglages
- * (police, coins) reviennent à ceux du style. @param {'carnet'|'proto'} v */
+ * (les coins) reviennent à ceux du style ; la police reste. @param {'carnet'|'proto'} v */
 export function setUiStyle(v) {
   pref('style', v === 'proto' ? 'proto' : null);
   pref('look', null);
@@ -607,29 +577,35 @@ export function setUiStyle(v) {
 }
 
 /**
- * L'affichage réglé à la main (2026-11-20, avec l'utilisateur : Moi › Affichage, une page à part) : la police du texte
- * (geist ou mono), celle des chiffres, les coins (round ou square) ; ce qui n'est pas réglé suit le style. Un réglage du
- * téléphone, commun aux espaces.
- * @returns {{ text: 'geist'|'mono', num: 'geist'|'mono', radius: 'round'|'square' }}
+ * L'affichage réglé à la main (2026-11-20, avec l'utilisateur : Moi › Affichage, une page à part) : la police (une seule
+ * pour tout, texte et chiffres, dans les deux styles : Satoshi par défaut, ou Geist ; 2026-11-24, avec l'utilisateur : plus
+ * de mélange de polices, plus de monospace en Proto) et les coins (round ou square ; ce qui n'est pas réglé suit le style).
+ * La police est un réglage à part : changer de style ne la change pas. Un réglage du téléphone, commun aux espaces.
+ * La police : son identifiant (core/fonts.js).
+ * Les icônes d'interface : Phosphor (par défaut) ou Solar (2026-11-24, avec l'utilisateur ; avant : Solar venait avec Proto),
+ * un réglage à part comme la police.
+ * @returns {{ font: string, icons: 'phosphor'|'solar', radius: 'round'|'square' }}
  */
 export function look() {
   const l = /** @type {any} */ (pref('look') || {}), proto = uiStyle() === 'proto';
-  // le texte toujours en Geist ; les chiffres suivent le style (Proto : sa monospace) — le choix de police est retiré
-  // d'Affichage (2026-11-23, avec l'utilisateur)
-  return { text: 'geist', num: proto ? 'mono' : 'geist', radius: l.radius || (proto ? 'square' : 'round') };
+  return { font: parseFont(/** @type {string} */ (pref('font'))).value, icons: pref('icons') === 'solar' ? 'solar' : 'phosphor', radius: l.radius || (proto ? 'square' : 'round') };
 }
-/** @param {Partial<{ text: string, num: string, radius: string }>} ch */
+/** @param {Partial<{ font: string, icons: string, radius: string }>} ch */
 export function setLook(ch) {
-  pref('look', { .../** @type {any} */ (pref('look') || {}), ...ch });
+  const { font, icons, ...rest } = ch;
+  if (font) { const v = parseFont(font).value; pref('font', v === DEFAULT_FONT ? null : v); }
+  if (icons) pref('icons', icons === 'solar' ? 'solar' : null);
+  if (Object.keys(rest).length) pref('look', { .../** @type {any} */ (pref('look') || {}), ...rest });
   applyLook();
   window.dispatchEvent(new Event('bougette:restyle'));
 }
-/** Le document prend le style et l'affichage (html[data-style], data-font-text, data-font-num, data-radius). */
+/** Le document prend le style et l'affichage (html[data-style], data-font, data-radius). */
 export function applyLook() {
   const d = document.documentElement, l = look();
   d.dataset.style = uiStyle();
-  d.dataset.fontText = l.text;
-  d.dataset.fontNum = l.num;
+  d.dataset.font = l.font;
+  d.dataset.icons = l.icons;
+  d.style.setProperty('--sans', fontStack(l.font));
   d.dataset.radius = l.radius;
 }
 /** L'icône de l'app suit le style (D1, 2026-11-18 ; téléphone seulement : window.BougetteIcon, IconBridge.kt). */

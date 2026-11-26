@@ -6,8 +6,9 @@
 // s'ouvre remplie comme elle (date du jour), il ne reste qu'à valider. Titre = la catégorie ; la note sous le montant,
 // si elle ne répète pas la catégorie. Pas de « Supprimer »
 // pour les opérations. La chronologie est dérivée du journal (entry_history).
+import { DUE } from '../domain/words.js';
 import { entryHistory, accountName, moveById, category, account, accCur, eventMeta, deviceId, budgetOfTx } from '../core/store.js';
-import { openReserveSheet } from './reserves.js';
+import { openReserveMenu } from './reserves.js';
 import { openSheet, toast, buzz, chip, splitAmount, fitText, $ } from '../core/ui.js';
 import { icon } from '../core/icons.js';
 import { money, esc, shortDate, iso, parse, dayLabel, today } from '../core/format.js';
@@ -42,7 +43,7 @@ function changes(a, b) {
   if (a.wallet !== b.wallet) out.push(`${b.kind === 'transfer' ? 'De' : 'Portefeuille'} : ${was(esc(accountName(a.wallet)), esc(accountName(b.wallet)))}`);
   if (a.to !== b.to && b.kind === 'transfer') out.push(`Vers : ${was(esc(accountName(a.to) || '–'), esc(accountName(b.to)))}`);
   if (a.category !== b.category && b.category) out.push(`Catégorie : ${was(esc(category(a.category || '')?.name || '–'), esc(category(b.category)?.name || '–'))}`);
-  if (a.status !== b.status && b.status !== 'void' && a.status !== 'void') out.push(b.status === 'planned' ? 'Marquée prévue' : 'Marquée payée');
+  if (a.status !== b.status && b.status !== 'void' && a.status !== 'void') out.push(b.status === 'planned' ? 'Marquée à venir' : 'Marquée payée');
   if ((a.note || '') !== (b.note || '')) out.push(b.note ? `Note : ${a.note ? `<s>${esc(a.note)}</s> → ` : ''}« ${esc(b.note)} »` : `Note retirée : <s>${esc(a.note)}</s>`);
   return out;
 }
@@ -52,7 +53,7 @@ function line(h) {
   const v = h.after || h.before;
   if (h.action === 'recorded') {
     const when = v.date !== iso(new Date(h.at)) ? ` pour le ${shortDate(v.date)}` : '';
-    return { t: `${v.status === 'planned' ? 'Prévue' : 'Créée'}${when}, ${amt(v)}` };
+    return { t: `${v.status === 'planned' ? 'À venir' : 'Créée'}${when}, ${amt(v)}` };
   }
   if (h.action === 'amended') return { t: changes(h.before, h.after).join('<br>') || 'Enregistrée sans changement' };
   if (h.action === 'voided') return { t: 'Annulée', s: 'ne compte plus' };
@@ -95,7 +96,7 @@ export function openOperation(txId, go = h => { location.hash = h; }) {
   const canRepeat = !t.void && !t.planned && !origin;
   const pill = t.type === 'transfer' ? `<span class="pill acc xl">${icon('arrows-left-right')}</span>` : chip(cat, 'xl');
   const created = t.createdAt ? iso(new Date(t.createdAt)) : t.date;
-  const status = t.void ? 'Annulée' : t.planned ? (t.date < today() ? 'Prévue, en retard' : 'Prévue') : 'Payée';
+  const status = t.void ? 'Annulée' : t.planned ? (t.date < today() ? 'En retard' : 'À venir') : 'Payée';
   const acc = account(t.accountId), to = account(t.toAccountId);
   const facts = [
     t.type === 'transfer'
@@ -114,7 +115,7 @@ export function openOperation(txId, go = h => { location.hash = h; }) {
   const changes = tl.n - 1;
   const s = openSheet(`<div class="op-sheet${t.void ? ' is-void' : ''}">
     <div class="op-head"><span class="eyebrow">${KIND[t.type] === title ? '' : KIND[t.type]}</span>
-      ${canRepeat ? `<button type="button" class="iconbtn soft op-dup" data-repeat aria-label="Répéter : en faire une échéance">${icon('arrows-clockwise')}</button>` : ''}
+      ${canRepeat ? `<button type="button" class="iconbtn soft op-dup" data-repeat aria-label="Répéter : en faire ${DUE.a}">${icon('arrows-clockwise')}</button>` : ''}
       <button type="button" class="iconbtn soft op-dup" data-dup aria-label="Dupliquer">${icon('copy')}</button>
       <button type="button" class="iconbtn soft close" data-close aria-label="Fermer">${icon('x')}</button></div>
     <div class="op-id">${pill}<div class="op-what">${esc(title)}</div>
@@ -132,7 +133,8 @@ export function openOperation(txId, go = h => { location.hash = h; }) {
   $('[data-close]', s.el).onclick = () => { buzz(6); s.close(); };
   const away = (/** @type {string} */ h) => { buzz(6); s.close(); setTimeout(() => go(h), 60); };
   const og = $('[data-origin]', s.el);
-  if (og && origin) og.onclick = () => (origin.reserve ? (buzz(6), openReserveSheet({ id: origin.reserve.id, openEntry })) : away(origin.href || '#/'));
+  // une dépense prévue : son menu, le même partout (2026-11-25) ; ce qu'il ouvre ailleurs referme la fiche
+  if (og && origin) og.onclick = () => (origin.reserve ? (buzz(6), openReserveMenu({ id: origin.reserve.id, openEntry, go: away, fromTx: t.id })) : away(origin.href || '#/'));
   const bo = $('[data-bud-open]', s.el);
   if (bo && bud) bo.onclick = () => away(`#/mois/categorie?c=${encodeURIComponent(bud.b.category)}`);
   // origine de la création : ce téléphone ou un autre appareil (d'après le journal)

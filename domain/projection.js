@@ -3,6 +3,8 @@
 // que la couche de données écrit en SQL dans la même transaction que l'événement.
 import { TABLES, TABLE_ORDER, row, pk, badColumn, LATE_COLUMNS, LATE_TABLES } from './schema.js';
 import { canonical, sha256hex } from './canonical.js';
+import { DUE, RES } from './words.js';
+import { byOptions } from './month-start.js';
 import { unbalanced, linesToMove, equityId } from './ledger.js';
 
 /** Version des projections : la changer fait reconstruire les tables depuis le journal au démarrage. */
@@ -283,8 +285,8 @@ const HANDLERS = {
     const { data, at } = ev;
     if (s.entries.has(data.id)) throw new ProjectionError(`L’écriture ${data.id} existe déjà`);
     if (!['posted', 'planned'].includes(data.status)) throw new ProjectionError('Statut inconnu');
-    // la date d'une opération récurrente qu'elle confirme (D18) : sa règle existe, la date se lit
-    if (data.schedule != null && (!s.schedules.has(data.schedule) || !DAY.test(data.due))) throw new ProjectionError(`Échéance ${data.schedule} introuvable pour ${data.id}`);
+    // la date d'une opération programmée qu'elle confirme (D18) : sa règle existe, la date se lit
+    if (data.schedule != null && (!s.schedules.has(data.schedule) || !DAY.test(data.due))) throw new ProjectionError(`${DUE.One} ${data.schedule} introuvable pour ${data.id}`);
     put(s, 'entries', {
       id: data.id, kind: data.kind, occurred_on: data.occurred_on, status: data.status, note: data.note || '',
       created_at: data.created_at || at, updated_at: at, schedule_id: data.schedule ?? null, due_on: data.schedule != null ? data.due : null,
@@ -369,16 +371,20 @@ const HANDLERS = {
   },
   // D17 : réserves d'un portefeuille d'épargne. Les contrôles qui dépendent du jour ou du solde sont ceux de la commande.
   'reserve.created': (s, { data, at }) => {
-    if (s.reserves.has(data.id)) throw new ProjectionError(`La réserve ${data.id} existe déjà`);
+    if (s.reserves.has(data.id)) throw new ProjectionError(`${RES.The} ${data.id} existe déjà`);
     const w = accountOrThrow(s, data.wallet, 'wallet');
     // from : la réserve d'avant, reconduite (D17) ; repeat : anciens journaux seulement (« Se répète » retiré)
-    if (data.from != null && !s.reserves.has(data.from)) throw new ProjectionError(`Réserve ${data.from} introuvable (reconduite)`);
+    if (data.from != null && !s.reserves.has(data.from)) throw new ProjectionError(`${RES.One} ${data.from} introuvable (reconduit${RES.e})`);
     putReserve(s, { id: data.id, wallet_id: w.id, name: data.name, amount: data.amount, used: 0, currency: w.currency, start_on: data.start, due_on: data.due,
-      mode: data.mode, repeats: data.repeat || 0, pinned: null, closed_on: null, created_at: at, from_id: data.from ?? null, uses: null, category_id: data.category ?? null });
+      mode: data.mode, repeats: data.repeat || 0, pinned: null, closed_on: null, created_at: at, from_id: data.from ?? null, uses: null, category_id: data.category ?? null,
+      // every, interval : son rythme (2026-11-25 ; absent des anciens journaux), pour proposer la fois suivante ; by : sa
+      // lecture par mois (« le 2e lundi », 015), permise par sa date
+      every: data.every ?? null, interval: data.every && data.interval > 1 ? data.interval : null, by_day: data.by ?? null });
+    if (data.by != null && !byOptions(data.due).includes(data.by)) throw new ProjectionError(`Jour du mois ${RES.ofThe} ${data.id} illisible`);
   },
   'reserve.paused': (s, { data }) => {
     const r = reserveOrThrow(s, data.id);
-    if (r.closed_on) throw new ProjectionError(`Réserve ${data.id} déjà close`);
+    if (r.closed_on) throw new ProjectionError(`${RES.One} ${data.id} déjà ${RES.adj('clos', 'close')}`);
     // keep : ce qu'elle avait, qu'elle garde en pause (dans held, que ses utilisations font baisser)
     putReserve(s, { ...r, due_on: '', held: Math.max(0, Math.min(Number(data.keep) || 0, r.amount - r.used)) || null });
   },
@@ -400,7 +406,7 @@ const HANDLERS = {
   // utilisée : d'un coup, elle se ferme ; petit à petit, ce qui reste à viser baisse (fermée quand tout est utilisé)
   'reserve.used': (s, { data }) => {
     const r = reserveOrThrow(s, data.id);
-    if (r.closed_on) throw new ProjectionError(`Réserve ${data.id} déjà close`);
+    if (r.closed_on) throw new ProjectionError(`${RES.One} ${data.id} déjà ${RES.adj('clos', 'close')}`);
     if (!Number.isSafeInteger(data.amount) || data.amount <= 0) throw new ProjectionError('Utilisation non entière');
     const used = r.used + data.amount;
     const done = r.mode === 'once' || used >= r.amount;
@@ -412,17 +418,17 @@ const HANDLERS = {
   },
   'reserve.closed': (s, { data }) => {
     const r = reserveOrThrow(s, data.id);
-    if (r.closed_on) throw new ProjectionError(`Réserve ${data.id} déjà close`);
+    if (r.closed_on) throw new ProjectionError(`${RES.One} ${data.id} déjà ${RES.adj('clos', 'close')}`);
     putReserve(s, { ...r, pinned: null, held: null, closed_on: data.on });
   },
   // répartition (D17, revu) : changes = [{ id, delta }] ; ce qui est mis de côté pour chaque réserve, jamais négatif
   'reserve.allocated': (s, { data }) => {
     for (const c of data.changes || []) {
       const r = reserveOrThrow(s, c.id);
-      if (r.closed_on) throw new ProjectionError(`Réserve ${c.id} close`);
+      if (r.closed_on) throw new ProjectionError(`${RES.One} ${c.id} ${RES.adj('clos', 'close')}`);
       if (!Number.isSafeInteger(c.delta)) throw new ProjectionError('Répartition non entière');
       const held = (r.held || 0) + c.delta;
-      if (held < 0) throw new ProjectionError(`Réserve ${c.id} sous zéro`);
+      if (held < 0) throw new ProjectionError(`${RES.One} ${c.id} sous zéro`);
       putReserve(s, { ...r, held: held || null });
     }
   },
@@ -430,36 +436,36 @@ const HANDLERS = {
     if (!s.budgets.has(data.id)) throw new ProjectionError(`Budget ${data.id} introuvable`);
     del(s, 'budgets', data.id);
   },
-  // D18 : opérations récurrentes (une échéance seule : every null). Les contrôles qui dépendent du jour, des soldes ou
+  // D18 : opérations programmées (une échéance seule : every null). Les contrôles qui dépendent du jour, des soldes ou
   // des réserves sont ceux de la commande ; ici, la ligne doit se lire et ses comptes exister.
   'schedule.created': (s, { data, at }) => {
-    if (s.schedules.has(data.id)) throw new ProjectionError(`L’échéance ${data.id} existe déjà`);
-    if (data.from != null && !s.schedules.has(data.from)) throw new ProjectionError(`Échéance ${data.from} introuvable (coupée)`);
+    if (s.schedules.has(data.id)) throw new ProjectionError(`${DUE.The} ${data.id} existe déjà`);
+    if (data.from != null && !s.schedules.has(data.from)) throw new ProjectionError(`${DUE.One} ${data.from} introuvable (coupé${DUE.e})`);
     putSchedule(s, {
       id: data.id, kind: data.kind, amount: data.amount, currency: data.currency, wallet_id: data.wallet, to_wallet_id: data.to ?? null,
       category_id: data.category ?? null, note: data.note || '', start_on: data.start, every: data.every ?? null, end_on: data.end ?? null,
       times: data.times ?? null, reserve_id: data.reserve ?? null, stopped_on: null, skips: null, from_id: data.from ?? null, begins_on: data.begins ?? null, created_at: at,
-      interval: data.interval ?? null, days: data.days?.length ? canonical(data.days) : null,
+      interval: data.interval ?? null, days: data.days?.length ? canonical(data.days) : null, by_day: data.by ?? null,
     });
   },
   'schedule.updated': (s, { data }) => {
     const r = scheduleOrThrow(s, data.id);
-    const ch = pick(data.changes, ['kind', 'amount', 'currency', 'wallet', 'to', 'category', 'note', 'start', 'every', 'interval', 'end', 'times', 'reserve', 'begins', 'days']);
+    const ch = pick(data.changes, ['kind', 'amount', 'currency', 'wallet', 'to', 'category', 'note', 'start', 'every', 'interval', 'end', 'times', 'reserve', 'begins', 'days', 'by']);
     /** @type {Row} */
     const out = {};
-    const map = { wallet: 'wallet_id', to: 'to_wallet_id', category: 'category_id', start: 'start_on', end: 'end_on', reserve: 'reserve_id', begins: 'begins_on' };
+    const map = { wallet: 'wallet_id', to: 'to_wallet_id', category: 'category_id', start: 'start_on', end: 'end_on', reserve: 'reserve_id', begins: 'begins_on', by: 'by_day' };
     for (const [k, v] of Object.entries(ch)) out[/** @type {Record<string, string>} */ (map)[k] || k] = k === 'days' ? (v?.length ? canonical(v) : null) : v ?? (k === 'note' ? '' : null);
     putSchedule(s, { ...r, ...out });
   },
   'schedule.stopped': (s, { data }) => {
     const r = scheduleOrThrow(s, data.id);
-    if (!DAY.test(data.on)) throw new ProjectionError(`Date d’arrêt de l’échéance ${data.id} illisible`);
+    if (!DAY.test(data.on)) throw new ProjectionError(`Date d’arrêt ${DUE.ofThe} ${data.id} illisible`);
     putSchedule(s, { ...r, stopped_on: data.on });
   },
   // « Passer » une date, ou la rétablir : la liste triée des dates passées
   'schedule.skipped': (s, { data }) => {
     const r = scheduleOrThrow(s, data.id);
-    if (!DAY.test(data.on)) throw new ProjectionError(`Date de l’échéance ${data.id} illisible`);
+    if (!DAY.test(data.on)) throw new ProjectionError(`Date ${DUE.ofThe} ${data.id} illisible`);
     const skips = new Set(r.skips ? JSON.parse(r.skips) : []);
     skips.add(data.on);
     putSchedule(s, { ...r, skips: canonical([...skips].sort()) });
@@ -468,6 +474,19 @@ const HANDLERS = {
     const r = scheduleOrThrow(s, data.id);
     const skips = (r.skips ? JSON.parse(r.skips) : []).filter((/** @type {string} */ d) => d !== data.on);
     putSchedule(s, { ...r, skips: skips.length ? canonical(skips) : null });
+  },
+  // un autre montant pour une seule fois (2026-11-24) : gardé sur la règle nommée (la première de l'échéance), par date ;
+  // amount null : la fois reprend le montant de la règle. Les contrôles de la fois (à régler, de cette échéance) sont ceux
+  // de la commande (une modification efface ceux d'une date qui disparaît ou d'une devise qui change).
+  'schedule.adjusted': (s, { data }) => {
+    const r = scheduleOrThrow(s, data.id);
+    if (!DAY.test(data.on)) throw new ProjectionError(`Date ${DUE.ofThe} ${data.id} illisible`);
+    if (data.amount != null && (!Number.isSafeInteger(data.amount) || data.amount <= 0)) throw new ProjectionError(`Montant d’une fois ${DUE.ofThe} ${data.id} illisible`);
+    /** @type {Record<string, number>} */
+    const m = r.amounts ? JSON.parse(r.amounts) : {};
+    if (data.amount == null) delete m[data.on];
+    else m[data.on] = data.amount;
+    putSchedule(s, { ...r, amounts: Object.keys(m).length ? canonical(m) : null });
   },
   // la règle seulement : ses opérations confirmées restent (elles gardent le lien vers une règle disparue)
   'schedule.deleted': (s, { data }) => { scheduleOrThrow(s, data.id); del(s, 'schedules', data.id); },
@@ -504,54 +523,65 @@ function reuse(s, entryId, on) {
 /** @param {State} s @param {string} id */
 function reserveOrThrow(s, id) {
   const r = s.reserves.get(id);
-  if (!r) throw new ProjectionError(`Réserve ${id} introuvable`);
+  if (!r) throw new ProjectionError(`${RES.One} ${id} introuvable`);
   return r;
 }
 /** Ligne complète d'une réserve, contrôlée. @param {State} s @param {Row} r */
 function putReserve(s, r) {
-  if (!Number.isSafeInteger(r.amount) || r.amount <= 0) throw new ProjectionError(`Montant de la réserve ${r.id} illisible`);
-  if (r.held != null && (!Number.isSafeInteger(r.held) || r.held < 0)) throw new ProjectionError(`Mis de côté de la réserve ${r.id} illisible`);
-  if (!Number.isSafeInteger(r.used) || r.used < 0 || r.used > r.amount) throw new ProjectionError(`Utilisé de la réserve ${r.id} illisible`);
-  if (!Number.isSafeInteger(r.repeats) || r.repeats < 0) throw new ProjectionError(`Répétition de la réserve ${r.id} illisible`);
-  if (r.pinned != null && (!Number.isSafeInteger(r.pinned) || r.pinned < 0)) throw new ProjectionError(`Montant fixé de la réserve ${r.id} illisible`);
+  if (!Number.isSafeInteger(r.amount) || r.amount <= 0) throw new ProjectionError(`Montant ${RES.ofThe} ${r.id} illisible`);
+  if (r.held != null && (!Number.isSafeInteger(r.held) || r.held < 0)) throw new ProjectionError(`Mis de côté ${RES.ofThe} ${r.id} illisible`);
+  if (!Number.isSafeInteger(r.used) || r.used < 0 || r.used > r.amount) throw new ProjectionError(`Utilisé ${RES.ofThe} ${r.id} illisible`);
+  if (!Number.isSafeInteger(r.repeats) || r.repeats < 0) throw new ProjectionError(`Répétition ${RES.ofThe} ${r.id} illisible`);
+  if (r.pinned != null && (!Number.isSafeInteger(r.pinned) || r.pinned < 0)) throw new ProjectionError(`Montant fixé ${RES.ofThe} ${r.id} illisible`);
   // due_on vide : en pause, sans date (D17 revu, 2026-11-23)
-  if (!DAY.test(r.start_on) || (r.due_on !== '' && (!DAY.test(r.due_on) || r.start_on > r.due_on))) throw new ProjectionError(`Dates de la réserve ${r.id} illisibles`);
-  if (r.closed_on != null && !DAY.test(r.closed_on)) throw new ProjectionError(`Date de clôture de la réserve ${r.id} illisible`);
-  if (typeof r.name !== 'string' || !r.name) throw new ProjectionError(`Nom de la réserve ${r.id} illisible`);
+  if (!DAY.test(r.start_on) || (r.due_on !== '' && (!DAY.test(r.due_on) || r.start_on > r.due_on))) throw new ProjectionError(`Dates ${RES.ofThe} ${r.id} illisibles`);
+  if (r.closed_on != null && !DAY.test(r.closed_on)) throw new ProjectionError(`Date de clôture ${RES.ofThe} ${r.id} illisible`);
+  if (r.interval != null && (!r.every || !Number.isSafeInteger(r.interval) || r.interval < 2 || r.interval > 999)) throw new ProjectionError(`Rythme ${RES.ofThe} ${r.id} illisible`);
+  if (r.by_day != null && r.every !== 'month') throw new ProjectionError(`Jour du mois ${RES.ofThe} ${r.id} illisible`);
+  if (typeof r.name !== 'string' || !r.name) throw new ProjectionError(`Nom ${RES.ofThe} ${r.id} illisible`);
   put(s, 'reserves', r);
 }
 /** @param {State} s @param {string} id */
 function scheduleOrThrow(s, id) {
   const r = s.schedules.get(id);
-  if (!r) throw new ProjectionError(`Échéance ${id} introuvable`);
+  if (!r) throw new ProjectionError(`${DUE.One} ${id} introuvable`);
   return r;
 }
-/** Ligne complète d'une opération récurrente, contrôlée (D18). @param {State} s @param {Row} r */
+/** Ligne complète d'une opération programmée, contrôlée (D18). @param {State} s @param {Row} r */
 function putSchedule(s, r) {
-  if (!Number.isSafeInteger(r.amount) || r.amount <= 0) throw new ProjectionError(`Montant de l’échéance ${r.id} illisible`);
-  if (!DAY.test(r.start_on)) throw new ProjectionError(`Première date de l’échéance ${r.id} illisible`);
-  if (r.end_on != null && (!DAY.test(r.end_on) || r.end_on < r.start_on)) throw new ProjectionError(`Fin de l’échéance ${r.id} illisible`);
-  if (r.stopped_on != null && !DAY.test(r.stopped_on)) throw new ProjectionError(`Arrêt de l’échéance ${r.id} illisible`);
-  if (r.begins_on != null && !DAY.test(r.begins_on)) throw new ProjectionError(`Début de l’échéance ${r.id} illisible`);
+  if (!Number.isSafeInteger(r.amount) || r.amount <= 0) throw new ProjectionError(`Montant ${DUE.ofThe} ${r.id} illisible`);
+  if (!DAY.test(r.start_on)) throw new ProjectionError(`Première date ${DUE.ofThe} ${r.id} illisible`);
+  if (r.end_on != null && (!DAY.test(r.end_on) || r.end_on < r.start_on)) throw new ProjectionError(`Fin ${DUE.ofThe} ${r.id} illisible`);
+  if (r.stopped_on != null && !DAY.test(r.stopped_on)) throw new ProjectionError(`Arrêt ${DUE.ofThe} ${r.id} illisible`);
+  if (r.begins_on != null && !DAY.test(r.begins_on)) throw new ProjectionError(`Début ${DUE.ofThe} ${r.id} illisible`);
   if (r.days != null) {
     let d;
     try { d = JSON.parse(r.days); } catch (e) { d = null; }
-    if (!Array.isArray(d) || !d.length || d.some((/** @type {any} */ n, /** @type {number} */ i) => !Number.isSafeInteger(n) || n < 1 || (i && n <= d[i - 1]))) throw new ProjectionError(`Jours de l’échéance ${r.id} illisibles`);
+    if (!Array.isArray(d) || !d.length || d.some((/** @type {any} */ n, /** @type {number} */ i) => !Number.isSafeInteger(n) || n < 1 || (i && n <= d[i - 1]))) throw new ProjectionError(`Jours ${DUE.ofThe} ${r.id} illisibles`);
   }
-  if (r.times != null && (!Number.isSafeInteger(r.times) || r.times < 1)) throw new ProjectionError(`Nombre de fois de l’échéance ${r.id} illisible`);
+  if (r.times != null && (!Number.isSafeInteger(r.times) || r.times < 1)) throw new ProjectionError(`Nombre de fois ${DUE.ofThe} ${r.id} illisible`);
+  // lue autrement que par son quantième (« le 2e lundi », « le dernier jour ») : une règle par mois d'un seul jour, dont
+  // la première date permet cette lecture
+  if (r.by_day != null && (!['month', 'quarter', 'half'].includes(r.every) || r.days != null || !byOptions(r.start_on).includes(r.by_day))) throw new ProjectionError(`Jour du mois ${DUE.ofThe} ${r.id} illisible`);
+  if (r.amounts != null) {
+    let m;
+    try { m = JSON.parse(r.amounts); } catch (e) { m = null; }
+    if (!m || typeof m !== 'object' || Array.isArray(m) || !Object.keys(m).length
+      || Object.entries(m).some(([d, n]) => !DAY.test(d) || !Number.isSafeInteger(n) || /** @type {number} */ (n) <= 0)) throw new ProjectionError(`Montants des fois ${DUE.ofThe} ${r.id} illisibles`);
+  }
   // rythme libre : « tous les N » (2 ou plus ; chaque = NULL), seulement pour une règle qui répète
-  if (r.interval != null && (!Number.isSafeInteger(r.interval) || r.interval < 2 || r.every == null)) throw new ProjectionError(`Rythme de l’échéance ${r.id} illisible`);
+  if (r.interval != null && (!Number.isSafeInteger(r.interval) || r.interval < 2 || r.every == null)) throw new ProjectionError(`Rythme ${DUE.ofThe} ${r.id} illisible`);
   const w = s.accounts.get(r.wallet_id);
-  if (!w || w.kind !== 'wallet') throw new ProjectionError(`Portefeuille ${r.wallet_id} introuvable pour l’échéance ${r.id}`);
-  if (typeof r.currency !== 'string' || !r.currency) throw new ProjectionError(`Devise de l’échéance ${r.id} illisible`);
+  if (!w || w.kind !== 'wallet') throw new ProjectionError(`Portefeuille ${r.wallet_id} introuvable pour ${DUE.the} ${r.id}`);
+  if (typeof r.currency !== 'string' || !r.currency) throw new ProjectionError(`Devise ${DUE.ofThe} ${r.id} illisible`);
   if (r.kind === 'transfer') {
     const t = s.accounts.get(r.to_wallet_id);
     if (!t || t.kind !== 'wallet' || r.category_id != null) throw new ProjectionError(`Virement ${r.id} : portefeuille d’arrivée introuvable`);
   } else {
     const c = s.accounts.get(r.category_id);
-    if (!c || c.kind !== r.kind || r.to_wallet_id != null) throw new ProjectionError(`Échéance ${r.id} : catégorie introuvable`);
+    if (!c || c.kind !== r.kind || r.to_wallet_id != null) throw new ProjectionError(`${DUE.One} ${r.id} : catégorie introuvable`);
   }
-  if (r.reserve_id != null && !s.reserves.has(r.reserve_id)) throw new ProjectionError(`Réserve ${r.reserve_id} introuvable pour l’échéance ${r.id}`);
+  if (r.reserve_id != null && !s.reserves.has(r.reserve_id)) throw new ProjectionError(`${RES.One} ${r.reserve_id} introuvable pour ${DUE.the} ${r.id}`);
   put(s, 'schedules', r);
 }
 /** Ligne complète d'un budget à dates (création ou modification). @param {State} s @param {Row} data @param {string|null} from */

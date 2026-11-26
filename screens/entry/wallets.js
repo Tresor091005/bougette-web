@@ -4,7 +4,7 @@ import { buzz, $ } from '../../core/ui.js';
 import { icon } from '../../core/icons.js';
 import { esc, money } from '../../core/format.js';
 import { pickAccount, accountPill } from '../pickers.js';
-import { cur } from './state.js';
+import { cur, planning } from './state.js';
 
 /** @typedef {import('./state.js').Entry} Entry */
 
@@ -41,7 +41,9 @@ async function chooseFrom(E) {
   const { st, due } = E;
   // une échéance se paie depuis n'importe quel portefeuille de sa devise (D18, revu le 2026-11-12)
   // une dépense d'échéance qu'aucune réserve ne paie : pas d'épargne qui refuse les dépenses (2026-11-13)
-  const id = await pickAccount({ current: st.accountId, currency: E.planned ? E.planned.currency : null, title: st.type === 'transfer' ? 'Depuis' : 'Portefeuille', spending: E.held && st.type === 'expense' && !st.reserveId });
+  // programmer (2026-11-26) : comme dans l'ancienne feuille, pas d'épargne qui refuse les dépenses
+  const plan = planning(E) && st.type === 'expense';
+  const id = await pickAccount({ current: st.accountId, currency: E.planned ? E.planned.currency : null, title: st.type === 'transfer' ? 'Depuis' : 'Portefeuille', spending: plan || (E.held && st.type === 'expense' && !st.reserveId) });
   if (!id) return;
   st.accountId = id;
   // revenu sur le portefeuille de la réserve qui paie l'échéance : elle repaie

@@ -1,4 +1,5 @@
-// Enregistrer (le bouton du bas) : la vérification d'un solde, ou l'opération (ajoutée, modifiée, échéance confirmée),
+// Enregistrer (le bouton du bas) : la vérification d'un solde, ou l'opération (ajoutée, modifiée, échéance confirmée, ou
+// programmée : plan.js),
 // puis ce qui suit (répartir une rentrée, donner une destination à l'argent mis de côté).
 import { addTx, updateTx, confirmDue, account, pref, checkWallet, available, settings } from '../../core/store.js';
 import { buzz, shake, reducedMotion, afterSheets, confirmSheet } from '../../core/ui.js';
@@ -7,7 +8,8 @@ import { farFromPlanned, entryDraft } from '../../domain/entry-rules.js';
 import { openAccountSheet } from '../accounts.js';
 import { openIncomeSheet } from '../budget-sheet.js';
 import { assigned } from '../../core/assign.js';
-import { checking, cur, savingsSpend, usableReserves } from './state.js';
+import { checking, cur, savingsSpend, usableReserves, planning } from './state.js';
+import { savePlan } from './plan.js';
 import { chooseTo } from './wallets.js';
 
 /** @param {import('./state.js').Entry} E @param {(o: any) => any} openEntry pour la feuille d'une rentrée (« Mettre de côté ») */
@@ -26,6 +28,8 @@ export async function save(E, openEntry) {
     setTimeout(() => s.close(), reducedMotion() ? 0 : 320);
     return;
   }
+  // une opération à venir ou qui se répète : on la programme (plan.js)
+  if (planning(E)) return savePlan(E);
   if (!st.amount || (E.problem && E.problem.block)) { shake(exprEl); return; }
   // portefeuille d'arrivée manquant : il se choisit au passage, puis on enregistre aussitôt
   if (st.type === 'transfer' && !st.toAccountId) {

@@ -213,7 +213,7 @@ const RAW = [
 /** @type {[string, string][]} */
 const RETIRED = [['money', 'Espèces'], ['device-mobile', 'Téléphone'], ['wallet', 'Portefeuille'], ['bank', 'Banque'],
   ['piggy-bank', 'Épargne'], ['hand-coins', 'Tontine'], ['vault', 'Coffre'], ['lock-simple', 'Sécurité'],
-  ['arrows-left-right', 'Échange'], ['shield-check', 'Assurance'], ['scales', 'Justice'], ['archive', 'Réserves']];
+  ['arrows-left-right', 'Échange'], ['shield-check', 'Assurance'], ['scales', 'Justice'], ['archive', 'Réserves']]; /* mot libre : l'icône archive, au sens de stock */
 export const CATALOG = RAW.map(([title, list]) => ({ title, icons: list.map(([name, label, words]) => ({ name, label, words })) }));
 
 /** Tous les noms d'icônes de catégorie. */

@@ -43,13 +43,16 @@ export const EVENT_TYPES = {
   'reserve.closed': 1,
   // répartition enregistrée (D17, revu) : de l'argent mis dans (ou repris d'une) réserve
   'reserve.allocated': 1,
-  // échéances et opérations récurrentes (D18) : la règle, ses dates passées (« Passer ») ou rétablies, « Arrêter »
+  // échéances et opérations programmées (D18) : la règle, ses dates passées (« Passer ») ou rétablies, « Arrêter »
   'schedule.created': 1,
   'schedule.updated': 1,
   'schedule.stopped': 1,
   'schedule.skipped': 1,
   'schedule.unskipped': 1,
   'schedule.deleted': 1,
+  // un autre montant pour une seule fois encore à régler (2026-11-24, avec l'utilisateur), ou le retour à celui de la
+  // règle (amount null) : { id: la première règle de l'échéance, on, amount }
+  'schedule.adjusted': 1,
 };
 
 /** @typedef {{ seq: number, id: string, type: string, v: number, at: string, device: string, payload: string, prev_hash: string, hash: string }} StoredEvent */

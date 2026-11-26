@@ -1,20 +1,22 @@
 // Feuille d'un budget (D11 revu) : créer, reconduire ou modifier. Catégorie (la liste partagée, un seul budget en cours par catégorie,
-// celui d'une principale compte aussi ses sous-catégories, celui d'une sous-catégorie elle seule, D13 revu le 2026-11-11), montant au pavé, dates : début (aujourd'hui par défaut) et fin, avec les
-// raccourcis « Fin du mois » (selon le début du mois réglé), « 7 jours », « 30 jours » et « Choisir » (calendrier, dates
-// à venir permises) ; interrupteur « Se répète ». Reconduire : la catégorie est celle du budget terminé (affichée, pas
-// un bouton). Modifier (2026-11-13) : le montant, la fin (plus tard, ou plus tôt mais pas avant aujourd'hui) et « Se
+// celui d'une principale compte aussi ses sous-catégories, celui d'une sous-catégorie elle seule, D13 revu le 2026-11-11), montant au pavé, dates : début (aujourd'hui par défaut) et fin
+// (son calendrier propose « Fin du mois » (selon le début du mois réglé), « 7 jours » et « 30 jours », dates à venir
+// permises) ; interrupteur « Se répète ». Plus de titre (2026-11-26, avec l'utilisateur : il ne voit jamais ce qui est en
+// haut d'une feuille) : la feuille commence par le grand montant, la catégorie est la première gélule dessous, comme dans la
+// saisie. Reconduire : la catégorie est celle du budget terminé (affichée, pas un bouton). Modifier (2026-11-13) : le montant, la fin (plus tard, ou plus tôt mais pas avant aujourd'hui) et « Se
 // répète » seulement — la catégorie et le début sont affichés, pas des boutons ; Supprimer (le budget seulement, jamais
 // ses opérations). Un refus du domaine (fin passée, chevauchement…) s'affiche dans la feuille. Écrit par les commandes
 // budget.create / budget.update / budget.delete (via le magasin).
-import { settings, category, budgetById, createBudget, updateBudget, deleteBudget, accounts, subsOver, monthlySpend, balances } from '../core/store.js';
+import { settings, category, budgetById, createBudget, updateBudget, deleteBudget, subsOver, savingsAccounts, savingsReport, categoryBoard } from '../core/store.js';
 import { remindLater, assigned } from '../core/assign.js';
-import { today, esc, shortDate, money } from '../core/format.js';
-import { icon } from '../core/icons.js';
-import { openSheet, keypad, exprHTML, buzz, chip, toast, fitText, switchHTML, noticeHTML, confirmSheet, afterSheets, $, $$ } from '../core/ui.js';
-import { currentWindow, monthEnd } from '../domain/budgets.js';
+import { today, esc, shortDate, money, approx } from '../core/format.js';
+import { icon, catIcon } from '../core/icons.js';
+import { openSheet, keypad, exprHTML, buzz, toast, fitText, switchHTML, noticeHTML, confirmSheet, afterSheets, $, $$ } from '../core/ui.js';
+import { currentWindow, monthEnd, habitsLeft } from '../domain/budgets.js';
+import { asideTarget, asideAmount } from '../domain/aside.js';
 import { shiftDay } from '../domain/pace.js';
 import { pickCategory, pickDate } from './pickers.js';
-import { rowHTML, sheetHead } from './parts.js';
+import { sheetActions, sheetHead } from './parts.js';
 
 /**
  * id : budget à modifier ; sinon un nouveau, prérempli avec category / amount (suggestion tirée de l'historique), ou
@@ -39,40 +41,36 @@ export function openBudgetSheet({ id = null, category: catIn = null, amount: amo
   const initial = { ...f };
   // la catégorie ne se choisit qu'à la création ; le début, pas en modification
   const catFixed = !!(b || prev || (fixed && catIn)), startFixed = !!b;
+  // un budget n'a pas de nom : sa catégorie est la première gélule sous le montant (2026-11-26, avec l'utilisateur)
   const s = openSheet(`<div class="budget-sheet">
-    <div class="e-head">${catFixed ? '<div class="bs-id bs-cat" data-cat></div>' : '<button type="button" class="bs-id bs-cat" data-cat></button>'}
-      <button type="button" class="iconbtn soft close" data-close aria-label="Fermer">${icon('x')}</button></div>
     <div class="e-stage"><div class="e-expr" data-expr></div></div>
-    <div class="bs-dates">
-      ${startFixed ? '<span class="muted" data-start></span>' : '<button type="button" class="mp" data-start></button>'}<span class="bs-to">${icon('arrow-right')}</span><button type="button" class="mp" data-end></button>
+    <div class="e-meta bs-catrow" data-cat-host></div>
+    <div class="e-meta">
+      <button type="button" class="mp" data-start${startFixed ? ' aria-disabled="true"' : ''}></button><span class="bs-to">${icon('arrow-right')}</span><button type="button" class="mp" data-end></button>
+      <button type="button" class="mp" data-rep role="switch" aria-checked="false">Se répète</button>
     </div>
-    <div class="bs-quick" role="group" aria-label="Fin">
-      <button type="button" class="mp" data-q="month">Fin du mois</button><button type="button" class="mp" data-q="7">7 jours</button>
-      <button type="button" class="mp" data-q="30">30 jours</button><button type="button" class="mp" data-q="pick">Choisir</button>
-    </div>
-    ${rowHTML({ cls: 'bs-rep', attrs: 'data-rep', title: 'Se répète', end: switchHTML(f.repeat) })}
-    <div data-err></div>
     <div data-pad></div>
-    <button type="button" class="btn primary" data-save>${icon('check')}${b ? 'Enregistrer' : 'Créer le budget'}</button>
-    ${b ? `<button type="button" class="btn ghost" data-del>${icon('trash')}Supprimer ce budget</button>` : ''}
+    <div data-err></div>
+    ${sheetActions('<button type="button" class="btn primary go" data-save><span class="lbl" data-savel></span></button>')}
+    ${b ? '<button type="button" class="link bs-del" data-del>Supprimer ce budget</button>' : ''}
   </div>`, { label: 'Budget' });
   const el = s.el;
   const exprEl = $('[data-expr]', el), save = $('[data-save]', el), errEl = $('[data-err]', el);
-  const quick = () => ({ month: monthEnd(f.start, st.monthStart), 7: shiftDay(f.start, 6), 30: shiftDay(f.start, 29) });
   const paint = () => {
     const c = f.category ? category(f.category) : null;
-    const caret = catFixed ? '' : icon('caret-down');
-    $('[data-cat]', el).innerHTML = c ? `${chip(c)}${sheetHead({ title: esc(c.name) })}${caret}`
-      : `<span class="pill acc">${icon('target')}</span>${sheetHead({ title: 'Catégorie' })}${caret}`;
+    // la gélule de couleur de la saisie ; figée (reconduire, modifier, catégorie donnée) : la même, sans chevron ni action
+    $('[data-cat-host]', el).innerHTML = c
+      ? `<button type="button" class="sc on" data-cat style="--c:var(--${c.color || 'c0'})"${catFixed ? ' aria-disabled="true"' : ''}>${catIcon(c.icon)}<span>${esc(c.name)}</span>${catFixed ? '' : icon('caret-down')}</button>`
+      : `<button type="button" class="sc more ask" data-cat>${icon('squares-four')}<span>Catégorie</span></button>`;
     $('[data-start]', el).innerHTML = `<span>${f.start === t ? 'Aujourd’hui' : `Du ${esc(shortDate(f.start))}`}</span>`;
     $('[data-end]', el).innerHTML = `<span>${f.end === t ? 'Aujourd’hui' : `Au ${esc(shortDate(f.end))}`}</span>`;
-    const q = quick();
-    // un seul raccourci allumé : le premier qui tombe sur la fin (fin du mois avant 30 jours quand c'est la même date)
-    const hit = ['month', '7', '30'].find(k => q[k] === f.end) || 'pick';
-    $$('[data-q]', el).forEach(x => x.classList.toggle('on', x.dataset.q === hit));
-    $('[data-rep] .switch', el).classList.toggle('on', f.repeat);
-    $('[data-rep] .switch', el).setAttribute('aria-checked', String(f.repeat));
-    save.disabled = !f.category || !f.amount;
+    $('[data-rep]', el).classList.toggle('on', f.repeat);
+    $('[data-rep]', el).setAttribute('aria-checked', String(f.repeat));
+    const lack = !f.category ? 'Choisis une catégorie' : !f.amount ? 'Indique un montant' : '';
+    const tail = f.amount ? ` jusqu’au ${shortDate(f.end)}` : '';
+    $('[data-savel]', el).innerHTML = lack ? esc(lack)
+      : `${icon('check')}<span class="go-t">${b ? 'Enregistrer' : 'Créer'} · ${money(f.amount, { cur })}</span><span class="go-c">${esc(tail)}</span>`;
+    save.disabled = !!lack; save.classList.toggle('need', !!lack);
   };
   const clearErr = () => { errEl.innerHTML = ''; };
   /** @param {string} msg @param {string} [code] @param {any} [detail] */
@@ -113,8 +111,10 @@ export function openBudgetSheet({ id = null, category: catIn = null, amount: amo
   exprEl.innerHTML = exprHTML(pad.expr(), { cur });
   paint();
 
-  $('[data-close]', el).onclick = () => { buzz(6); s.close(); };
-  if (!catFixed) $('[data-cat]', el).onclick = async () => {
+  if (!catFixed) $('[data-cat-host]', el).onclick = async e => {
+    // la gélule seulement : le reste de la rangée ne répond pas
+    if (!(/** @type {HTMLElement} */ (e.target)).closest('[data-cat]')) return;
+    buzz(6);
     const id2 = await pickCategory({ type: 'expense', current: f.category, title: 'Catégorie du budget' });
     if (id2 && id2 !== '*') { f.category = id2; clearErr(); paint(); }
   };
@@ -128,16 +128,14 @@ export function openBudgetSheet({ id = null, category: catIn = null, amount: amo
     clearErr(); paint();
   };
   const pickEnd = async () => {
-    const d = await pickDate({ current: f.end, future: true, min: f.start > today() ? f.start : today(), title: 'Fin du budget' });
+    const min = f.start > today() ? f.start : today();
+    // les raccourcis de la fin, dans son calendrier (2026-11-26) ; sans ceux qui tombent avant le minimum
+    const quick = [['Fin du mois', monthEnd(f.start, st.monthStart)], ['7 jours', shiftDay(f.start, 6)], ['30 jours', shiftDay(f.start, 29)]]
+      .filter(([, date]) => date >= min).map(([label, date]) => ({ label, date }));
+    const d = await pickDate({ current: f.end, future: true, min, title: 'Fin du budget', quick });
     if (d) { f.end = d; clearErr(); paint(); }
   };
   $('[data-end]', el).onclick = pickEnd;
-  $$('[data-q]', el).forEach(x => (x.onclick = () => {
-    buzz(6);
-    if (x.dataset.q === 'pick') return pickEnd();
-    f.end = quick()[x.dataset.q];
-    clearErr(); paint();
-  }));
   $('[data-rep]', el).onclick = () => { f.repeat = !f.repeat; buzz(8); clearErr(); paint(); };
 
   let saving = false;
@@ -171,20 +169,27 @@ export function openBudgetSheet({ id = null, category: catIn = null, amount: amo
   };
 }
 
-// Après une rentrée (D11 : le moment clé, quand l'argent arrive) : « 200 000 F arrivés · Disponible passe à 235 000 F »,
-// avec « Mettre de côté » (virement vers l'épargne, depuis le portefeuille qui vient de recevoir ; sans portefeuille
-// d'épargne dans cette devise, sa fiche s'ouvre d'abord, en épargne : D17), « Créer un budget » et « Plus tard ». Rien n'est
-// imposé. openEntry / openAccountSheet : passés par la saisie (pas d'import circulaire).
+// Après une rentrée (D11 : le moment clé, quand l'argent arrive ; parcours 4, revu le 2026-11-25 avec l'utilisateur) :
+// « 200 000 F arrivés · Disponible passe à 235 000 F ». « Mettre X de côté » n'est proposé que si des réserves manquent
+// d'argent pour être prêtes à temps ET que la marge de Plan après ce revenu (Disponible − habitudes estimées) est
+// positive ; X = le plus petit du revenu, de la marge et de ce qui manque, arrondi au-dessous (src/domain/aside.js) ; il
+// ouvre le virement vers l'épargne à qui il manque le plus, depuis le portefeuille qui vient de recevoir, X prérempli et
+// modifiable. Sinon, pas de proposition : « Créer un budget » et « Plus tard ». Rien n'est imposé. openEntry : passé par
+// la saisie (pas d'import circulaire) ; openAccountSheet reste dans la signature des appelants (il ne sert plus ici :
+// sans épargne, pas de réserve qui manque, donc pas de proposition).
 /**
- * @param {{ amount: number, cur: string, available: number, walletId: string, openEntry: (o: any) => any, openAccountSheet: (id: any, o?: any) => any }} o
+ * @param {{ amount: number, cur: string, available: number, walletId: string, openEntry: (o: any) => any, openAccountSheet?: (id: any, o?: any) => any }} o
  */
-export function openIncomeSheet({ amount, cur, available, walletId, openEntry, openAccountSheet }) {
+export function openIncomeSheet({ amount, cur, available, walletId, openEntry }) {
+  const target = asideTarget(savingsAccounts().filter(a => !a.archived && a.currency === cur).map(a => savingsReport(a.id)));
+  const margin = available - approx(habitsLeft(categoryBoard()), cur);
+  const put = target ? asideAmount({ amount, margin, missing: target.missing, cur }) : 0;
   const s = openSheet(`<div class="income-sheet">
     ${sheetHead({ title: `${money(amount, { cur })} arrivés` })}
     <p class="in-say">Disponible passe à <b>${money(available)}</b></p>
     <div class="in-acts">
-      <button type="button" class="btn primary" data-act="aside">${icon('hand-coins')}Mettre de côté</button>
-      <button type="button" class="btn" data-act="budget">${icon('target')}Créer un budget</button>
+      ${put ? `<button type="button" class="btn primary" data-act="aside">${icon('hand-coins')}Mettre ${money(put, { cur })} de côté</button>` : ''}
+      <button type="button" class="btn${put ? '' : ' primary'}" data-act="budget">${icon('target')}Créer un budget</button>
       <button type="button" class="btn ghost" data-act="later">Plus tard</button>
     </div>
   </div>`, { label: 'Rentrée', onClose: () => { if (!chosen) remindLater(amount); } });
@@ -198,14 +203,7 @@ export function openIncomeSheet({ amount, cur, available, walletId, openEntry, o
     if (act === 'later') return;
     afterSheets(() => {
       if (act === 'budget') return openBudgetSheet();
-      const aside = to => openEntry({ type: 'transfer', accountId: walletId, toAccountId: to.id });
-      // le fonds d'urgence d'abord tant qu'il couvre moins de 3 mois (2026-11-19), sinon une épargne
-      const em = accounts().find(a => a.savings && a.emergency && !a.archived && a.currency === cur);
-      const spend = monthlySpend();
-      const emOk = em && !(spend > 0 && (balances()[em.id] || 0) >= 3 * spend) ? em : null;
-      const saving = emOk || accounts().find(a => a.savings && !a.emergency && !a.archived && a.currency === cur);
-      if (saving) aside(saving);
-      else openAccountSheet(null, { savings: true, onSaved: aside });
+      if (target) openEntry({ type: 'transfer', accountId: walletId, toAccountId: target.wallet, amount: put });
     });
   }));
 }

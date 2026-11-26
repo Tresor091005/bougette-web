@@ -185,7 +185,7 @@ export const allScreen = {
     const done = finishedGroups();
     const intro = buds.length ? { label: 'Reste dans tes budgets', big: money(r.inBudgets), sub: ahead ? `${money(ahead)} iront sans doute dans tes habitudes` : '' }
       : ahead ? { label: 'Iront sans doute dans tes habitudes', big: money(ahead) } : null;
-    app.innerHTML = listPageHTML({ title: 'Tous les budgets', intro, fab: 'Créer un budget',
+    app.innerHTML = listPageHTML({ title: 'Budgets', intro, fab: 'Créer un budget',
       body: `${sectionHTML({ title: 'Tes budgets', body: `
         ${buds.length ? `<div class="group">${buds.map(x => catRowHTML(x)).join('')}</div>` : emptyState('Pas encore de budget', { add: ['data-new', 'Créer un budget'] })}` })}
       ${habits.length ? sectionHTML({ title: 'Tes habitudes', body: `
@@ -228,7 +228,7 @@ export const categoryScreen = {
     const cur = st.currency;
 
     app.innerHTML = `<div class="screen month bc no-tabs${budgets.length ? ' has-fab' : ''}">
-      ${topbarHTML({ title: `${chip(c)}<span class="bc-name">${esc(nameOf(id))}</span>`, cls: 'bc-title', attrs: `title="${esc(categoryLabel(id))}"` })}
+      ${topbarHTML({ title: `<span class="bc-name">${esc(nameOf(id))}</span>`, cls: 'bc-title', attrs: `title="${esc(categoryLabel(id))}"` })}
 
       ${sectionHTML({ title: 'Budgets', body: `
         ${budgets.length ? `<div class="group">${budgets.map(s => `<div class="row mrow" style="--c:var(--${c.color || 'c0'})">

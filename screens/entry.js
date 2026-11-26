@@ -6,8 +6,20 @@
 // haut comme un destinataire, calcul écrit en clair avec le résultat en direct, conséquence sur le solde, pastilles
 // ‹ Date › · Note, opérateurs sur une rangée légère, pavé en gélules. Solde insuffisant : montant et phrase en rouge, lien « Vérifier
 // le solde de … » (D9), bouton éteint. Mouvement (D5) : touche, coche dessinée, feuille qui descend, tremblement d'erreur.
-// Pas de « Prévu » dans la saisie pour l'instant : pas de nouvelle opération prévue, pas de date à venir ;
-// une opération déjà prévue garde sa pastille quand on la modifie, pour pouvoir la marquer payée. Le domaine garde le statut prévu.
+// Pas de pastille « Prévu » pour une nouvelle opération ; une opération déjà prévue la garde quand on la modifie, pour pouvoir
+// la marquer payée. Le domaine garde le statut prévu.
+// Une seule feuille pour noter et programmer (2026-11-26, avec l'utilisateur ; avant, la feuille d'une nouvelle opération
+// programmée en doublait la moitié) : la date décide. Aujourd'hui ou passée : on note, exactement la saisie ci-dessus, pas un
+// toucher de plus. À venir (› depuis aujourd'hui, ou « Quand ? ») ou qui se répète : on programme, la feuille se transforme
+// sur place (classe planning) — plus de catégories suggérées, de modèles, de solde ni de budget ; la catégorie et le nom en
+// deux pastilles, la fin de la répétition, et le bouton dit « Programmer ». Revenir à aujourd'hui remet la feuille telle
+// quelle. « Quand ? » (when-sheet.js) remplace le calendrier simple pour une nouvelle opération : un jour passé s'y touche
+// aussi, puis le bouton le confirme. Au moment de choisir la date, on doit savoir si on note une opération passée ou si on en
+// prépare une (2026-11-26, avec l'utilisateur) : la feuille dit « C’est passé / aujourd’hui / à venir », le bouton est écrit
+// au temps du verbe (« C’était hier », « Ce sera chaque mois ») et « Effacer » retire les jours touchés sans refermer. Le nom est
+// obligatoire pour programmer (la note d'une opération est facultative). Enregistrer programme (entry/plan.js,
+// plan-create.js). Seules les nouvelles opérations (et les copies) peuvent être programmées : modifier, confirmer une
+// échéance et utiliser une réserve restent ce qu'ils étaient.
 // Vérifier un solde sans quitter le + (D9, nouvelle saisie seulement) : un rond à part sur la ligne des types (icône
 // balance), pas un 4e type — ce n'est pas une opération. La feuille dit à quoi ça sert, demande « Combien as-tu vraiment
 // dessus ? », pavé prérempli avec le solde de l'app, « C'est juste » ou « Corriger à … » ; catégories, modèles, date et
@@ -21,13 +33,17 @@
 // budget déjà partie dès le choix, puis de cette dépense à chaque chiffre (hachurée pour une habitude sans budget),
 // rouge si elle le fait dépasser ; une phrase seulement alors (« Sorties : 8 500 F de trop »). Rien de plus.
 // Toute écriture passe par le magasin (commandes du domaine) ; rien n'est écrit ici en direct.
-import { category, accounts, balances } from '../core/store.js';
+import { category, accounts, balances, transactions } from '../core/store.js';
 import { openSheet, keypad, exprCharsHTML, buzz, seg, wireSeg, shake, setSeg, $, $$ } from '../core/ui.js';
 import { icon } from '../core/icons.js';
 import { today, dayLabel, parse, addDays } from '../core/format.js';
 import { pickDate } from './pickers.js';
+import { pickWhen, whenPhrase } from './when-sheet.js';
+import { pickEnd } from './due-page.js';
+import { monthlyHabit } from '../domain/when.js';
 import { openAccountSheet } from './accounts.js';
-import { entryState, checking, cur, dirty, validIds } from './entry/state.js';
+import { entryState, checking, cur, dirty, planning, syncMode } from './entry/state.js';
+import { endLabel } from './entry/plan.js';
 import { paintAmount } from './entry/amount.js';
 import { paintCats } from './entry/cats.js';
 import { paintFrom } from './entry/wallets.js';
@@ -48,16 +64,18 @@ function dateLabel(d) {
 
 // copy : une opération à refaire (Dupliquer, depuis sa fiche) — nouvelle saisie remplie comme elle, à la date du jour.
 // date : la date proposée (À revoir, D21 : une opération mise de côté par la synchro garde la sienne) ; onSaved : appelé
-// une fois l'opération enregistrée.
+// une fois l'opération enregistrée. amount : un montant proposé (« Mettre X de côté » après un revenu), modifiable.
 // La saisie est découpée dans src/screens/entry/ : état (state.js), montant et bouton (amount.js), catégories (cats.js),
-// réserves (reserves.js), portefeuilles (wallets.js), feuilles (sheets.js), enregistrement (save.js).
-export function openEntry({ type = 'expense', tx = null, copy = null, accountId = null, toAccountId = null, reserveId = null, due = null, date = null, onSaved = null } = {}) {
+// réserves (reserves.js), portefeuilles (wallets.js), feuilles (sheets.js), enregistrement (save.js), programmer (plan.js).
+// plan : une opération à programmer (kind, amount, accountId, toAccountId, categoryId, note, start, every, interval, days, by,
+// end, times — toutes facultatives ; sans start, la date reste à choisir) ; onCreated : la nouvelle, une fois créée.
+export function openEntry({ type = 'expense', tx = null, copy = null, accountId = null, toAccountId = null, reserveId = null, due = null, date = null, amount = 0, onSaved = null, plan = null, onCreated = null } = {}) {
   // aucun portefeuille (D10) : le + ouvre d'abord la fiche de création, puis la saisie sur le portefeuille créé
   if (!tx && !accounts().length) {
     openAccountSheet(null, { savings: false, intro: 'Pour noter une opération, crée d’abord un portefeuille.', onSaved: a => openEntry({ type: type === 'transfer' ? 'expense' : type, accountId: a.id }) });
     return null;
   }
-  const E = entryState({ type, tx, copy, accountId, toAccountId, reserveId, due, date, onSaved });
+  const E = entryState({ type, tx, copy, accountId, toAccountId, reserveId, due, date, amount, onSaved, plan, onCreated });
   const { st, editing, canPlan, held, bounds } = E;
 
   const s = openSheet(`<div class="entry">
@@ -98,19 +116,51 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
   const { exprEl, goBtn } = E;
 
   function paintMeta() {
-    $('[data-date]', el).textContent = dateLabel(st.date);
-    // › seulement vers le passé, jamais de date à venir : éteint (pas masqué : rien ne bouge sous le doigt) quand la
-    // date atteint aujourd'hui (‹ › sont absents pour une opération déjà prévue qu'on modifie)
+    // programmer : la pastille dit la règle (« Chaque mois, le 1er »), ou « Quand ? » tant que les jours ne sont pas choisis
+    const single = !st.when && !E.planAsked;
+    $('[data-date]', el).textContent = E.planAsked ? 'Quand ?' : st.when ? whenPhrase(st.when) : dateLabel(st.date);
+    // › vers le passé seulement quand on ne peut rien programmer : éteint (pas masqué : rien ne bouge sous le doigt) quand la
+    // date atteint aujourd'hui. Une nouvelle opération peut aller vers demain (la feuille passe alors en « programmer ») ;
+    // ‹ › sont masqués quand une règle ou « Quand ? » parle des jours, et absents pour une opération déjà prévue qu'on modifie
     const next = $('[data-dnext]', el), prev = $('[data-dprev]', el);
-    if (next) next.disabled = st.date >= today();
+    if (next) { next.hidden = !single; next.disabled = !E.canFuture && st.date >= today(); }
     // une échéance : pas avant la fois d'avant
-    if (prev) prev.disabled = !!bounds?.min && st.date <= bounds.min;
+    if (prev) { prev.hidden = !single; prev.disabled = !!bounds?.min && st.date <= bounds.min; }
+    // programmer : la note devient le nom, dans la rangée des catégories
+    $('[data-notep]', el).hidden = planning(E);
     $('[data-notel]', el).textContent = st.note || 'Note';
     $('[data-notep]', el).classList.toggle('set', !!st.note);
+    paintEnd();
     const plan = $('[data-plan]', el);
     if (!plan) return;
     plan.classList.toggle('on', st.planned);
     plan.setAttribute('aria-pressed', String(st.planned));
+  }
+  // La fin d'une règle qui se répète : une pastille de plus, seulement dans ce cas (elle n'existe pas pour noter)
+  function paintEnd() {
+    const want = planning(E) && !!st.when?.every;
+    let b = $('[data-endp]', el);
+    if (!want) { if (b) b.remove(); return; }
+    if (!b) {
+      b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'mp';
+      b.dataset.endp = '';
+      b.innerHTML = `${icon('calendar-check')}<span></span>`;
+      b.onclick = async () => {
+        buzz(6);
+        const got = await pickEnd({ mode: st.endMode, end: st.end, times: st.times, start: st.when.start, whole: false });
+        if (!got) return;
+        st.endMode = got.mode;
+        if (got.mode === 'date') st.end = got.end;
+        if (got.mode === 'times') st.times = got.times;
+        paintMeta(); paintAmount(E);
+      };
+      const after = $('[data-dnext]', el) || $('[data-datep]', el);
+      after.insertAdjacentElement('afterend', b);
+    }
+    $('span', b).textContent = endLabel(E);
+    b.classList.toggle('set', st.endMode !== 'never');
   }
   // Le pavé suit la devise du portefeuille (touche décimale) : on le remonte si elle change. Vérification : un pavé à
   // part, prérempli avec le solde de l'app (0 s'il est négatif), remonté à chaque changement de portefeuille ; le montant
@@ -139,11 +189,14 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
     if (checking(E)) $$('button[data-v]', segEl).forEach(b => { b.classList.remove('on'); b.setAttribute('aria-selected', 'false'); });
     else setSeg(segEl, st.type);
     if (!chk) return;
+    chk.hidden = planning(E); // programmer : rien à vérifier (le mode d'avant revient avec la vérification)
     chk.classList.toggle('on', checking(E));
     chk.setAttribute('aria-pressed', String(checking(E)));
   }
   function refresh() {
+    syncMode(E);
     el.classList.toggle('checking', checking(E));
+    $('.entry', el).classList.toggle('planning', planning(E));
     paintHead();
     $('[data-q]', el).hidden = !checking(E);
     $('.e-meta', el).hidden = checking(E);
@@ -188,22 +241,37 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
   const planBtn = $('[data-plan]', el);
   if (planBtn) planBtn.onclick = () => { st.planned = !st.planned; buzz(6); paintMeta(); paintAmount(E); };
   // ‹ › : un jour de plus ou de moins, en un toucher (Hier, Avant-hier…) sans ouvrir le calendrier
-  const shiftDate = n => { st.date = addDays(st.date, n); buzz(6); paintMeta(); paintAmount(E); };
+  // une date qui change : la feuille se repeint en entier seulement si elle passe de noter à programmer (ou l'inverse)
+  const dateChanged = () => { buzz(6); if (planning(E) !== E.wasPlanning) refresh(); else { paintMeta(); paintAmount(E); } };
+  const shiftDate = n => { st.date = addDays(st.date, n); dateChanged(); };
   // (absents quand on modifie une opération déjà prévue : le calendrier accepte alors les dates à venir, et « Prévu » reste visible)
   const prev = $('[data-dprev]', el), next = $('[data-dnext]', el);
   if (prev) prev.onclick = () => { if (!bounds?.min || st.date > bounds.min) shiftDate(-1); };
-  if (next) next.onclick = () => { if (st.date < today()) shiftDate(1); };
+  if (next) next.onclick = () => { if (E.canFuture || st.date < today()) shiftDate(1); };
+  // « Quand ? » (une nouvelle opération) : un seul calendrier pour le passé, l'avenir et la répétition
+  async function chooseWhen() {
+    const t0 = today();
+    // « Chaque mois » pré-coché pour une catégorie mensuelle
+    const prefer = E.prefer || (monthlyHabit(transactions(), st.categoryId, t0) ? 'month' : null);
+    const w = await pickWhen({ when: st.when, past: true, mark: st.when || E.planAsked ? null : st.date, prefer });
+    if (!w) return;
+    st.when = w.every || w.days?.length ? w : null;
+    st.date = w.start;
+    E.planAsked = false;
+    // sans répétition, pas de fin ; une fin déjà choisie avant la nouvelle première date n'a plus de sens
+    if (!w.every || (st.endMode === 'date' && st.end && st.end < w.start)) { st.endMode = 'never'; st.end = null; st.times = null; }
+    dateChanged();
+  }
   $('[data-datep]', el).onclick = async () => {
     buzz(6);
+    if (E.canFuture) return chooseWhen();
     const d = await pickDate({ current: st.date, future: canPlan, min: bounds?.min || null, title: st.type === 'income' ? 'Date du revenu' : st.type === 'transfer' ? 'Date du virement' : 'Date de la dépense' });
     if (d && d !== st.date) { st.date = d; paintMeta(); paintAmount(E); }
   };
-  $('[data-notep]', el).onclick = () => editNote(st.note, { type: st.type, categoryId: st.categoryId }).then(v => {
-    if (!v) return;
-    st.note = v.note;
-    // une note déjà écrite apporte sa catégorie habituelle, si aucune n'est choisie
-    if (v.categoryId && (!st.categoryId || st.auto) && st.type !== 'transfer' && validIds(st.type).includes(v.categoryId)) { st.categoryId = v.categoryId; st.auto = false; }
-    paintMeta(); paintCats(E); paintAmount(E);
+  $('[data-notep]', el).onclick = () => editNote(st.note).then(v => {
+    if (v == null) return;
+    st.note = v;
+    paintMeta(); paintAmount(E);
   });
   goBtn.onclick = () => save(E, openEntry);
   return s;

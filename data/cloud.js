@@ -3,7 +3,8 @@
 //
 // Sur le Drive : « bougette-spaces.json » = { v: 1, spaces: [{ cid, name, nameAt, seed, primary, removed }] } (cid :
 // l'identifiant de l'espace sur le compte, le même sur tous les appareils ; seed : ce qui dessine sa tête, pour qu'elle
-// soit la même partout ; primary : l'espace qu'un téléphone neuf prend d'abord ; removed : retiré de la liste sur un
+// soit la même partout — un uuid v4 tiré au hasard à la création de l'espace (2026-11-26 ; avant : l'identifiant de
+// l'espace, « main » pour tout le monde) ; primary : l'espace qu'un téléphone neuf prend d'abord ; removed : retiré de la liste sur un
 // appareil, avant le 2026-11-21), et un « space-<cid>.bgj » par espace : son journal, avec dans appProperties sa tête (seq, head) et sa lignée
 // (epoch : change quand un appareil remplace exprès le journal, par Restaurer). Le journal remplacé reste
 // à côté (« space-<cid>.avant.bgj »).
@@ -16,6 +17,7 @@ import { replayStored } from '../domain/engine.js';
 import { stateHash } from '../domain/projection.js';
 import { isPristine } from './sync.js';
 import { verifyChain } from '../domain/events.js';
+import { isUuid4 } from './uuid.js';
 
 /** Le journal du téléphone est abîmé : rien ne part sur le Drive (2026-11-21, avec l'utilisateur). */
 export class BrokenJournal extends Error {}
@@ -94,7 +96,8 @@ export function freeName(name, taken) {
  */
 export function chooseCid({ space, isMainSpace, pristine, index, used, newCid }) {
   const primary = index.spaces.find(s => s.primary && !s.removed && !used.has(s.cid));
-  if (isMainSpace && pristine && primary) return { cid: primary.cid, seed: primary.seed, name: primary.name, adopt: true };
+  // la tête du compte, sauf si c'est encore celle d'avant : alors celle de ce téléphone (elle partira sur le compte)
+  if (isMainSpace && pristine && primary) return { cid: primary.cid, seed: isUuid4(primary.seed) ? primary.seed : space.seed || primary.seed, name: primary.name, adopt: true };
   if (pristine) return null;
   return { cid: newCid(), seed: space.seed || space.id, name: space.name, adopt: false };
 }
@@ -102,12 +105,13 @@ export function chooseCid({ space, isMainSpace, pristine, index, used, newCid })
 /**
  * La liste du compte et celle du téléphone se rejoignent : un espace du compte absent du téléphone y est ajouté (il se
  * remplira à sa première ouverture), sauf s'il a été supprimé de la liste (ici ou ailleurs) ; un nom changé plus
- * récemment d'un côté passe de l'autre.
+ * récemment d'un côté passe de l'autre. La tête (seed) : celle du compte fait foi dès qu'elle est un uuid (la même sur
+ * tous les appareils) ; une tête d'avant est remplacée, une fois, par celle de ce téléphone.
  * @param {LocalSpace[]} local
  * @param {CloudIndex} index
  * @param {() => string} newId identifiant local d'un espace ajouté
  * @param {Set<string>} [gone] identifiants de compte des espaces supprimés de la liste sur ce téléphone
- * @returns {{ local: LocalSpace[], index: CloudIndex, localChanged: boolean, indexChanged: boolean, added: LocalSpace[], renamed: LocalSpace[] }}
+ * @returns {{ local: LocalSpace[], index: CloudIndex, localChanged: boolean, indexChanged: boolean, added: LocalSpace[], renamed: LocalSpace[], seeded: LocalSpace[] }}
  */
 export function mergeSpaces(local, index, newId, gone = new Set()) {
   const loc = local.map(s => ({ ...s }));
@@ -117,6 +121,8 @@ export function mergeSpaces(local, index, newId, gone = new Set()) {
   const added = [];
   /** @type {LocalSpace[]} */
   const renamed = [];
+  /** @type {LocalSpace[]} */
+  const seeded = [];
   for (const c of idx.spaces) {
     if (gone.has(c.cid) && !c.removed) { c.removed = true; delete c.primary; indexChanged = true; }
     const l = loc.find(s => s.cid === c.cid);
@@ -136,8 +142,10 @@ export function mergeSpaces(local, index, newId, gone = new Set()) {
       renamed.push(l);
       localChanged = true;
     }
+    if (isUuid4(c.seed)) { if (l.seed !== c.seed) { l.seed = c.seed; seeded.push(l); localChanged = true; } }
+    else if (isUuid4(l.seed)) { c.seed = l.seed; indexChanged = true; }
   }
-  return { local: loc, index: idx, localChanged, indexChanged, added, renamed };
+  return { local: loc, index: idx, localChanged, indexChanged, added, renamed, seeded };
 }
 
 /**
@@ -304,9 +312,12 @@ export async function syncSpace({ drive, session, space, isMainSpace, local, gon
     indexChanged = true;
   }
   const m = mergeSpaces(list, index, newId, gone);
+  // la tête de l'espace ouvert telle qu'elle ressort de la liste du compte
+  const mine = m.local.find(s => s.id === me.id);
+  if (mine?.seed && mine.seed !== me.seed) me = { ...me, seed: mine.seed };
   if (indexChanged || m.indexChanged) {
     await writeIndex(drive, indexFile, m.index);
     for (const f of extra) { try { await drive.remove(f.id); } catch (e) { /* plus tard */ } }
   }
-  return { ...result, cid: me.cid || null, me, local: m.local, added: m.added, renamed: m.renamed, index: m.index, forkedFrom };
+  return { ...result, cid: me.cid || null, me, local: m.local, added: m.added, renamed: m.renamed, seeded: m.seeded, index: m.index, forkedFrom };
 }
