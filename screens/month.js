@@ -34,7 +34,7 @@ import {
 } from '../core/store.js';
 import { duesSectionHTML, wireDues } from './dues-ui.js';
 import { DUE, RES } from '../domain/words.js';
-import { openReserveSheet, coveredMonths, monthsRing, monthsPct, monthsLabel, goalRing, reservesRing, openAsideMenu, resTone, savTone, gapText, numDate } from './reserves.js';
+import { openReserveSheet, coveredMonths, monthsPct, monthsLabel, reservesRing, openAsideMenu, resTone, savTone, gapText, numDate } from './reserves.js';
 import { today, money, esc, approx } from '../core/format.js';
 import { dayShort } from './due-page.js';
 import { habitsLeft } from '../domain/budgets.js';
@@ -71,27 +71,33 @@ const savKind = x => (x.rep.reserves.length ? 0 : x.rep.goal ? 1 : 2);
 const savingsReports = savings => savings.map(a => ({ a, rep: savingsReport(a.id) }))
   .sort((p, q) => Number(p.a.emergency) - Number(q.a.emergency) || savKind(p) - savKind(q) || Number(savingsBad(q)) - Number(savingsBad(p)) || q.rep.balance - p.rep.balance);
 /**
- * Une ligne d'épargne dans Plan (2026-11-25, avec l'utilisateur : le résumé) : son nom, son solde, et une seule chose
- * dessous — le rouge (dates passées : déjà arrivé), sinon l'orange (ce qui manque aux versements, sinon celles qui ne
- * seront pas prêtes à temps), sinon ce qu'elle prépare (« Fêtes, Ordinateur et 2 autres »), son objectif, ou rien de prévu. Le fonds d'urgence : ses mois couverts.
+ * Une ligne d'épargne dans Plan (2026-11-25, revue le 2026-11-26 avec l'utilisateur) : sa pastille simple (plus d'anneau :
+ * il disait le remplissage, pas le retard), son nom, son solde, et dessous un verdict, une seule phrase — sur Plan, une
+ * épargne répond à « serai-je prêt à temps ? » ; ce qu'elle prépare est dit aux pages suivantes. Rouge : une date passée
+ * ou à utiliser aujourd'hui ; orange : ce qui manque aux versements, sinon celles qui ne seront pas prêtes à temps ;
+ * sinon « Dans les temps · Fêtes le 20 déc » (la prochaine dépense prévue datée), son objectif, ou rien de prévu. Le
+ * fonds d'urgence : ses mois couverts.
  * @param {{ a: any, rep: any }} x
  */
 function savingsRowHTML({ a, rep }) {
   const cur = a.currency;
   const row = (/** @type {string} */ pill, /** @type {string} */ sub) => rowHTML({ attrs: `data-sav="${a.id}"`, pill, title: esc(a.name), sub, subCls: 'wrap',
     end: `<span class="amt">${money(rep.balance, { cur })}</span>` });
-  if (a.emergency) return row(monthsRing(accountPill(a), coveredMonths(a)), monthsLabel(coveredMonths(a)));
-  const due = rep.reserves.filter((/** @type {any} */ v) => resTone(v) === 'loss').length;
+  if (a.emergency) return row(accountPill(a), monthsLabel(coveredMonths(a)));
+  const late = rep.reserves.filter((/** @type {any} */ v) => resTone(v) === 'loss');
+  const due = late.length;
+  const next = byDue(rep).find(v => v.reserve.due && v.reserve.due >= today());
   const day = rep.reserves.find((/** @type {any} */ v) => v.full && v.day);
   const names = byDue(rep).map(v => esc(v.reserve.name));
   const gap = rep.versement?.gap;
-  const sub = due ? `<span class="loss">${plural(due, 'date passée', 'dates passées')}</span>`
+  const sub = due ? `<span class="loss">${due > 1 ? plural(due, 'date passée', 'dates passées') : `${esc(late[0].reserve.name)} : date passée`}</span>`
     : day ? `<span class="rs-warn">${esc(day.reserve.name)} : à utiliser aujourd’hui</span>`
     : gap > 0 ? `<span class="rs-warn">${gapText(rep.versement, cur, true)}</span>`
     : rep.reserves.some((/** @type {any} */ v) => resTone(v) === 'warn') ? `<span class="rs-warn">${plural(rep.reserves.filter((/** @type {any} */ v) => resTone(v) === 'warn').length, 'pas prête à temps', 'pas prêtes à temps')}</span>`
-    : names.length ? (names.length > 2 ? `${names.slice(0, 2).join(', ')} et ${plural(names.length - 2, 'autre', 'autres')}` : names.join(' et '))
+    : next ? `Dans les temps · ${esc(next.reserve.name)} le ${dayShort(next.reserve.due)}`
+    : names.length ? 'Dans les temps'
     : rep.goal ? `${rep.goal.pct} % de l’objectif` : RES.None;
-  return row(goalRing(accountPill(a), rep.goal || reservesRing(rep)), sub);
+  return row(accountPill(a), sub);
 }
 /**
  * Les actions de l'épargne, toujours visibles (comme le « + » des autres sections, 2026-11-12) : l'invitation « Fonds
