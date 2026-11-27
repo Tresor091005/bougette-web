@@ -65,12 +65,14 @@ export function runway({ base, moves, today, period, window = 14, step = 1 }) {
  * now, usual : dépensé ce mois-ci jusqu'à aujourd'hui, et d'habitude au même jour ; pct : l'écart en % (null sans
  * habitude ou d'habitude rien) ; months : combien de périodes font l'habitude ; curveNow (jusqu'à aujourd'hui) et
  * curveUsual (toute la période) : le cumul jour après jour, pour la courbe.
- * @param {{ moves: Move[], today: string, current: Period, previous: Period[] }} o
+ * since (2026-11-27, avec l'utilisateur : les budgets) : la première dépense du journal entier, quand `moves` ne
+ * porte que celles d'une catégorie — une période d'avant est couverte par le journal, pas par la catégorie seule.
+ * @param {{ moves: Move[], today: string, current: Period, previous: Period[], since?: string }} o
  * @returns {{ now: number, usual: number, pct: number|null, months: number, day: number, curveNow: number[], curveUsual: number[] }}
  */
-export function habitPace({ moves, today, current, previous }) {
+export function habitPace({ moves, today, current, previous, since }) {
   const spends = moves.filter(m => m.type === 'expense' && !m.planned && m.date <= today);
-  const first = spends.reduce((d, m) => (m.date < d ? m.date : d), today);
+  const first = since ?? spends.reduce((d, m) => (m.date < d ? m.date : d), today);
   /** le cumul jour après jour d'une période (jusqu'à `upTo` compris) @param {Period} p @param {string} upTo */
   const cumul = (p, upTo) => {
     const out = Array(p.days).fill(0);

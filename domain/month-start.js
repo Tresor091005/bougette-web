@@ -1,5 +1,7 @@
 // Début du mois (D11 ; revu le 2026-11-19, avec l'utilisateur : tout le monde n'est pas payé un jour fixe). La règle :
-// - un nombre de 1 à 28 : ce jour-là chaque mois (« le 25 ») ;
+// - un nombre de 1 à 31 : ce jour-là chaque mois (« le 25 ») ; un mois qui n'a pas ce jour commence à son dernier jour
+//   (le 31 : le 30 avril, le 28 février) — ce n'est pas 'last' : le 30 reste le 30 dans un mois de 31 jours (2026-11-27,
+//   avec l'utilisateur ; avant, 1 à 28 seulement) ;
 // - 'w:N:D' : le Nᵉ jour D du mois, N = 1…4 ou L (le dernier), D = 1 (lundi) … 7 (dimanche) : « le 2ᵉ lundi »,
 //   « le dernier vendredi » ;
 // - 'last' : le dernier jour du mois ; 'work' : le dernier jour ouvré (du lundi au vendredi).
@@ -14,7 +16,7 @@ const dow = (y, m, d) => ((new Date(Date.UTC(y, m, d)).getUTCDay() + 6) % 7) + 1
 const RULE = /^w:([1-4L]):([1-7])$/;
 
 /** Une règle valide ? @param {any} v */
-export const isMonthStart = v => (Number.isInteger(v) && v >= 1 && v <= 28) || v === 'last' || v === 'work' || (typeof v === 'string' && RULE.test(v));
+export const isMonthStart = v => (Number.isInteger(v) && v >= 1 && v <= 31) || v === 'last' || v === 'work' || (typeof v === 'string' && RULE.test(v));
 
 /**
  * Le jour où commence le mois m de l'année y, selon la règle.
@@ -22,9 +24,9 @@ export const isMonthStart = v => (Number.isInteger(v) && v >= 1 && v <= 28) || v
  */
 export function startOn(y, m, rule) {
   const r = isMonthStart(rule) ? rule : 1;
-  if (typeof r === 'number') return ymd(y, m, r);
   const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
   const ym = new Date(Date.UTC(y, m, 1)), Y = ym.getUTCFullYear(), M = ym.getUTCMonth();
+  if (typeof r === 'number') return ymd(Y, M, Math.min(r, last));
   if (r === 'last') return ymd(Y, M, last);
   if (r === 'work') { let d = last; while (dow(Y, M, d) > 5) d--; return ymd(Y, M, d); }
   const [, n, dd] = /** @type {RegExpExecArray} */ (RULE.exec(r));

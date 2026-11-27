@@ -488,6 +488,8 @@ export const savingsAccounts = () => accounts().filter(a => a.savings);
 export const emergencyAccount = () => accounts().find(a => a.emergency) || null;
 // Dépense mensuelle moyenne des 3 derniers mois (monnaie principale), pour le fonds d'urgence.
 export const monthlySpend = () => lazy('monthlySpend:' + today(), s => V.monthlySpend(s, Q.settingsOf(s).currency, today()));
+/** Ce que coûte un mois normal, sans les dépenses payées avec une dépense prévue ; null sans un mois d'historique. @param {string} cur */
+export const usualSpend = cur => lazy('usualSpend:' + cur + ':' + today(), s => V.usualSpend(s, cur, today()));
 // Répartition, réserves, épargne libre, objectif et signaux d'un portefeuille d'épargne.
 /** Ce que deviendrait la répartition d'une épargne après une dépense sur une réserve (rien n'est écrit). @param {string} w @param {string} r @param {number} amount */
 export const allocationAfter = (w, r, amount) => V.allocationAfter(S(), w, today(), r, amount);
@@ -526,6 +528,8 @@ export const budgetOfTx = t => {
   return a && B.isCurrent(a) ? B.coveringBudget(S(), t.categoryId, a.currency, t.date) : null;
 };
 export const categoryBoard = () => lazy('catBoard:' + today(), s => B.categoryBoard(s, today()));
+// Les budgets face à d'habitude, à ce stade, et les catégories à surveiller (2026-11-27, avec l'utilisateur) : la page Budgets et Plan.
+export const budgetView = () => lazy('budgetView:' + today(), s => B.budgetView(s, today()));
 // Budgets de sous-catégories plus gros que celui de leur principale (on prévient, 2026-11-11).
 export const subsOver = catId => B.subsOver(S(), today(), catId);
 export const openReserves = walletId => lazy('reserves', s => V.reservesOf(s)).filter(r => !r.closed && (!walletId || r.wallet === walletId));

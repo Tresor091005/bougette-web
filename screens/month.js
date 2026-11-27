@@ -3,11 +3,10 @@
 // sur Y au total » ; plus de ligne « N budgets dépassés »
 // (2026-11-13 : la section Budgets les montre déjà en tête, en rouge). La barre de Disponible : échéances à payer, budgets, Disponible ; dessous, une
 // soustraction (2026-11-13, visuel A) : ce que tes habitudes sans budget vont encore prendre ce mois (habitsLeft), et au bout « Marge » : Disponible
-// moins ces habitudes, une estimation ; toucher la ligne des habitudes ouvre « Tous les budgets », dont le bloc « Tes
-// habitudes » en est le détail.
-// « Budgets » (revu le 2026-11-10) : une liste simple de catégories de dépenses (budget-cats.js),
-// les plus importantes d'abord — ce qui va mal toujours (budget dépassé, dépense inhabituelle sans budget), le reste
-// jusqu'à 3 lignes ; « Tous les budgets » ouvre leur détail (tous les budgets, puis les habitudes) ; toucher une catégorie ouvre sa page (budgets, opérations). « Réserves » (D17) : toutes les réserves ouvertes,
+// moins ces habitudes, une estimation ; toucher la ligne des habitudes ouvre « Budgets », dont la liste en est le détail.
+// « Budgets » (revu le 2026-11-10, 2026-11-27) : les premières lignes de la page Budgets (budget-cats.js, la même
+// fonction) — ce qui va mal toujours (budget dépassé ou au-dessus de son habitude à ce stade, catégorie « à surveiller »), puis les autres budgets jusqu'à 3 lignes ;
+// « Budgets » ouvre la page entière ; toucher une catégorie ouvre sa page (budgets, opérations). « Réserves » (D17) : toutes les réserves ouvertes,
 // « Épargnes » (2026-11-25, avec l'utilisateur : une seule section,
 // les dépenses prévues vivent dans une épargne — plus de section « Dépenses prévues » à part ; trois niveaux comme les
 // budgets) : ici un résumé, 3 lignes au plus (ce qui a un souci d'abord, puis les plus gros soldes, le fonds d'urgence
@@ -30,20 +29,20 @@
 // Tout est une lecture (src/domain/budgets.js) ; posé sur le papier, sans cartes (D0).
 import {
   settings, budgetReport, savingsAccounts,
-  savingsReport, emergencyAccount, pref, categoryBoard, dueItems, schedules,
+  savingsReport, emergencyAccount, pref, categoryBoard, budgetView, dueItems, schedules,
 } from '../core/store.js';
 import { duesSectionHTML, wireDues } from './dues-ui.js';
 import { DUE, RES } from '../domain/words.js';
 import { openReserveSheet, coveredMonths, monthsPct, monthsLabel, reservesRing, openAsideMenu, resTone, savTone, gapText, numDate } from './reserves.js';
 import { today, money, esc, approx } from '../core/format.js';
 import { dayShort } from './due-page.js';
-import { habitsLeft } from '../domain/budgets.js';
+import { habitsLeft, planRows } from '../domain/budgets.js';
 import { icon } from '../core/icons.js';
 import { buzz, fitText, splitAmount, countUp, menuSheet, afterSheets, $, $$ } from '../core/ui.js';
 import { accountPill } from './pickers.js';
 import { openBudgetSheet } from './budget-sheet.js';
 import { openAccountSheet } from './accounts.js';
-import { listHTML, wireCatRows } from './budget-cats.js';
+import { planRowHTML, wireCatRows } from './budget-cats.js';
 import { titleLink, listPageHTML, wireListPage, rowHTML, sectionHTML, emptyState } from './parts.js';
 
 const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
@@ -191,16 +190,11 @@ export function render(app, ctx) {
   // Épargne (D17) : les portefeuilles d'épargne actifs et leurs réserves
   const savings = savingsAccounts().filter(a => !a.archived);
   const reports = savingsReports(savings);
-  // liste simple, les plus importantes d'abord : ce qui va mal toujours (budgets dépassés, du plus dépassé au moins
-  // dépassé, puis dépenses inhabituelles, de la plus forte à la plus faible), puis jusqu'à 3 lignes — les budgets les
-  // plus entamés, puis les catégories sans budget qui dépensent le plus ce mois
+  // les mêmes lignes que la page Budgets, de la même fonction (2026-11-27, avec l'utilisateur) : ce qui va mal toujours
+  // (budget dépassé ou au-dessus de son habitude à ce stade, puis les catégories « à surveiller »), puis les autres
+  // budgets dans l'ordre de la page, jusqu'à 3
   const board = categoryBoard();
-  const over = x => x.main && x.main.over ? x.main.spent / x.main.budget.amount : 0;
-  const problems = board.filter(x => x.problem)
-    .sort((p, q) => over(q) - over(p) || (q.average ? q.spent / q.average : 0) - (p.average ? p.spent / p.average : 0));
-  const fill = board.filter(x => x.main && !x.problem).sort((p, q) => q.main.spent / q.main.budget.amount - p.main.spent / p.main.budget.amount)
-    .concat(board.filter(x => !x.main && !x.problem && x.spent > 0).sort((p, q) => q.spent - p.spent));
-  const catItems = [...problems, ...fill.slice(0, Math.max(0, MAX_ROWS - problems.length))];
+  const catItems = planRows(budgetView(), MAX_ROWS);
   // Marge : Disponible moins ce que les habitudes sans budget vont encore prendre ce mois (une estimation)
   // une estimation : arrondie au pas de la devise (D0) ; la Marge suit, Disponible reste exact
   const ahead = approx(habitsLeft(board));
@@ -221,7 +215,7 @@ export function render(app, ctx) {
 
     ${sectionHTML({ head: titleLink('Budgets', 'data-all'), body: `
       ${r.list.length ? '' : emptyState('Fixe un montant pour une catégorie : il ne compte plus dans Disponible.', { add: ['data-new', 'Créer un budget'] })}
-      ${catItems.length ? `<div class="group" data-budgets>${listHTML(catItems)}</div>` : ''}` })}
+      ${catItems.length ? `<div class="group" data-budgets>${catItems.map(planRowHTML).join('')}</div>` : ''}` })}
 
     ${sectionHTML({ head: titleLink('Épargnes', 'data-all-sav'), body: savingsSectionHTML(reports, savings) })}
 

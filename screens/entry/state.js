@@ -17,6 +17,7 @@ export const UNTRACKED_IDS = new Set(Object.values(UNTRACKED));
  *   tx: any, copy: any, due: any, onSaved: (() => void)|null,
  *   editing: boolean, canPlan: boolean, held: boolean, bounds: { min: string|null, max: string }|null,
  *   prePlan: { accountId: string, reserveId: string|null, other: boolean, swapped: string|null }|null,
+ *   aside: boolean,
  *   canFuture: boolean, planAsked: boolean, prefer: string|null, wasPlanning: boolean, onCreated: ((made: any) => void)|null, plan: Record<string, any>|null,
  *   planned: { amount: number, currency: string }|null,
  *   st: any, opType: string, copyFrom: string|null,
@@ -33,7 +34,7 @@ export const UNTRACKED_IDS = new Set(Object.values(UNTRACKED));
  * amount : un montant proposé (sans opération de départ).
  * @returns {Entry}
  */
-export function entryState({ type, tx, copy, accountId, toAccountId, reserveId, due, date, amount = 0, onSaved, plan = null, onCreated = null }) {
+export function entryState({ type, tx, copy, accountId, toAccountId, reserveId, due, date, amount = 0, onSaved, plan = null, onCreated = null, aside = false }) {
   const editing = !!tx;
   // programmer (2026-11-26) : une nouvelle opération seulement (une copie y a droit) ; ni modifier, ni confirmer, ni utiliser une réserve
   const canFuture = !editing && !due && !reserveId;
@@ -88,7 +89,7 @@ export function entryState({ type, tx, copy, accountId, toAccountId, reserveId, 
   if (st.type === 'transfer' && st.toAccountId === st.accountId) st.toAccountId = null;
   const E = /** @type {Entry} */ ({
     tx, copy, due, onSaved, editing, canPlan, held, bounds, planned, st, opType,
-    canFuture, planAsked, plan, onCreated, wasPlanning: false, prePlan: null,
+    canFuture, planAsked, plan, onCreated, wasPlanning: false, prePlan: null, aside,
     // la répétition pré-cochée dans « Quand ? » pour un seul jour touché : chaque mois quand on veut programmer sans date
     prefer: planAsked ? 'month' : null,
     // une copie (Dupliquer) ou une opération à programmer arrive remplie : elle n'est « à perdre » que si on y a changé quelque chose
@@ -97,7 +98,9 @@ export function entryState({ type, tx, copy, accountId, toAccountId, reserveId, 
   });
   // le mode de départ posé (portefeuille d'une dépense programmée…) avant de noter ce qui était rempli
   syncMode(E);
-  if (copy || plan) E.copyFrom = sigOf(st, opType, planAsked);
+  // une saisie qui arrive remplie (copie, opération à programmer, mise de côté préremplie avec ce qui manque) : rien à
+  // perdre tant qu'on n'y a rien changé
+  if (copy || plan || aside) E.copyFrom = sigOf(st, opType, planAsked);
   return E;
 }
 
@@ -117,14 +120,14 @@ export const after = (E, accId) => balanceAfter(balances()[accId] || 0, E.tx, ca
 // opération qu'on modifie, un changement ; en vérification, un montant différent de celui proposé (ou un montant tapé avant). La croix ferme
 // toujours sans demander ; l'enregistrement aussi.
 /** @param {Entry} E */
-const started = E => (E.copy || E.plan ? sigOf(E.st, E.opType, E.planAsked) !== E.copyFrom : !!E.st.amount || !!E.st.when);
+const started = E => (E.copy || E.plan || E.aside ? sigOf(E.st, E.opType, E.planAsked) !== E.copyFrom : !!E.st.amount || !!E.st.when);
 /** @param {Entry} E */
 export function dirty(E) {
   const { st, pad } = E;
   if (E.saving) return false;
   // (en vérification, l'opération commencée avant est gardée pour le retour : elle compte aussi)
   if (checking(E)) return st.actual !== E.checkFrom || !!(pad && pad.hasOp()) || started(E);
-  if (!E.editing) return started(E) || !!(pad && (E.copy || E.plan ? pad.hasOp() : pad.expr()));
+  if (!E.editing) return started(E) || !!(pad && (E.copy || E.plan || E.aside ? pad.hasOp() : pad.expr()));
   return edited(E.tx, candidate(E), st.note);
 }
 

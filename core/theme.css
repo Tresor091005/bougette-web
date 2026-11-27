@@ -370,7 +370,7 @@ html.has-sheet #toast { bottom: calc(var(--sab) + 24px); }
 
 .about { text-align: center; padding: var(--sp-14) 0 var(--sp-4); color: var(--ink-2); font-size: var(--fs-2nd); }
 .about .logo { width: 40px; height: 40px; margin: 0 auto var(--sp-4); }
-.about b { display: block; font: 600 var(--fs-body) var(--sans); color: var(--ink); margin-bottom: var(--sp-2); } /* au moins l'interligne des lignes dessous */
+.about .wordmark { display: block; width: 104px; height: auto; margin: 0 auto var(--sp-4); color: var(--accent-text); } /* le nom en blocs (src/core/wordmark.js) */
 
 .daynum-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--sp-3); padding: var(--sp-3) 0 var(--sp-5); }
 .daynum-grid button { height: 44px; border-radius: var(--r-pill); font: 400 var(--fs-body) var(--sans); background: var(--field); font-variant-numeric: tabular-nums; }
@@ -422,6 +422,7 @@ html.has-sheet #toast { bottom: calc(var(--sab) + 24px); }
 .lk-more .btn .ic { width: 18px; height: 18px; margin-right: var(--sp-3); }
 .lk-sheet { display: flex; flex-direction: column; align-items: center; text-align: center; padding-bottom: var(--sp-3); }
 .lk-sheet .muted { margin: 0 0 var(--sp-3); font-size: var(--fs-2nd); }
+.lk-sheet [data-phone] { margin-top: var(--sp-9); } /* « Utiliser le téléphone » ne colle pas au 0 du pavé (2026-11-27, avec l'utilisateur) */
 @media (max-height: 640px) { .lk-in { padding-top: calc(var(--sat) + var(--sp-10)); } .lk-pad .key { height: 52px; } .lk-dots { margin-bottom: var(--sp-8); } }
 
 /* gélule éteinte d'un sélecteur (ex. Dépense depuis une épargne, D17) */

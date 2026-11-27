@@ -14,6 +14,7 @@ import { onInbox, unread } from './inbox.js';
 import * as home from '../screens/home.js';
 import * as ops from '../screens/transactions.js';
 import * as month from '../screens/month.js';
+import * as report from '../screens/report.js';
 import * as reservesScreen from '../screens/reserves.js';
 import { categoryScreen, allScreen } from '../screens/budget-cats.js';
 import { duePage } from '../screens/due-page.js';
@@ -48,6 +49,11 @@ const ROUTES = {
   '': { mod: home, tab: 'home' },
   operations: { mod: ops, tab: 'ops' },
   mois: { mod: month, tab: 'month' },
+  // Rapports (2026-11-27, avec l'utilisateur : reproduits de Money Lover), ouverts depuis le Journal et la tuile des dépenses de l'accueil
+  rapport: { mod: report },
+  'rapport/net': { mod: report.netScreen },
+  'rapport/detail': { mod: report.detailScreen },
+  'rapport/categorie': { mod: report.categoryScreen },
   // Épargne et réserves (D17), ouverte depuis Budget
   epargne: { mod: reservesScreen },
   // Plan (ex-Budget), budget par catégorie : la page d'une catégorie (budgets, opérations) et l'arbre entier

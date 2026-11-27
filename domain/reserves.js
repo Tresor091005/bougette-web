@@ -575,3 +575,39 @@ export function monthlySpend(s, cur, today) {
   const days = Math.min(90, Math.max(1, daysBetween(first, today)));
   return Math.round((total * 30.44) / days);
 }
+
+/**
+ * Vaut-il la peine de demander « La préparer ? » (2026-11-27, avec l'utilisateur) : le surplus que le mois où elle tombe
+ * porterait (tout, moins la part qu'on aurait mise de côté chaque mois) doit dépasser 10 % d'un mois normal. En dessous,
+ * un mois normal varie déjà d'autant : la question serait du bruit. Sans un mois d'historique, on demande toujours.
+ * @param {number} amount @param {number} months @param {number|null} usual
+ */
+export function worthPreparing(amount, months, usual) {
+  if (!usual) return true;
+  const extra = months > 1 ? amount - amount / months : amount;
+  return extra > usual / 10;
+}
+
+/**
+ * Ce que coûte un mois normal (2026-11-27, avec l'utilisateur, pour le seuil de « La préparer ? ») : la moyenne mensuelle
+ * des dépenses validées des 3 derniers mois, sans celles payées avec une dépense prévue (les gros coups qu'on lisse, pas
+ * le train de vie). Les virements (épargne comprise) et les revenus n'y sont pas. null sans un mois d'historique.
+ * @param {State} s @param {string} cur @param {string} today @returns {number|null}
+ */
+export function usualSpend(s, cur, today) {
+  const used = new Set();
+  for (const r of s.reserves.values()) if (r.uses) for (const id of JSON.parse(r.uses)) used.add(id);
+  const from = addDays(today, -90);
+  let total = 0, first = null;
+  for (const e of s.entries.values()) {
+    if (e.kind !== 'expense' || e.status !== 'posted') continue;
+    if (!first || e.occurred_on < first) first = e.occurred_on;
+    if (used.has(e.id) || e.occurred_on <= from || e.occurred_on > today) continue;
+    for (const l of linesOf(s, e.id)) {
+      const a = s.accounts.get(l.account);
+      if (a?.kind === 'expense' && l.currency === cur) total += l.amount;
+    }
+  }
+  if (!first || daysBetween(first, today) < 30) return null;
+  return Math.round((total * 30.44) / Math.min(90, daysBetween(first, today)));
+}

@@ -15,6 +15,7 @@ import { openAccountSheet } from './accounts.js';
 import { currentSpace } from '../core/spaces.js';
 import { spaceAvatar } from '../core/avatar.js';
 import { openSpacesSheet } from './spaces.js';
+import { smoothPath } from './report-charts.js';
 
 // L'ouverture (2026-11-21, avec l'utilisateur) : au premier rendu de l'accueil, ses tuiles se lèvent l'une après l'autre,
 // comme l'écran Bienvenue ; une fois par ouverture de l'app, jamais avec « réduire les animations ». Verrouillée, l'app
@@ -40,19 +41,8 @@ function habitCurve(h, cls, { big = false, start = '', end = '', today: now = ''
   const max = Math.max(1, ...h.curveUsual, ...h.curveNow) * 1.08;
   const x = (/** @type {number} */ i) => pad + (i / (n - 1)) * (W - 2 * pad);
   const y = (/** @type {number} */ v) => H - pad - (v / max) * (H - 2 * pad);
-  /** une courbe lissée par les points (Catmull-Rom vers Bézier, sans dépasser) @param {number[]} c */
-  const path = c => {
-    const p = c.map((v, i) => [x(i), y(v)]);
-    if (p.length < 2) return p.length ? `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}` : '';
-    let d = `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}`;
-    for (let i = 0; i < p.length - 1; i++) {
-      const [x0, y0] = p[i - 1] || p[i], [x1, y1] = p[i], [x2, y2] = p[i + 1], [x3, y3] = p[i + 2] || p[i + 1];
-      const c1 = [x1 + (x2 - x0) / 6, Math.min(Math.max(y1 + (y2 - y0) / 6, Math.min(y1, y2)), Math.max(y1, y2))];
-      const c2 = [x2 - (x3 - x1) / 6, Math.min(Math.max(y2 - (y3 - y1) / 6, Math.min(y1, y2)), Math.max(y1, y2))];
-      d += ` C${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)}`;
-    }
-    return d;
-  };
+  /** une courbe lissée par les points (report-charts.js) @param {number[]} c */
+  const path = c => smoothPath(c.map((v, i) => [x(i), y(v)]));
   const last = h.curveNow.length - 1;
   const nowLine = path(h.curveNow);
   const area = h.curveNow.length > 1 ? `${nowLine} L${x(last).toFixed(1)},${(H - pad).toFixed(1)} L${x(0).toFixed(1)},${(H - pad).toFixed(1)} Z` : '';
@@ -150,7 +140,7 @@ export function render(app, { go }) {
       <button type="button" class="pf-t" data-go="#/mois"><span class="pf-l">Disponible<i>:</i></span>
         <span class="pf-row"><b class="pf-v sm${report.available < 0 ? ' loss' : ''}">${amt(report.available)}</b><span class="pf-d">F</span></span></button>
 
-      <button type="button" class="pf-t w tall" data-go="#/operations"><span class="pf-l">Dépenses · ${esc(p.label)}<i>${perWeek.map((_, i) => `<em class="${i === nowWeek ? 'on' : ''}">S${i + 1}</em>`).join(' ')}</i></span>
+      <button type="button" class="pf-t w tall" data-go="#/rapport/detail?type=expense"><span class="pf-l">Dépenses · ${esc(p.label)}<i>${perWeek.map((_, i) => `<em class="${i === nowWeek ? 'on' : ''}">S${i + 1}</em>`).join(' ')}</i></span>
         <span class="pf-row"><span class="pf-col"><span class="pf-s">${esc(shortDate(t))}</span><b class="pf-v">${amt(spent)}</b></span>
           <span class="pf-bars" aria-hidden="true">${perWeek.map((v, i) => `<i class="${i === nowWeek ? 'on' : ''}" style="height:${Math.max(4, Math.round((v / maxW) * 100))}%"></i>`).join('')}</span></span></button>
 

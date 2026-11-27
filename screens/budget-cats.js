@@ -1,22 +1,24 @@
-// Budgets par catégorie (revu le 2026-11-10) : Plan en montre une liste simple, les plus importantes d'abord (listHTML) ;
-// « Tous les budgets » (#/mois/categories, 2026-11-12) en est le détail : tous les budgets en cours, puis les habitudes
-// (ce que la Marge compte). Une ligne par catégorie : avec budget, celui du plus court (un dépassé d'abord), ce qui est
-// parti sur ce qu'il prévoit ; sans budget, son dépensé du mois et, si elle a une habitude, la barre hachurée de
-// l'habitude (c'est elle qui dit « pas de budget » : plus de gris, 2026-11-12). Famille (2026-11-11, D13 revu) : une principale compte ses
-// sous-catégories (sa barre, son dépensé, son habitude) ; une sous-catégorie ne compte qu'elle. Pas de crayon : toucher la ligne ouvre SA page (#/mois/categorie?c=<id>) : ses budgets en cours avec
+// Budgets par catégorie (revu le 2026-11-10) : Plan en montre les premières lignes (planRows, domaine) ;
+// « Budgets » (#/mois/categories, 2026-11-12, refait le 2026-11-27, avec l'utilisateur) est la page : « Reste dans tes
+// budgets », une légende, « Tes budgets » — chaque ligne dit, sur sa barre et dessous, où l'on en est face à d'habitude, au
+// même stade de SA période (budgetView : un trait vertical à ce qui était dépensé d'habitude, puis « comme d'habitude »,
+// « X de plus que d'habitude à ce stade » ou « sous ton rythme ») —, « Hors budget, à surveiller » (les catégories sans
+// budget qui dépassent leur habitude à ce stade), un lien vers le rapport du mois, « Budgets terminés ». Famille
+// (2026-11-11, D13 revu) : une principale compte ses sous-catégories (sa barre, son dépensé) ; une sous-catégorie ne compte
+// qu'elle. Pas de crayon : toucher la ligne ouvre SA page (#/mois/categorie?c=<id>) : ses budgets en cours avec
 // leurs barres (plusieurs permis, pas deux de même durée en même temps) et ses budgets terminés. Toucher un budget en
 // cours (2026-11-13, une ligne, un geste) demande quoi en faire : le modifier (sa feuille) ou voir ses opérations (le
 // Journal sur sa catégorie et sa période en cours : pas de liste à moitié ici, le Journal a tout). Un budget ne compte que l'argent courant (revu le 2026-11-10) : les dépenses payées
 // depuis une épargne ou un portefeuille hors du total n'y comptent pas, et une phrase le dit.
 import {
-  category, categoryLabel, allCategories, categoryBoard, budgetReport, finishedOf, finishedGroups, finishedBudget, transactions, settings, account,
+  category, categoryLabel, allCategories, categoryBoard, budgetReport, budgetView, finishedOf, finishedGroups, finishedBudget, transactions, settings, account,
 } from '../core/store.js';
 import { today, money, num, esc, shortDate, approx, approxUp } from '../core/format.js';
 import { icon } from '../core/icons.js';
 import { chip, buzz, fitText, menuSheet, afterSheets, fabHTML, $, $$ } from '../core/ui.js';
 import { openBudgetSheet } from './budget-sheet.js';
 import { opsHref } from './transactions.js';
-import { budgetMonth, currentWindow, UNUSUAL, habitsLeft } from '../domain/budgets.js';
+import { budgetMonth, currentWindow, habitsLeft } from '../domain/budgets.js';
 import { topbarHTML, wireBack, endedHTML, listPageHTML, wireListPage, sectionHTML, emptyState } from './parts.js';
 
 /** @param {string} id */
@@ -25,18 +27,25 @@ export const catHref = id => `#/mois/categorie?c=${encodeURIComponent(id)}`;
 const period = (a, b) => (a.slice(0, 7) === b.slice(0, 7) ? `du ${Number(a.slice(8))} au ${shortDate(b)}` : `du ${shortDate(a)} au ${shortDate(b)}`);
 
 /**
- * Une ligne de budget (Plan, « Tous les budgets ») : à droite le reste ou le dépassement, la barre, dessous jusqu'à
- * quand seulement (2026-11-13, avec l'utilisateur : le montant prévu et le déjà dépensé sont dans sa page).
- * @param {any} s @param {{ name?: string, extra?: string }} [o]
+ * Une ligne de budget (Plan, « Budgets ») : à droite le reste ou le dépassement, la barre, dessous jusqu'à quand seulement
+ * (2026-11-13, avec l'utilisateur : le montant prévu et le déjà dépensé sont dans sa page). Avec un repère (pace, 2026-11-27,
+ * avec l'utilisateur) : un trait fin sur la barre à ce qui était dépensé d'habitude à ce stade (borné à la barre), et
+ * dessous le verdict puis la période — « comme d'habitude · jusqu'au 30 nov », « X de plus que d'habitude à ce stade » (rouge,
+ * seul : il est long), « sous ton rythme · jusqu'au 30 nov » (vert).
+ * @param {any} s @param {{ name?: string, extra?: string, pace?: any }} [o]
  */
-function budgetBar(s, { name = '', extra = '' } = {}) {
+function budgetBar(s, { name = '', extra = '', pace = null } = {}) {
   const b = s.budget, cur = b.currency, w = s.window;
   const right = s.over ? `<span class="loss">${money(-s.remaining, { cur })} de trop</span>` : `<small>reste</small> ${money(s.remaining, { cur })}`;
   const when = w.start > today() ? `à partir du ${shortDate(w.start)}` : `jusqu’au ${shortDate(w.end)}`;
   const pct = Math.min(100, (s.spent / b.amount) * 100);
+  const tick = pace ? `<b class="tick" style="left:${Math.min(100, Math.max(0, (pace.usual / b.amount) * 100))}%"></b>` : '';
+  const say = !pace ? '' : pace.verdict === 'above' ? `<span class="loss">${money(approx(pace.diff, cur), { cur })} de plus que d’habitude à ce stade</span>`
+    : pace.verdict === 'below' ? '<span class="gain">sous ton rythme</span>' : 'comme d’habitude';
+  const line = pace && pace.verdict === 'above' ? say : `${say ? `${say} · ` : ''}<span class="nw">${when}</span>`;
   return `<span class="main"><span class="l1"><span class="t">${name}</span><span class="v">${right}</span></span>
-    <span class="bar${s.over ? ' over' : ''}"><i style="width:${pct}%"></i></span>
-    <span class="l2"><span class="s"><span class="nw">${when}</span>${extra}</span></span></span>`;
+    <span class="bar${s.over ? ' over' : ''}${pace ? ' pace' : ''}"><i style="width:${pct}%"></i>${tick}</span>
+    <span class="l2"><span class="s">${line}${extra}</span></span></span>`;
 }
 
 /**
@@ -70,68 +79,37 @@ function nameOf(id) {
 }
 
 /**
- * Ligne d'une catégorie (Plan, « Tous les budgets ») : avec un budget, sa barre ; sans budget, son dépensé du mois et,
- * avec une habitude, la barre hachurée de l'habitude.
- * @param {any} x élément de categoryBoard
+ * Ligne d'un budget (Plan, « Budgets ») : sa barre, ce qui reste ou le trop, son repère d'habitude, jusqu'à quand.
+ * @param {any} r ligne de budgetView (rows) : x, élément de categoryBoard avec un budget, et pace
  */
-export function catRowHTML(x) {
-  const c = category(x.id);
-  const name = esc(nameOf(x.id));
-  const cls = 'row mrow b-cat';
-  if (x.main) {
-    const more = x.budgets.length > 1 ? ` · ${x.budgets.length} budgets` : '';
-    return `<div class="${cls}" style="--c:var(--${c?.color || 'c0'})">
-      <button type="button" class="mrow-go" data-cat-go="${x.id}" aria-label="${esc(categoryLabel(x.id))} : ses budgets et ses opérations">${chip(c)}${budgetBar(x.main, { name, extra: more })}</button>
+export function catRowHTML(r) {
+  const x = r.x, c = category(x.id);
+  const more = x.budgets.length > 1 ? ` · ${x.budgets.length} budgets` : '';
+  return `<div class="row mrow b-cat" style="--c:var(--${c?.color || 'c0'})">
+      <button type="button" class="mrow-go" data-cat-go="${x.id}" aria-label="${esc(categoryLabel(x.id))} : ses budgets et ses opérations">${chip(c)}${budgetBar(x.main, { name: esc(nameOf(x.id)), extra: more, pace: r.pace })}</button>
 </div>`;
-  }
-  // sans budget : son dépensé du mois (« 0 F » pâle s'il n'y a rien). Avec une habitude, la barre de l'habitude : hachurée (pas de budget),
-  // un trait à la moyenne, le bout à UNUSUAL × la moyenne — pleine et rouge seulement quand « Plus que d'habitude »
-  // s'allume ; dessous, où elle en est par rapport à son habitude
-  const cur = settings().currency;
-  const right = x.spent ? `${money(x.spent, { cur })} <small>ce mois</small>` : `<span class="zero">${money(0, { cur })}</span>`;
-  let s = '';
-  if (x.habit) {
-    const avg = money(approx(x.average, cur), { cur });
-    const say = x.unusual ? `<span class="loss">Plus que d’habitude (${avg} en moyenne)</span>`
-      : x.spent > x.average ? `au-dessus de l’habitude (${avg})` : `${avg} d’habitude`;
-    const pct = Math.min(100, (x.spent / (x.average * UNUSUAL)) * 100);
-    s = `<span class="bar hb${x.unusual ? ' hot' : ''}"><i style="width:${pct}%"></i><b class="tick" style="left:${100 / UNUSUAL}%"></b></span>
-      <span class="l2"><span class="s">${say}</span></span>`;
-  }
-  return `<div class="${cls} b-none">
-    <button type="button" class="mrow-go" data-cat-go="${x.id}" aria-label="${esc(categoryLabel(x.id))} : sans budget">${chip(c)}
-    <span class="main"><span class="l1"><span class="t">${name}</span><span class="v">${right}</span></span>${s}</span></button></div>`;
 }
 
 /**
- * Les habitudes de « Tous les budgets » (2026-11-12) : exactement ce que la Marge compte — chaque catégorie qu'aucun
- * budget ni échéance ne tient et qui a une habitude, pour elle-même (own : une principale sans ses sous-catégories) —,
- * quand il lui reste quelque chose à venir ce mois ; ce qui va le plus partir d'abord.
- * @param {any[]} board
+ * Une catégorie « à surveiller » (2026-11-27, avec l'utilisateur) : sans budget, elle dépense plus que d'habitude à ce
+ * stade du mois — son nom, son dépensé du mois, et l'écart en rouge.
+ * @param {any} w ligne de budgetView (watch)
  */
-export const habitRows = board => board.filter(x => !x.covered && x.own?.habit && x.own.average - x.own.spent > 0)
-  .sort((p, q) => (q.own.average - q.own.spent) - (p.own.average - p.own.spent));
-
-/**
- * Une habitude : à droite ce qui va sans doute encore partir ce mois (« à venir X », comme « reste X » pour un budget),
- * la barre hachurée de l'habitude, dessous où elle en est (« 550 F sur 1 333 F d'habitude »).
- * @param {any} x élément de categoryBoard
- */
-function habitRowHTML(x) {
-  const c = category(x.id), cur = settings().currency, f = x.own;
-  const pct = Math.min(100, (f.spent / (f.average * UNUSUAL)) * 100);
-  const where = f.spent ? `${money(f.spent, { cur })} sur ${money(approx(f.average, cur), { cur })} d’habitude` : `${money(approx(f.average, cur), { cur })} d’habitude`;
+export function watchRowHTML(w) {
+  const c = category(w.id), cur = settings().currency;
   return `<div class="row mrow b-cat b-none" style="--c:var(--${c?.color || 'c0'})">
-    <button type="button" class="mrow-go" data-cat-go="${x.id}" aria-label="${esc(categoryLabel(x.id))} : son habitude">${chip(c)}
-    <span class="main"><span class="l1"><span class="t">${esc(nameOf(x.id))}</span><span class="v"><small>à venir</small> ${money(approx(f.average - f.spent, cur), { cur })}</span></span>
-    <span class="bar hb"><i style="width:${pct}%"></i><b class="tick" style="left:${100 / UNUSUAL}%"></b></span>
-    <span class="l2"><span class="s">${where}</span></span></span></button></div>`;
+    <button type="button" class="mrow-go" data-cat-go="${w.id}" aria-label="${esc(categoryLabel(w.id))} : plus que d’habitude">${chip(c)}
+    <span class="main"><span class="l1"><span class="t">${esc(nameOf(w.id))}</span><span class="v">${money(w.spent, { cur })} <small>ce mois</small></span></span>
+    <span class="l2"><span class="s"><span class="loss">${money(approx(w.pace.diff, cur), { cur })} de plus que d’habitude à ce stade</span></span></span></span></button></div>`;
 }
 
-/** Liste simple, dans l'ordre donné, sans retrait : quelques lignes prises n'importe où dans l'arbre. @param {any[]} items */
-export const listHTML = items => items.map(x => catRowHTML(x)).join('');
+/** Une ligne de planRows. @param {any} l */
+export const planRowHTML = l => (l.kind === 'watch' ? watchRowHTML(l) : catRowHTML(l));
 
-/** La ligne ouvre la page de la catégorie (ses budgets s'y modifient). @param {HTMLElement} root @param {any} ctx */
+/**
+ * La ligne ouvre la page de la catégorie (ses budgets s'y modifient).
+ * @param {HTMLElement} root @param {any} ctx
+ */
 export function wireCatRows(root, ctx) {
   $$('[data-cat-go]', root).forEach(b => (b.onclick = () => { buzz(6); ctx.go(catHref(b.dataset.catGo)); }));
 }
@@ -164,32 +142,35 @@ export function wireDone(root, ctx) {
 }
 
 /**
- * « Tous les budgets » (2026-11-12, avec l'utilisateur ; avant : « Toutes les catégories », l'arbre entier) : le détail
- * de Plan en deux blocs. Tes budgets : tous les budgets en cours, la même ligne que dans Plan, ce qui dépasse en tête,
- * puis les plus entamés. Tes habitudes : ce que la Marge compte (habitRows). En tête, « Reste dans tes budgets » et ce
- * qui ira sans doute dans tes habitudes (sans budget : ce chiffre seul). Rien d'autre : les catégories sans rien, les
- * dépenses d'une fois et l'arbre vivent ailleurs (Moi › Catégories, le Journal par catégorie). En bas, « Budgets
- * terminés » : une ligne par catégorie sans budget en cours ni à venir (ou archivée), absente d'ici comme de Plan, le
- * seul chemin vers sa page (« 11 terminés · jusqu'au 31 oct » ; un seul : ce qu'il a dépensé et sa période).
+ * « Budgets » (2026-11-12, avec l'utilisateur ; refait le 2026-11-27, avec l'utilisateur) : le détail de Plan. En tête,
+ * « Reste dans tes budgets » et ce qui ira sans doute dans tes habitudes, puis une légende (un trait : « d'habitude, à ce
+ * stade de la période »). « Tes budgets » : une ligne par budget (budgetView), les dépassés d'abord puis les plus entamés,
+ * chacune avec son repère d'habitude sur SA période quand le journal en a assez (budgetPace). « Hors budget, à surveiller » :
+ * seulement les catégories sans budget ni échéance qui dépassent leur habitude à ce stade du mois ; absente sinon. Un lien
+ * vers le rapport du mois. En bas, « Budgets terminés » : une ligne par catégorie sans budget en cours ni à venir (ou
+ * archivée), absente d'ici comme de Plan, le seul chemin vers sa page (« 11 terminés · jusqu'au 31 oct » ; un seul : ce
+ * qu'il a dépensé et sa période). Rien d'autre : les dépenses d'une fois et l'arbre vivent ailleurs (Moi › Catégories, le
+ * Journal par catégorie).
  */
 export const allScreen = {
   /** @param {HTMLElement} app @param {any} ctx */
   render(app, ctx) {
-    const board = categoryBoard();
+    const V = budgetView();
     const r = budgetReport();
-    const over = (/** @type {any} */ x) => (x.main.over ? x.main.spent / x.main.budget.amount : 0);
-    const used = (/** @type {any} */ x) => x.main.spent / x.main.budget.amount;
-    const buds = board.filter(x => x.main).sort((p, q) => over(q) - over(p) || used(q) - used(p));
-    const habits = habitRows(board);
-    const ahead = approx(habitsLeft(board));
+    const board = categoryBoard();
+    const cur = settings().currency;
+    const ahead = approx(habitsLeft(board), cur);
     const done = finishedGroups();
-    const intro = buds.length ? { label: 'Reste dans tes budgets', big: money(r.inBudgets), sub: ahead ? `${money(ahead)} iront sans doute dans tes habitudes` : '' }
-      : ahead ? { label: 'Iront sans doute dans tes habitudes', big: money(ahead) } : null;
-    app.innerHTML = listPageHTML({ title: 'Budgets', intro, fab: 'Créer un budget',
-      body: `${sectionHTML({ title: 'Tes budgets', body: `
-        ${buds.length ? `<div class="group">${buds.map(x => catRowHTML(x)).join('')}</div>` : emptyState('Pas encore de budget', { add: ['data-new', 'Créer un budget'] })}` })}
-      ${habits.length ? sectionHTML({ title: 'Tes habitudes', body: `
-        <div class="group">${habits.map(habitRowHTML).join('')}</div>` }) : ''}`,
+    const intro = V.rows.length ? { label: 'Reste dans tes budgets', big: money(r.inBudgets, { cur }), sub: ahead ? `${money(ahead, { cur })} iront sans doute dans tes habitudes` : '' }
+      : ahead ? { label: 'Iront sans doute dans tes habitudes', big: money(ahead, { cur }) } : null;
+    const legend = V.rows.some(x => x.pace) ? sectionHTML({ body: '<p class="b-legend"><i class="b-k"></i>d’habitude, à ce stade de la période</p>' }) : '';
+    const report = sectionHTML({ body: '<button type="button" class="link b-report" data-report>Voir le rapport du mois</button>' });
+    const body = V.rows.length || V.watch.length ? `${legend}
+      ${V.rows.length ? sectionHTML({ title: 'Tes budgets', body: `<div class="group" data-lines>${V.rows.map(catRowHTML).join('')}</div>` }) : ''}
+      ${V.watch.length ? sectionHTML({ title: 'Hors budget, à surveiller', body: `<div class="group" data-watch>${V.watch.map(watchRowHTML).join('')}</div>` }) : ''}
+      ${report}`
+      : `${emptyState('Pas encore de budget', { add: ['data-new', 'Créer un budget'] })}${report}`;
+    app.innerHTML = listPageHTML({ title: 'Budgets', intro, fab: 'Créer un budget', body,
       ended: endedHTML('Budgets terminés', done.map(g => {
         const x = g.last, b = x.budget, c = category(g.category), cur = b.currency;
         return `<div class="row mrow" style="--c:var(--${c?.color || 'c0'})">
@@ -201,6 +182,8 @@ export const allScreen = {
     wireListPage(app, ctx, () => openBudgetSheet());
     wireCatRows(app, ctx);
     wireDone(app, ctx);
+    const rep = $('[data-report]', app);
+    if (rep) rep.onclick = () => { buzz(6); ctx.go('#/rapport/detail?type=expense'); };
   },
 };
 

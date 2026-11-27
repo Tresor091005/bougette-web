@@ -188,22 +188,39 @@
 .cd:active { transform: scale(.94); }
 /* « Quand ? » (D18 revu le 2026-11-18) : plusieurs jours touchés, aujourd'hui d'un point, les jours qui suivront teintés */
 .when-help { margin: 0 0 var(--sp-5); font-size: var(--fs-2nd); }
+.when .cal-t { height: 44px; } /* hors échelle : le titre qui ouvre les mois de l'année (2026-11-27) garde l'appui de 44 px */
 .when-g .cd { position: relative; height: 44px; }
 .when-g .cd.now { box-shadow: none; }
 .when-g .cd.now::after { content: ''; position: absolute; left: 50%; bottom: 5px; width: 4px; height: 4px; margin-left: -2px; border-radius: var(--r-pill); background: var(--accent); }
 .when-g .cd.on.now::after { background: var(--on-accent); }
-.when-g .cd.past { color: var(--ink-2); } /* un jour passé reste touchable : encre plus douce, pas d'opacité (2026-11-26) */
+/* passé ou à venir, les jours du mois ont la même encre (2026-11-27, avec l'utilisateur : la phrase et le bouton du bas disent
+   déjà « C'était / C'est / Ce sera » ; un seul gris, pour les jours des mois voisins) */
 .when-g .cd.on.past { color: var(--on-accent); }
 .when-g .cd.cur { box-shadow: inset 0 0 0 1.5px var(--accent); } /* la date de la saisie : un contour, sans être cochée (2026-11-26) */
 .when-g .cd.nx { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--ink); }
-.when-rep { display: flex; flex-wrap: wrap; gap: var(--sp-4); margin: var(--sp-1) 0 var(--sp-6); }
-.when-rep .sc { padding: 0 13px; } /* hors échelle : petite gélule */
-.when-rep .sc.sug { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent); }
-.when-rep .sc .ic { width: 14px; height: 14px; margin-left: -2px; }
-/* le jour du mois (« le 14 », « le 2e lundi »…) : sous la répétition, à l'écart d'une rangée */
-.when-rep:has(+ .when-by:not(:empty)) { margin-bottom: var(--sp-4); }
-.when-by:empty { display: none; }
-.when-say { min-height: 20px; margin: 0 0 var(--sp-4); font-size: var(--fs-body); line-height: 1.4; }
+/* un squelette fixe (2026-11-27, avec l'utilisateur) : rien n'apparaît, rien ne bouge, tout s'allume ou s'éteint */
+.when-g { height: calc(6 * 44px + 5 * var(--sp-1)); margin-bottom: var(--sp-3); } /* hors échelle : six lignes de jours de 44 px ; les mois s'étirent dedans, passer des jours aux mois ne bouge rien */
+.when-g.months { grid-template-rows: repeat(4, 1fr); }
+.when-g.months .cm { height: auto; min-height: 44px; }
+.when-g .cd.out { display: grid; place-items: center; color: color-mix(in srgb, var(--ink-3) 40%, var(--surface)); pointer-events: none; } /* les jours des mois voisins : presque effacés, sans opacité */
+.when-row { display: flex; align-items: center; gap: var(--sp-4); height: 46px; border-top: 1px solid var(--rule); } /* hors échelle : 44 px d'appui + le filet */
+.when-lb { flex: none; width: 56px; margin: 0; font-size: var(--fs-meta); line-height: 1.2; color: var(--ink-2); } /* hors échelle : la place de « Ça revient ? » */
+.when-row.off .when-lb { color: var(--ink-3); }
+.when-ct { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-3); overflow-x: auto; scrollbar-width: none; white-space: nowrap; padding: var(--sp-2) 0; } /* 4 px dessus et dessous : l'appui de 44 px des gélules n'est pas coupé par le défilement */
+.when-ct::-webkit-scrollbar { display: none; }
+.when-row .sc { padding: 0 9px; } /* hors échelle : petite gélule ; les quatre choix tiennent sur la ligne à 360 px */
+.when-row .sc.sug { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent); }
+.when-row .sc[disabled] { background: transparent; box-shadow: inset 0 0 0 1px var(--rule); color: var(--ink-3); pointer-events: none; } /* un jour passé : pas de répétition */
+.when-row .sc.off { background: transparent; box-shadow: inset 0 0 0 1px var(--rule); color: var(--ink-3); }
+.when-row span.sc { pointer-events: none; }
+.when-n { gap: var(--sp-2); }
+.when-n .iconbtn { background: var(--field); font-size: var(--fs-section); line-height: 1; }
+.when-n .iconbtn[disabled] { opacity: .3; pointer-events: none; }
+.when-nv { min-width: 84px; padding: 0 var(--sp-4); text-align: center; font-size: var(--fs-body); font-variant-numeric: tabular-nums; } /* hors échelle : la valeur ne bouge pas quand l'unité change */
+.when-nv b { font-weight: 600; }
+.when-row.off .when-nv { color: var(--ink-3); }
+.when-say { height: 66px; margin: var(--sp-2) 0; overflow: hidden; font-size: var(--fs-body); line-height: 1.4; } /* hors échelle : trois lignes (titre, « Tu la programmes… », « puis… ») ou une notice, sans que la feuille change de hauteur */
+.when-say .notice { padding: var(--sp-3) var(--sp-5); animation: none; }
 .when-say b { font-weight: 600; }
 .when-say.idle { color: var(--ink-2); font-size: var(--fs-2nd); }
 .when-say small.means { color: var(--ink-2); } /* ce que le choix veut dire : plus lisible que le « puis… » */
@@ -248,6 +265,7 @@
 /* date : largeur fixe pour que › ne bouge pas sous le doigt ; note plus courte pour que la rangée tienne à 360 px */
 .e-meta [data-datep] { min-width: 118px; justify-content: center; }
 .e-meta [data-notep] { max-width: 124px; }
+.e-meta [data-notep][aria-disabled="true"] { pointer-events: none; } /* confirmer : la note est le nom de l’opération programmée, elle ne se change pas ici */
 .mp.center { align-self: center; }
 /* programmer (2026-11-26) : la date dit la règle (« Chaque mois, le 1er »), la fin tient à côté sur la même rangée ; la catégorie (en couleur) et le nom commencent à la gouttière, comme les autres rangées */
 .e-meta [data-datep] b { overflow: hidden; text-overflow: ellipsis; }
@@ -271,6 +289,8 @@
 @keyframes draw { to { clip-path: inset(0 0 0 0); } }
 .note-sheet .field { margin-top: var(--sp-7); } /* aussi loin du titre que la recherche des catégories */
 .note-sheet .btn { margin-top: var(--sp-2); }
+.ms-short { font-size: var(--fs-2nd); line-height: 1.4; margin: 0 0 var(--sp-5); }
+.note-sheet .field-note { margin-bottom: var(--sp-7); } /* l'aide sous le champ (le nom d'un portefeuille) : de l'air avant le bouton (2026-11-27, avec l'utilisateur) */
 /* Écran bas (ROADMAP étape 2, cassures d'interface) : la saisie se compacte pour que tout tienne sans défiler
    (320 × 568 compris) ; le bouton reste de toute façon collé en bas de la feuille, toujours atteignable. */
 .entry .go { position: sticky; bottom: 0; z-index: 2; }
@@ -375,7 +395,8 @@
 .ob-welcome { flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 15vh; }
 .ob-illu { width: 96px; margin-bottom: var(--sp-13); }
 .ob-illu .logo { width: 96px; height: 96px; border-radius: 22px; } /* hors échelle : le coin du logo de 96 px */
-.ob-brand { font: 600 48px/1 var(--sans); letter-spacing: -.045em; margin-bottom: var(--sp-7); } /* hors échelle : le nom en grand, à l'accueil du premier lancement */
+.ob-brand { margin-bottom: var(--sp-7); line-height: 0; color: var(--accent-text); }
+.ob-brand .wordmark { width: 216px; height: auto; } /* hors échelle : le nom en blocs, en grand, à l'accueil du premier lancement */
 .ob-lead { font: 400 var(--fs-section)/1.45 var(--sans); color: var(--ink-2); }
 .ob-welcome .ob-foot { width: 100%; }
 .ob-welcome > * { animation: rise .6s var(--spring) both; }
@@ -775,10 +796,14 @@
 .rs-say { font-size: var(--fs-2nd); line-height: 1.4; margin: 0 0 var(--sp-6); }
 .rs-more { margin: var(--sp-2) 0 var(--sp-4); }
 /* « Budgets terminés », « Réserves terminées » : un titre de section comme les autres, qui s'ouvre */
-.rs-done summary, .b-done summary { cursor: pointer; list-style: none; padding: 0 0 var(--sp-3); font: 500 var(--fs-section)/1.3 var(--sans); letter-spacing: -.01em; color: var(--ink); display: flex; gap: var(--sp-4); align-items: baseline; }
-.rs-done summary .muted, .b-done summary .muted { font-size: var(--fs-2nd); font-weight: 400; letter-spacing: 0; }
+.rs-done summary, .b-done summary, .rs-ops { cursor: pointer; list-style: none; padding: 0 0 var(--sp-3); font: 500 var(--fs-section)/1.3 var(--sans); letter-spacing: -.01em; color: var(--ink); display: flex; gap: var(--sp-4); align-items: baseline; }
+/* « Ses opérations » (2026-11-27, avec l'utilisateur : l'équilibre) : la même ligne de 44 px que les terminées, le texte au
+   milieu des deux ; un écart au-dessus, pour que les boutons, elle et les terminées soient à égale distance */
+.rs-ops { text-decoration: none; min-height: 44px; margin: var(--sp-11) 0 0; padding: 0; align-items: center; }
+.rs-ops ~ .rs-done summary { align-items: center; padding: 0; }
+.rs-done summary .muted, .b-done summary .muted, .rs-ops .muted { font-size: var(--fs-2nd); font-weight: 400; letter-spacing: 0; }
 .rs-done summary::-webkit-details-marker, .b-done summary::-webkit-details-marker { display: none; }
-.rs-done summary::after, .b-done summary::after { content: '›'; margin-left: auto; color: var(--ink-3); transition: transform .2s; }
+.rs-done summary::after, .b-done summary::after, .rs-ops::after { content: '›'; margin-left: auto; color: var(--ink-3); transition: transform .2s; }
 .rs-done[open] summary::after, .b-done[open] summary::after { transform: rotate(90deg); }
 /* la page d'une épargne : l'en-tête qui ouvre les terminées est une cible de 44 px */
 .rs-done summary { min-height: 44px; padding: 0; align-items: center; }
@@ -830,11 +855,12 @@
 .b-cat.b-none .v { font-weight: 500; }
 .b-cat.b-none .v .zero { opacity: .6; }
 .b-all .big { font-size: 32px; } /* hors échelle : chiffre */
-/* barre de l'habitude (sans budget) : contour fin, dépensé hachuré, trait à la moyenne ; rouge au bout (D11) */
-.bar.hb { position: relative; overflow: visible; background: transparent; box-shadow: inset 0 0 0 1px var(--rule); }
-.bar.hb i { background: repeating-linear-gradient(135deg, var(--ink-2) 0 3px, transparent 3px 6px); }
-.bar.hb.hot i { background: repeating-linear-gradient(135deg, var(--loss) 0 3px, transparent 3px 6px); }
-.bar.hb .tick { position: absolute; top: -3px; width: 2px; height: 10px; margin-left: -1px; border-radius: 1px; background: var(--ink-2); }
+/* page Budgets (2026-11-27, avec l'utilisateur) : la légende du trait « d'habitude, à ce stade », ce trait sur la barre d'un budget, le lien du rapport */
+.b-legend { display: flex; align-items: center; gap: var(--sp-3); margin: 0; font-size: var(--fs-meta); color: var(--ink-2); }
+.b-k { flex: none; width: 2px; height: 10px; border-radius: 1px; background: var(--ink); } /* hors échelle : le trait de la légende, comme sur la barre */
+.bar.pace { position: relative; overflow: visible; }
+.bar.pace .tick { position: absolute; top: -3px; width: 2px; height: 12px; margin-left: -1px; border-radius: 1px; background: var(--ink); } /* hors échelle : dépasse la barre de 6 px */
+.b-report { margin: 0; }
 .bc-title { display: flex; align-items: center; gap: var(--sp-5); min-width: 0; }
 .bc .topbar .left { min-width: 0; flex: 1; }
 .bc-title .bc-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -954,9 +980,9 @@
 .dv-arrow { flex: none; display: grid; place-items: center; color: var(--ink-3); }
 .dv-arrow .ic { width: 16px; height: 16px; }
 .dv-stage { flex: none; min-height: 96px; }
-:is(.dv-meta, .acc-meta) { flex-wrap: wrap; justify-content: flex-start; overflow: visible; margin: 0; padding: 0; row-gap: var(--sp-5); } /* rangées collées à gauche, comme la saisie (2026-11-26) */
-:is(.dv-meta, .acc-meta) .mp { max-width: 100%; min-width: 0; }
-:is(.dv-meta, .acc-meta) .mp span { min-width: 0; }
+.dv-meta { flex-wrap: wrap; justify-content: flex-start; overflow: visible; margin: 0; padding: 0; row-gap: var(--sp-5); } /* rangées collées à gauche, comme la saisie (2026-11-26) */
+.dv-meta .mp { max-width: 100%; min-width: 0; }
+.dv-meta .mp span { min-width: 0; }
 .dv-meta :is(.mp, .sc)[aria-disabled="true"] { pointer-events: none; }
 .dv-meta :is(.mp, .sc)[aria-disabled="true"] .ic:last-child { width: 14px; height: 14px; color: var(--ink-3); }
 .dv-edit .go .lbl { justify-content: center; }
@@ -1109,6 +1135,11 @@ html[data-radius="square"] .rv-item { border-radius: 0; }
 
 /* ── Fiche catégorie (categories.js) : nom en tête, Archiver / Supprimer en liens ── */
 .cat-sheet .sheet-head { display: flex; align-items: center; gap: var(--sp-6); }
+/* la teinte, une rangée qui défile (2026-11-27, avec l'utilisateur) ; éteinte pour une sous-catégorie, qui hérite */
+.cat-tints .swatches { display: flex; gap: var(--sp-3); overflow-x: auto; scrollbar-width: none; margin: 0 var(--bleed); padding: 0 var(--gutter); }
+.cat-tints .swatches::-webkit-scrollbar { display: none; }
+.cat-tints .sw { flex: none; width: 44px; }
+.cat-tints.inherit { opacity: .45; pointer-events: none; }
 /* l'aperçu d'une catégorie : sa pastille et son nom, comme elle se lira partout (2026-11-26) ; pas un titre, pas un champ */
 .cat-pvic { display: inline-grid; flex: none; }
 .cat-pvname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-body); font-weight: 500; }
@@ -1123,12 +1154,17 @@ html[data-radius="square"] .rv-item { border-radius: 0; }
 .acc-edit { display: flex; flex-direction: column; gap: var(--sp-5); padding-bottom: var(--sp-2); }
 .acc-edit > [data-err]:empty { display: none; }
 .acc-edit .go .lbl { justify-content: center; }
-.acc-edit .e-q, .acc-edit .e-q .e-qt { display: block; } /* la question tient lieu de titre : elle reste même sur un écran bas */
-.acc-edit .e-q { margin: 0; }
 .acc-edit .acc-intro { margin: 0; }
-.acc-say { margin-top: 0; }
-.acc-edit .acc-meta .mp { max-width: 200px; } /* hors échelle : le nom et la devise, l'objectif et sa date tiennent sur une rangée à 360 px */
-.acc-meta :is(.mp, .sc)[aria-disabled="true"] .ic:last-child { width: 14px; height: 14px; color: var(--ink-3); }
+.acc-edit .field { margin: 0; } /* l'écart entre lignes vient du gap de la fiche */
+/* l'aperçu d'un portefeuille : sa pastille, son nom, son sens et son solde, comme dans la liste (2026-11-27, avec l'utilisateur) ; pas un bouton */
+.acc-pv { display: flex; align-items: center; gap: var(--sp-6); min-height: 56px; }
+.acc-pv .pill.lg { width: 40px; height: 40px; }
+.acc-pv .main { flex: 1; min-width: 0; display: grid; }
+.acc-pv .main .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.acc-pv .main .s { line-height: 1.3; }
+.acc-pv .w-bal.loss { color: var(--loss); }
+.acc-total { margin: 0; }
+.acc-emnote { margin: 0 var(--sp-2); }
 /* feuille d'un budget dans l'ordre de la saisie (2026-11-24) : montant, gélule de catégorie, pastilles (dates, répétition), pavé, bouton, lien */
 .budget-sheet { display: flex; flex-direction: column; gap: var(--sp-5); padding-bottom: var(--sp-2); }
 .budget-sheet > [data-err]:empty { display: none; }
@@ -1146,3 +1182,85 @@ html[data-radius="square"] .rv-item { border-radius: 0; }
 .bp-dot.loss { background: var(--loss); }
 .mrow .bp .bar.warn i { background: var(--c3); }
 .sav-card .bp-big { font-size: var(--fs-sheet); } /* sous le total de la page : plus petit que lui */
+
+/* Rapports (2026-11-27, avec l'utilisateur : reproduit de Money Lover ; src/screens/report.js, report-charts.js) : posés sur la page (D0), des titres et des filets. */
+.ops-rep { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; font-size: var(--fs-2nd); color: var(--accent-text); text-align: left; }
+.ops-rep .ic { width: 16px; height: 16px; }
+.rep .section.rp-first { margin-top: var(--sp-6); }
+.rp-line { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-6); min-height: 44px; border-bottom: 1px solid var(--rule); }
+.rp-line:last-child { border-bottom: 0; }
+.rp-line span { color: var(--ink-2); }
+.rp-line b { font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rp-tap { display: block; width: 100%; padding: 0; text-align: left; }
+.rp-tap .big { margin-top: 0; }
+.rp-hb { margin-top: var(--sp-7); }
+.rp-hl { display: flex; justify-content: space-between; gap: var(--sp-6); font-size: var(--fs-2nd); color: var(--ink-2); }
+.rp-hl b { font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rp-track { height: 8px; margin-top: var(--sp-3); border-radius: var(--r-sm); background: var(--rule); overflow: hidden; } /* hors échelle : épaisseur d'une barre */
+.rp-track i { display: block; height: 100%; border-radius: var(--r-sm); }
+.rp-track i.gain { background: var(--gain); }
+.rp-track i.loss { background: var(--loss); }
+.rp-more { display: flex; align-items: center; justify-content: space-between; min-height: 44px; margin-top: var(--sp-3); font-size: var(--fs-2nd); color: var(--accent-text); }
+.rp-more .ic { width: 16px; height: 16px; }
+.rp-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.rp-col { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); min-width: 0; min-height: 44px; padding: var(--sp-2) var(--sp-4) var(--sp-4); text-align: center; }
+.rp-col + .rp-col { border-left: 1px solid var(--rule); }
+.rp-ch { display: flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-2nd); color: var(--ink-2); }
+.rp-ch .ic { width: 14px; height: 14px; color: var(--ink-3); } /* hors échelle : chevron de colonne */
+.rp-col b { max-width: 100%; font: 600 var(--fs-body)/1.3 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rp-col .rp-donut { margin-top: var(--sp-4); }
+.rp-xfer .group { border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.rp-xfer .row .amt { color: var(--ink); }
+.rp-note { margin: var(--sp-6) 0 0; }
+.rp-none { margin: var(--sp-8) 0 0; text-align: center; }
+.rp-figs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-6); margin-top: var(--sp-6); }
+.rp-figs > div { min-width: 0; }
+.rp-figs .rp-big { display: block; margin-top: var(--sp-1); font: 600 22px/1.25 var(--sans); font-variant-numeric: tabular-nums; letter-spacing: -.02em; white-space: nowrap; } /* hors échelle : chiffre */
+.rp-cmp { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-6); margin-top: var(--sp-9); padding: var(--sp-6) 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.rp-cmpt { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.rp-avg { font: 600 18px/1.25 var(--sans); font-variant-numeric: tabular-nums; color: var(--ink-2); } /* hors échelle : chiffre */
+.rp-curvebox { margin-top: var(--sp-6); }
+.rp-curve { display: block; width: 100%; height: auto; overflow: visible; }
+.rp-curve path { fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.rp-curve path.now { stroke: var(--accent-text); stroke-width: 3.5; }
+.rp-curve path.avg { stroke: var(--ink-2); stroke-width: 2; }
+.rp-curve circle.now { fill: var(--accent-text); stroke: var(--paper); stroke-width: 2; }
+.rp-curve circle.avg { fill: var(--ink-2); stroke: var(--paper); stroke-width: 2; }
+.rp-curve .base { stroke: var(--line); stroke-width: 1; }
+.rp-curve .tick { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 3; }
+.rp-axis { position: relative; display: flex; justify-content: space-between; margin: var(--sp-2) 0 var(--sp-6); font-size: var(--fs-meta); color: var(--ink-3); }
+.rp-axis .at { position: absolute; top: 0; transform: translateX(-50%); color: var(--ink-2); }
+.rp-legend { display: flex; flex-direction: column; gap: var(--sp-2); font-size: var(--fs-2nd); color: var(--ink-2); }
+.rp-legend span { display: flex; align-items: center; gap: var(--sp-4); }
+.rp-legend b { margin-left: auto; font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+.rp-k { flex: none; width: 14px; height: 4px; border-radius: var(--r-sm); } /* hors échelle : trait de légende */
+.rp-k.now { background: var(--accent-text); }
+.rp-k.avg { background: var(--ink-2); }
+.rp-seg { margin-top: var(--sp-10); }
+.rp-donut { position: relative; width: 100%; max-width: 360px; margin: 0 auto; } /* hors échelle : largeur max de l'anneau */
+.rp-donut:not(.big) { max-width: 120px; }
+.rp-donut svg { display: block; width: 100%; height: auto; }
+.rp-donut.big { margin-top: var(--sp-8); }
+.rp-badge, .rp-pct { position: absolute; transform: translate(-50%, -50%); }
+.rp-pct { font-size: var(--fs-meta); color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rp-mid { position: absolute; left: 50%; top: 50%; width: 28%; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -50%); text-align: center; }
+.rp-mid span { font-size: var(--fs-meta); color: var(--ink-2); }
+.rp-mid b { max-width: 100%; font: 600 var(--fs-body)/1.25 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rp-bars { display: block; width: 100%; height: auto; margin-top: var(--sp-6); }
+.rp-bars text.ax { font-size: var(--fs-meta); fill: var(--ink-3); }
+.rp-bars line.grid { stroke: var(--rule); stroke-width: 1; }
+.rp-bars line.zero { stroke: var(--line); stroke-width: 1; }
+.rp-bars rect.gain { fill: var(--gain); }
+.rp-bars rect.loss { fill: var(--loss); }
+.rp-list { margin-top: var(--sp-6); }
+.rp-subrow + .rp-subrow::before, .rp-net + .rp-net::before { left: 0; }
+.rp-subrow:first-child::before, .rp-net:first-child::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: var(--rule); }
+.rp-net { min-height: 76px; } /* hors échelle : trois lignes de chiffres */
+.rp-three { display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-1); font-size: var(--fs-2nd); color: var(--ink-2); }
+.rp-three b { margin-left: var(--sp-3); font-weight: 500; font-variant-numeric: tabular-nums; }
+.rp-pick { margin-top: var(--sp-2); }
+.rp-catpick { display: inline-flex; align-items: center; gap: var(--sp-4); max-width: 100%; min-height: 44px; padding: 0 var(--sp-6) 0 var(--sp-3); border-radius: var(--r-pill); box-shadow: inset 0 0 0 1px var(--line); font-size: var(--fs-body); }
+.rp-catpick span:not(.pill) { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-catpick > .ic { flex: none; width: 16px; height: 16px; color: var(--ink-2); }
+.rp-badge .pill { background: var(--c); color: var(--on-accent); } /* au bout du trait : la pastille pleine de la teinte, bien lisible sur l'anneau */
+.rep .topbar .title { min-width: 0; font-size: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* hors échelle : « Rapport d'une catégorie » rapetisse jusqu'à 18 px (fitText), puis se coupe par « … » */

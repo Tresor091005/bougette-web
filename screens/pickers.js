@@ -237,7 +237,8 @@ export function pickDate({ current, title = 'Date', future = false, min = null, 
   });
 }
 
-// Début du mois (revu le 2026-11-19, avec l'utilisateur) : un jour fixe (1-28), un jour de la semaine (« le 2e lundi »,
+// Début du mois (revu le 2026-11-19, avec l'utilisateur) : un jour fixe (1-31 ; 29 à 31 depuis le 2026-11-27, une phrase dit
+// ce que deviennent les mois plus courts), un jour de la semaine (« le 2e lundi »,
 // « le dernier vendredi ») ou la fin du mois (le dernier jour, le dernier jour ouvré). Résout la règle, ou null.
 /** @param {number|string} current */
 export function pickMonthStart(current) {
@@ -249,7 +250,8 @@ export function pickMonthStart(current) {
     const s = openSheet(`${sheetHead({ title: 'Début du mois' })}
       <p class="screen-help">Le jour où ton mois commence, par exemple le jour de la paie.</p>
       ${seg([['day', 'Un jour'], ['week', 'Jour de semaine'], ['end', 'Fin de mois']], mode, 'ms-mode')}
-      <div data-p="day" class="ms-p"><div class="daynum-grid">${Array.from({ length: 28 }, (_, i) => i + 1).map(d => `<button type="button" data-d="${d}" class="${d === current ? 'on' : ''}">${d}</button>`).join('')}</div></div>
+      <div data-p="day" class="ms-p"><div class="daynum-grid">${Array.from({ length: 31 }, (_, i) => i + 1).map(d => `<button type="button" data-d="${d}" class="${d === current ? 'on' : ''}">${d}</button>`).join('')}</div>
+        <p class="muted ms-short">Le 29, le 30 ou le 31 : un mois plus court commence à son dernier jour. Le 30 reste le 30 dans un mois de 31 jours ; pour le dernier jour de chaque mois, choisis « Fin de mois ».</p></div>
       <div data-p="week" class="ms-p">
         ${fieldHTML({ label: 'Lequel', control: seg([['1', '1er'], ['2', '2e'], ['3', '3e'], ['4', '4e'], ['L', 'Dernier']], rank, 'ms-rank') })}
         ${fieldHTML({ label: 'Jour', control: seg([['1', 'Lun'], ['2', 'Mar'], ['3', 'Mer'], ['4', 'Jeu'], ['5', 'Ven'], ['6', 'Sam'], ['7', 'Dim']], day, 'ms-day') })}

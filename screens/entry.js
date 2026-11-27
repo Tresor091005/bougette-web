@@ -69,18 +69,20 @@ function dateLabel(d) {
 // réserves (reserves.js), portefeuilles (wallets.js), feuilles (sheets.js), enregistrement (save.js), programmer (plan.js).
 // plan : une opération à programmer (kind, amount, accountId, toAccountId, categoryId, note, start, every, interval, days, by,
 // end, times — toutes facultatives ; sans start, la date reste à choisir) ; onCreated : la nouvelle, une fois créée.
-export function openEntry({ type = 'expense', tx = null, copy = null, accountId = null, toAccountId = null, reserveId = null, due = null, date = null, amount = 0, onSaved = null, plan = null, onCreated = null } = {}) {
+export function openEntry({ type = 'expense', tx = null, copy = null, accountId = null, toAccountId = null, reserveId = null, due = null, date = null, amount = 0, onSaved = null, plan = null, onCreated = null, aside = false } = {}) {
   // aucun portefeuille (D10) : le + ouvre d'abord la fiche de création, puis la saisie sur le portefeuille créé
   if (!tx && !accounts().length) {
     openAccountSheet(null, { savings: false, intro: 'Pour noter une opération, crée d’abord un portefeuille.', onSaved: a => openEntry({ type: type === 'transfer' ? 'expense' : type, accountId: a.id }) });
     return null;
   }
-  const E = entryState({ type, tx, copy, accountId, toAccountId, reserveId, due, date, amount, onSaved, plan, onCreated });
+  // aside : « Mettre de côté » sur une épargne (2026-11-27, avec l'utilisateur) — un virement vers elle (ou un revenu qui y
+  // arrive), à n'importe quelle date ; pas de dépense, pas de vérification de solde
+  const E = entryState({ type, tx, copy, accountId, toAccountId, reserveId, due, date, amount, onSaved, plan, onCreated, aside });
   const { st, editing, canPlan, held, bounds } = E;
 
   const s = openSheet(`<div class="entry">
     <div class="e-head">${seg(TYPES, E.opType, `type-seg${held ? ' locked' : ''}`)}
-      ${editing || due ? '' : `<button type="button" class="iconbtn soft e-chk" data-chk aria-pressed="false" aria-label="Vérifier un solde">${icon('scales')}</button>`}
+      ${editing || due || aside ? '' : `<button type="button" class="iconbtn soft e-chk" data-chk aria-pressed="false" aria-label="Vérifier un solde">${icon('scales')}</button>`}
       <button type="button" class="iconbtn soft close" data-close aria-label="Fermer">${icon('x')}</button></div>
     <div class="e-from" data-from></div>
     <div class="e-stage">
@@ -128,6 +130,9 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
     if (prev) { prev.hidden = !single; prev.disabled = !!bounds?.min && st.date <= bounds.min; }
     // programmer : la note devient le nom, dans la rangée des catégories
     $('[data-notep]', el).hidden = planning(E);
+    // confirmer une opération programmée : la note est son nom, on ne le change pas ici (2026-11-27, avec l'utilisateur :
+    // la changer revenait à renommer l'opération programmée en passant) ; il se change sur sa page
+    if (E.held) $('[data-notep]', el).setAttribute('aria-disabled', 'true');
     $('[data-notel]', el).textContent = st.note || 'Note';
     $('[data-notep]', el).classList.toggle('set', !!st.note);
     paintEnd();
@@ -228,7 +233,13 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
   refresh();
 
   if (held) $$('.type-seg button', el).forEach(b => { b.disabled = true; });
+  // mettre de côté : pas de dépense ; un revenu arrive sur l'épargne, un virement y va depuis le portefeuille de départ
+  const asideTo = aside ? toAccountId : null, asideFrom = aside ? st.accountId : null;
+  if (aside) $$('.type-seg [data-v="expense"]', el).forEach(b => { /** @type {HTMLButtonElement} */ (b).disabled = true; });
   wireSeg($('.type-seg', el), v => {
+    if (aside && v === 'expense') return;
+    if (aside && v === 'income' && asideTo) { st.accountId = asideTo; st.toAccountId = null; }
+    if (aside && v === 'transfer' && asideTo) { st.accountId = asideFrom; st.toAccountId = asideTo; }
     st.type = E.opType = v;
     st.reserveId = null; st.other = false;
     if (v !== 'transfer' && st.categoryId && category(st.categoryId)?.type !== v) { st.categoryId = null; st.auto = false; }
@@ -268,11 +279,11 @@ export function openEntry({ type = 'expense', tx = null, copy = null, accountId 
     const d = await pickDate({ current: st.date, future: canPlan, min: bounds?.min || null, title: st.type === 'income' ? 'Date du revenu' : st.type === 'transfer' ? 'Date du virement' : 'Date de la dépense' });
     if (d && d !== st.date) { st.date = d; paintMeta(); paintAmount(E); }
   };
-  $('[data-notep]', el).onclick = () => editNote(st.note).then(v => {
+  $('[data-notep]', el).onclick = () => (E.held ? undefined : editNote(st.note).then(v => {
     if (v == null) return;
     st.note = v;
     paintMeta(); paintAmount(E);
-  });
+  }));
   goBtn.onclick = () => save(E, openEntry);
   return s;
 }

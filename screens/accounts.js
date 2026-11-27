@@ -14,12 +14,12 @@ import {
 import { RES } from '../domain/words.js';
 import { money, esc, symbol, readAmount, currencyOf, today, parse, iso, yearDate } from '../core/format.js';
 import { icon } from '../core/icons.js';
-import { openSheet, seg, wireSeg, buzz, toast, confirmSheet, menuSheet, countUp, splitAmount, noticeHTML, fitText, afterSheets, keypad, exprHTML, exprCharsHTML, shake, enableReorder, wireArrange, arrangeBtnHTML, isArranging, fabHTML, $, $$ } from '../core/ui.js';
+import { openSheet, seg, wireSeg, buzz, toast, confirmSheet, menuSheet, countUp, splitAmount, noticeHTML, fitText, afterSheets, keypad, exprHTML, exprCharsHTML, enableReorder, wireArrange, arrangeBtnHTML, isArranging, fabHTML, switchHTML, $, $$ } from '../core/ui.js';
 import { fold } from '../domain/suggest.js';
 import { accountPill, pickCurrency, pickDate, noWalletsHTML, ACCOUNT_ICON } from './pickers.js';
 import { opsHref } from './transactions.js';
-import { topbarHTML, wireBack, rowHTML, sectionHTML, sheetHead, sheetActions } from './parts.js';
-import { amountSheet, tapCaret } from './amount-sheet.js';
+import { topbarHTML, wireBack, rowHTML, sectionHTML, fieldHTML, sheetHead, sheetActions } from './parts.js';
+import { amountSheet } from './amount-sheet.js';
 import { editNote } from './entry/sheets.js';
 
 const KIND_SEG = [['cash', 'Espèces'], ['emoney', 'Électronique'], ['bank', 'Banque']];
@@ -58,78 +58,42 @@ export function openAccountSheet(id, { onSaved = null, excluded = false, savings
     goalOn: a?.goal ? a.goal.on : null, emergency: a ? !!a.emergency : !!emergency };
   // un fonds d'urgence (2026-11-19) : un genre à part, hors du total, sans réserve, dépenses permises, sans objectif
   const em = f.emergency;
-  // la fiche au format des feuilles à montant (2026-11-26, avec l'utilisateur : il ne voit jamais ce qui est tapé en haut
-  // d'une feuille) : le type et la croix, à la création la question et le grand montant (le solde de départ, au pavé),
-  // la phrase en gris, puis des pastilles collées à gauche : le nom (une petite feuille, jamais un champ) et la devise ;
-  // l'objectif et sa date ; les deux interrupteurs. Le bouton dit ce qui manque (le nom) ou ce qui sera fait.
+  // la fiche d'un portefeuille (2026-11-27, avec l'utilisateur : le grand montant prenait l'attention alors qu'il vaut presque
+  // toujours 0, et disparaissait en modification) : comme celle d'une catégorie, un aperçu (le portefeuille tel qu'il se
+  // lira dans la liste) puis des lignes, la même forme à la création et en modification. Le solde de départ est une ligne
+  // qui ouvre la feuille montant ; en modification, le solde ne se change jamais à la main, la ligne ouvre la vérification.
+  // Le bouton dit ce qui manque (le nom) ou ce qui sera fait.
   const hasGoal = f.savings && !em && !(a && openReserves(a.id).length); // pas d'objectif avec des dépenses prévues
+  const caret = icon('caret-right');
   const s = openSheet(`<div class="acc-sheet acc-edit">
     <div class="e-head">${seg(KIND_SEG, f.kind, 'kind-seg')}
       <button type="button" class="iconbtn soft close" data-close aria-label="Fermer">${icon('x')}</button></div>
     ${intro ? `<p class="screen-help acc-intro">${esc(intro)}</p>` : ''}
-    ${a ? '<div class="e-say acc-say" data-say></div>' : `<div class="e-q"><p class="e-qt">Combien as-tu dessus aujourd’hui ?</p></div>
-    <div class="e-stage dv-stage"><div class="e-expr" data-expr aria-live="polite"></div><div class="e-say" data-say></div></div>`}
-    <div class="e-meta acc-meta">
-      <button type="button" class="mp" data-namep></button>
-      <button type="button" class="mp" data-cur ${locked ? 'aria-disabled="true"' : ''}>${icon('coins')}<span data-curl></span>${locked ? icon('lock-simple') : ''}</button>
-    </div>
-    ${hasGoal ? `<div class="e-meta acc-meta">
-      <button type="button" class="mp" data-goal></button>
-      <button type="button" class="mp" data-goalon>${icon('calendar-blank')}<span data-goalonl></span></button>
-    </div>` : ''}
-    ${em ? '' : `<div class="e-meta acc-meta">
-      <button type="button" class="mp" data-counted role="switch" aria-checked="false">Compter dans le total</button>
-      ${f.savings ? '<button type="button" class="mp" data-spend role="switch" aria-checked="false">Permettre les dépenses</button>' : ''}
-    </div>`}
-    ${a ? '' : '<div data-pad></div>'}
+    <div class="acc-pv"><span data-pv></span><div class="main"><div class="t" data-pvname></div><div class="s wrap" data-say></div></div><b class="w-bal" data-pvbal></b></div>
+    ${fieldHTML({ label: 'Nom', control: '<button type="button" class="field-btn" data-name></button>' })}
+    ${fieldHTML({ label: a ? 'Solde' : 'Solde de départ', control: '<button type="button" class="field-btn" data-bal></button>' })}
+    ${fieldHTML({ label: 'Devise', note: locked ? `${locked} opération${locked > 1 ? 's' : ''} en ${esc(currencyOf(f.currency).long)} : la devise ne peut plus changer.` : '',
+      control: `<button type="button" class="field-btn" data-cur ${locked ? 'aria-disabled="true"' : ''}><b data-curl></b>${icon(locked ? 'lock-simple' : 'caret-right')}</button>` })}
+    ${hasGoal ? fieldHTML({ label: 'Objectif', control: '<button type="button" class="field-btn" data-goal></button>' }) : ''}
+    ${em ? `<p class="field-note acc-emnote">Hors du total, sans ${RES.one}, dépenses permises. Bougette compte combien de mois de dépenses il couvre : 3 mois suffisent.</p>`
+      : `<div class="group plain acc-total"><button type="button" class="row" data-counted><div class="main"><div class="t">Compter dans le total</div>
+      <div class="s wrap" data-countedl></div></div>${switchHTML(f.counted)}</button>
+      ${f.savings ? `<button type="button" class="row" data-spend><div class="main"><div class="t">Permettre les dépenses</div>
+      <div class="s wrap" data-spendl></div></div>${switchHTML(f.spendOk)}</button>` : ''}</div>`}
     <div data-err></div>
     ${sheetActions('<button type="button" class="btn primary go" data-save><span class="lbl" data-savel></span></button>')}
   </div>`, { label: 'Portefeuille' });
   const el = s.el;
   const errEl = $('[data-err]', el), sayEl = $('[data-say]', el);
   const saveBtn = /** @type {HTMLButtonElement} */ ($('[data-save]', el)), saveLbl = $('[data-savel]', el);
-  const exprEl = /** @type {HTMLElement|null} */ ($('[data-expr]', el));
-  // le solde de départ au pavé, qui suit la devise choisie (touche décimale) ; l'objectif au pavé, dans sa feuille montant
+  const nameBtn = $('[data-name]', el);
+  // le solde de départ (création) ; l'objectif, dans sa feuille montant
   let balance = 0, goalAmount = a?.goal ? a.goal.amount : goal || 0;
   let name = a?.name || presetName;
-  /** @type {ReturnType<typeof keypad>|null} */
-  let pad = null;
-  let padCur = '';
 
-  /** La phrase, en gris : ce que veut dire « Compter dans le total » (et « Permettre les dépenses » pour une épargne). */
-  const sayHTML = () => {
-    if (em) return `Hors du total, sans ${RES.one}, dépenses permises. Bougette compte combien de mois de dépenses il couvre : 3 mois suffisent.`;
-    const counted = !f.counted ? 'Ni dans le total ni dans Disponible' : f.savings ? 'Dans le total, pas dans Disponible' : 'Dans le total et dans Disponible';
-    return f.savings ? `${counted} · ${f.spendOk ? `Toute dépense, avec ou sans ${RES.one}` : `Seulement ${RES.itsMany}`}` : counted;
-  };
-  const paintBal = (/** @type {string|null} */ key = null) => {
-    if (!exprEl || !pad) return;
-    const expr = pad.expr();
-    exprEl.innerHTML = pad.caret() < expr.length ? exprCharsHTML(expr, { cur: f.currency, caret: pad.caret() })
-      : exprHTML(expr, { cur: f.currency, typed: !!key && key !== 'del' && key !== 'caret' && key !== 'set' });
-    fitText(exprEl, '.e-expr', 24);
-  };
-  /** Le pavé suit la devise : remonté quand elle change, le solde gardant ce qu'on lit (comme la dépense prévue). */
-  const mountPad = () => {
-    const host = $('[data-pad]', el);
-    if (!host || (pad && padCur === f.currency)) return;
-    if (pad && padCur) balance = Math.round(balance * 10 ** (currencyOf(f.currency).dec - currencyOf(padCur).dec));
-    padCur = f.currency;
-    const fresh = /** @type {HTMLElement} */ (host.cloneNode(false));
-    host.replaceWith(fresh);
-    pad = keypad(fresh, {
-      initial: balance, cur: padCur,
-      onEnter: () => {
-        const fo = /** @type {HTMLElement|null} */ (document.activeElement);
-        if (fo && fo !== saveBtn && el.contains(fo) && fo.matches('button')) { fo.click(); return; }
-        if (!saveBtn.disabled) { saveBtn.click(); return; }
-        if (pad?.hasOp()) pad.resolve();
-        shake(saveBtn);
-      },
-      onChange: (/** @type {number} */ v, /** @type {string} */ _expr, /** @type {string} */ key) => { balance = v; errEl.innerHTML = ''; paintBal(key); paintSave(); },
-    });
-  };
-  /** Le bouton : sans nom, il le réclame (éteint) et la pastille du nom s'entoure ; sinon ce qui sera fait, et à la création le solde. */
+  /** Ce que veut dire « Compter dans le total », sous l'interrupteur et dans l'aperçu. */
+  const countedText = () => (!f.counted ? 'Ni dans le total ni dans Disponible' : f.savings ? 'Dans le total, pas dans Disponible' : 'Dans le total et dans Disponible');
+  /** Le bouton : sans nom, il le réclame (éteint) et la ligne du nom s'entoure ; sinon ce qui sera fait, et à la création le solde. */
   function paintSave() {
     const lack = name.trim() ? '' : 'Donne un nom';
     const verb = a ? 'Enregistrer' : em ? 'Créer le fonds d’urgence' : f.savings ? 'Ajouter l’épargne' : 'Ajouter le portefeuille';
@@ -137,41 +101,50 @@ export function openAccountSheet(id, { onSaved = null, excluded = false, savings
       : `${icon('check')}<span class="go-t">${verb}</span>${a ? '' : `<span class="go-c">· ${balance ? esc(money(balance, { cur: f.currency })) : 'à zéro'}</span>`}`;
     saveBtn.disabled = !!lack;
     saveBtn.classList.toggle('need', !!lack);
-    $('[data-namep]', el).classList.toggle('ask', !!lack);
+    nameBtn.classList.toggle('ask', !!lack);
   }
 
   function paint() {
     const c = currencyOf(f.currency);
-    const np = $('[data-namep]', el);
-    // l'icône du portefeuille, celle de sa pastille (accountPill) pour ce type
-    const ic = em ? 'lifebuoy' : f.savings ? (a && openReserves(a.id).length ? 'archive' : 'piggy-bank') : ACCOUNT_ICON[f.kind] || 'wallet';
-    np.innerHTML = `${icon(ic)}<span>${esc(name.trim() || 'Nom')}</span>`;
-    np.classList.toggle('set', !!name.trim());
-    $('[data-curl]', el).textContent = c.long;
-    const gb = $('[data-goal]', el);
-    if (gb) gb.innerHTML = `${icon('target')}<span>Objectif : ${goalAmount ? esc(money(goalAmount, { cur: f.currency })) : 'aucun'}</span>`;
-    const gol = $('[data-goalonl]', el); // absent quand l'épargne a des dépenses prévues (pas d'objectif avec elles)
-    if (gol) gol.textContent = f.goalOn ? `Pour le ${yearDate(f.goalOn)}` : 'Sans date';
+    const named = !!name.trim();
+    // l'aperçu : le portefeuille tel qu'il se lira dans la liste ; sans nom, ce qu'on crée, en gris
+    $('[data-pv]', el).innerHTML = accountPill({ kind: f.kind, savings: f.savings, emergency: em }, 'lg');
+    const pvn = $('[data-pvname]', el);
+    pvn.textContent = named ? name.trim() : em ? 'Fonds d’urgence' : f.savings ? 'Nouvelle épargne' : 'Nouveau portefeuille';
+    pvn.classList.toggle('muted', !named);
+    const shown = a ? balances()[a.id] || 0 : balance;
+    const pvb = $('[data-pvbal]', el);
+    pvb.textContent = money(shown, { cur: f.currency });
+    pvb.classList.toggle('loss', shown < 0);
+    sayEl.innerHTML = `<span class="muted">${em ? 'Hors du total' : countedText()}</span>`;
+    // un exemple en gris tant qu'il n'y a pas de nom, comme la fiche d'une catégorie
+    nameBtn.innerHTML = `<b${named ? '' : ' class="muted"'}>${esc(named ? name.trim() : f.savings ? 'Ex. Livret, Tirelire' : 'Ex. Orange Money, Wave')}</b>${caret}`;
+    $('[data-bal]', el).innerHTML = `<b>${esc(money(shown, { cur: f.currency }))}</b>${caret}`;
+    $('[data-curl]', el).textContent = `${c.long} · ${c.name}`;
+    const gb = $('[data-goal]', el); // absent quand l'épargne a des dépenses prévues (pas d'objectif avec elles)
+    // l'objectif et sa date sur une seule ligne, comme depuis la page de l'épargne (2026-11-27, avec l'utilisateur) : un
+    // montant sans date se peut, une date sans montant jamais
+    if (gb) gb.innerHTML = `<b${goalAmount ? '' : ' class="muted"'}>${goalAmount ? esc(`${money(goalAmount, { cur: f.currency })} · ${f.goalOn ? `pour le ${yearDate(f.goalOn)}` : 'sans date'}`) : 'Aucun'}</b>${caret}`;
     for (const [sel, on] of /** @type {[string, boolean][]} */ ([['[data-counted]', f.counted], ['[data-spend]', f.spendOk]])) {
-      const x = $(sel, el);
+      const x = $(`${sel} .switch`, el);
       if (!x) continue;
       x.classList.toggle('on', on);
       x.setAttribute('aria-checked', String(on));
     }
-    sayEl.innerHTML = `<span class="muted">${sayHTML()}</span>`;
-    mountPad();
-    paintBal();
+    const cl = $('[data-countedl]', el);
+    if (cl) cl.textContent = countedText();
+    const sl = $('[data-spendl]', el);
+    if (sl) sl.textContent = f.spendOk ? `Toute dépense, avec ou sans ${RES.one}` : `Seulement ${RES.itsMany}`;
     paintSave();
   }
   paint();
-  if (exprEl) tapCaret(exprEl, () => pad, () => f.currency, () => paintBal('caret'));
   const err = (/** @type {string} */ text) => {
     errEl.innerHTML = noticeHTML(text);
     buzz(14);
   };
   $('[data-close]', el).onclick = () => { buzz(6); s.close(); };
   wireSeg($('.kind-seg', el), v => { f.kind = v; paint(); });
-  $('[data-namep]', el).onclick = async () => {
+  nameBtn.onclick = async () => {
     buzz(6);
     const v = await editNote(name, { title: 'Nom', placeholder: f.savings ? 'Ex. Livret, Tirelire' : 'Ex. Orange Money, Wave', max: 28,
       help: 'Deux comptes qui se ressemblent ? Ajoute la fin du numéro : « MoMo 4521 ».' });
@@ -181,28 +154,39 @@ export function openAccountSheet(id, { onSaved = null, excluded = false, savings
   if (ct) ct.onclick = () => { f.counted = !f.counted; buzz(8); paint(); };
   const spendBtn = $('[data-spend]', el);
   if (spendBtn) spendBtn.onclick = () => { f.spendOk = !f.spendOk; buzz(8); paint(); };
-  const goalOnBtn = $('[data-goalon]', el); // absent avec des dépenses prévues
-  if (goalOnBtn) goalOnBtn.onclick = async () => {
-    const d = await pickDate({ current: f.goalOn || today(), future: true, min: today(), title: 'Date de l’objectif' });
-    if (d) { f.goalOn = d; paint(); }
+  // le solde : à la création, la feuille montant (comme avant le 2026-11-26) ; en modification, la vérification (il ne se change jamais à la main)
+  $('[data-bal]', el).onclick = async () => {
+    buzz(6);
+    if (a) { await openCheckSheet(a); paint(); return; }
+    const res = await amountSheet({ title: 'Solde de départ', question: 'Combien as-tu dessus aujourd’hui ?', value: balance, cur: f.currency, zero: true,
+      button: v => (v ? `Partir de ${money(v, { cur: f.currency })}` : 'Partir de zéro') });
+    if (res && 'amount' in res) { balance = res.amount; paint(); }
   };
   const goalBtn = $('[data-goal]', el);
   if (goalBtn) goalBtn.onclick = async () => {
     buzz(6);
-    const res = await amountSheet({ title: 'Objectif', question: 'Combien veux-tu mettre de côté ?', value: goalAmount, cur: f.currency, zero: true,
-      button: v => (v ? `Viser ${money(v, { cur: f.currency })}` : 'Sans objectif') });
-    if (res && 'amount' in res) { goalAmount = res.amount; paint(); }
+    // la même feuille que « Objectif » sur la page de l'épargne : le montant au pavé, la date en gélule (facultative)
+    const res = await amountSheet({ title: 'Objectif', question: 'Il ne bloque rien : il te montre où tu en es.', value: goalAmount, cur: f.currency,
+      date: { value: f.goalOn, title: 'Date de l’objectif', none: 'Sans date' },
+      button: v => `Viser ${money(v, { cur: f.currency })}`, remove: goalAmount ? 'Retirer l’objectif' : '' });
+    if (!res) return;
+    if ('remove' in res) { goalAmount = 0; f.goalOn = null; }
+    else if ('amount' in res) { goalAmount = res.amount; f.goalOn = res.date || null; }
+    paint();
   };
   $('[data-cur]', el).onclick = async () => {
     buzz(6);
     if (locked) { toast(`${locked} opération${locked > 1 ? 's' : ''} en ${currencyOf(f.currency).long} : la devise ne peut plus changer.`); return; }
     const c = await pickCurrency({ current: f.currency, title: 'Devise du portefeuille' });
-    if (c) { f.currency = c; paint(); }
+    if (c) {
+      // le solde de départ garde ce qu'on lit quand la devise change de décimales
+      balance = Math.round(balance * 10 ** (currencyOf(c).dec - currencyOf(f.currency).dec));
+      f.currency = c; paint();
+    }
   };
 
   $('[data-save]', el).onclick = async () => {
     errEl.innerHTML = '';
-    if (pad?.hasOp()) pad.resolve();
     const full = name.trim().replace(/\s+/g, ' ');
     if (!full) return err('Donne-lui un nom.');
     if (allAccounts().some(x => x.id !== a?.id && x.name.toLowerCase() === full.toLowerCase())) return err('Un portefeuille porte déjà ce nom.');
@@ -263,7 +247,6 @@ async function walletMenu(a, { openEntry, go }) {
     title: esc(a.name),
     items: [
       ...(a.archived ? [] : [
-        { key: 'check', icon: 'check-circle', label: 'Vérifier le solde', note: checkedLabel(a.checkedAt) },
         { key: 'add', icon: 'plus', label: 'Ajouter une opération' },
         { key: 'move', icon: 'arrows-left-right', label: 'Virement depuis ce portefeuille', off: !peers, note: peers ? '' : `Il faut un autre portefeuille en ${esc(currencyOf(a.currency).long)}.` },
       ]),
@@ -274,8 +257,7 @@ async function walletMenu(a, { openEntry, go }) {
   });
   if (!k) return;
   afterSheets(async () => {
-    if (k === 'check') openCheckSheet(a);
-    else if (k === 'add') openEntry({ accountId: a.id });
+    if (k === 'add') openEntry({ accountId: a.id });
     else if (k === 'move') openEntry({ type: 'transfer', accountId: a.id });
     else if (k === 'ops') go(opsHref({ acc: a.id }));
     else if (k === 'arch') toggleArchive(a);
@@ -425,7 +407,7 @@ export function render(app, ctx) {
       <p class="muted pick-none" data-none hidden>Aucun portefeuille ne correspond.</p>` : noWalletsHTML()}
     ${archived.length ? sectionHTML({ attrs: 'data-archs', body: `
       <button class="arch-row" data-arch aria-expanded="${showArchived}"><span>Archivés</span><span class="n">${archived.length}${icon(showArchived ? 'caret-down' : 'caret-right')}</span></button>
-      ${showArchived ? `<div class="group">${archived.map(a => walletRow(a, bal[a.id] || 0)).join('')}</div>` : ''}` }) : ''}
+      <div class="group" data-archlist${showArchived ? '' : ' hidden'}>${archived.map(a => walletRow(a, bal[a.id] || 0)).join('')}</div>` }) : ''}
   </div>
   ${list.length ? fabHTML('Nouveau portefeuille') : ''}`;
 
@@ -448,7 +430,14 @@ export function render(app, ctx) {
     curs.textContent = allCurs ? 'Moins' : `+ ${n} devise${n > 1 ? 's' : ''}`;
   };
   const arch = $('[data-arch]', app);
-  if (arch) arch.onclick = () => { showArchived = !showArchived; buzz(6); render(app, ctx); };
+  // ouvrir ou fermer les archivés sur place (2026-11-27, avec l'utilisateur : redessiner toute la page faisait un flash)
+  if (arch) arch.onclick = () => {
+    showArchived = !showArchived;
+    buzz(6);
+    /** @type {HTMLElement} */ ($('[data-archlist]', app)).hidden = !showArchived;
+    arch.setAttribute('aria-expanded', String(showArchived));
+    $('.n', arch).innerHTML = `${$('[data-archlist]', app).children.length}${icon(showArchived ? 'caret-down' : 'caret-right')}`;
+  };
   // loupe : filtre la liste par nom et par type (début des mots, sans accents)
   const find = $('[data-find]', app), box = $('[data-findbox]', app), q = $('input[data-q]', app);
   const filter = () => {

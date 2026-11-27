@@ -5,7 +5,8 @@
 // Famille (tranché le 2026-11-11, D13 revu) : un budget sur une catégorie principale compte la principale et toutes
 // ses sous-catégories ; un budget sur une sous-catégorie ne compte qu'elle. Les deux peuvent coexister : le budget de la
 // sous-catégorie est une part de celui de la principale (une dépense au Marché fait avancer Marché et Alimentation).
-import { shiftDay, daysBetween } from './pace.js';
+import { shiftDay, daysBetween, habitPace } from './pace.js';
+import { upStepOf } from './format.js';
 import { monthSpan } from './month-start.js';
 import { settingsOf, walletBalances } from './queries.js';
 import { UNTRACKED } from './defaults.js';
@@ -39,7 +40,7 @@ function ymd(y, m, d) {
 const parts = d => [Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10))];
 
 /**
- * Mois de budget qui contient une date, selon la règle du début du mois (month-start.js : un jour de 1 à 28, « le 2e
+ * Mois de budget qui contient une date, selon la règle du début du mois (month-start.js : un jour de 1 à 31, « le 2e
  * lundi », « le dernier vendredi »…) : de son début au jour d'avant le début suivant.
  * @param {string} date @param {number|string} [monthStart]
  * @returns {Span}
@@ -52,19 +53,20 @@ export const budgetMonth = (date, monthStart = 1) => monthSpan(date, monthStart)
  */
 export const monthEnd = (date, monthStart = 1) => budgetMonth(date, monthStart).end;
 
-/** Même jour, n mois plus tard (le jour de départ ne dépasse pas 28 ici). @param {string} date @param {number} n */
+/** Même jour, n mois plus tard ; un mois qui n'a pas ce jour : son dernier jour (le 31 janvier + 1 : le 28 février). @param {string} date @param {number} n */
 function addMonths(date, n) {
   const [y, m, d] = parts(date);
-  return ymd(y, m + n, d);
+  return ymd(y, m + n, Math.min(d, new Date(Date.UTC(y, m + n + 1, 0)).getUTCDate()));
 }
 
 /**
  * Une période d'un mois exactement (du 25 au 24, du 1er au 30…) : sa répétition suit les mois, pas un nombre de jours
- * (un mois de 30 jours suivi d'un mois de 31). Le jour de départ ne dépasse pas 28, comme le début du mois réglable.
+ * (un mois de 30 jours suivi d'un mois de 31). Un départ le 29, 30 ou 31 compte aussi (2026-11-27 : le début du mois
+ * va jusqu'au 31) : un mois plus court s'arrête à son dernier jour, comme le début du mois.
  * @param {string} start @param {string} end
  */
 export function isMonthly(start, end) {
-  return Number(start.slice(8, 10)) <= 28 && end === shiftDay(addMonths(start, 1), -1);
+  return end === shiftDay(addMonths(start, 1), -1);
 }
 
 /**
@@ -399,13 +401,16 @@ export const UNUSUAL = 1.5;
  *   (un dépassé d'abord, le plus court s'ils le sont tous les deux, sinon le plus court) ;
  * - spent : dépensé ce mois de budget (une principale avec ses sous-catégories, comme son budget ; monnaie principale,
  *   argent courant seulement) ; average : moyenne par mois des 3 mois d'avant, sur les mois que l'historique couvre (un
- *   journal commencé il y a 6 semaines ne divise pas par 3) ; habit, unusual : sur ces mêmes chiffres de famille ;
+ *   journal commencé il y a 6 semaines ne divise pas par 3) ; habit : sur ces mêmes chiffres de famille ;
  * - own : les mêmes chiffres pour la catégorie exacte seule (une principale sans ses sous-catégories ; ce que la
  *   catégorie a elle-même, pour les totaux sans double compte et la Marge) ; covered : quelque chose la tient — un budget
  *   en cours (le sien, ou celui de sa principale : byParent), ou une échéance du mois (due, D18) ;
  * - habit : elle a une habitude — des dépenses dans au moins 2 des 3 mois d'avant (un historique trop court ne dit
  *   rien) ; sans budget, l'écran Budget montre alors la barre de l'habitude (trait = moyenne, bout = UNUSUAL × moyenne) ;
- * - unusual : sans budget, avec une habitude, elle dépense déjà nettement plus ce mois (plus de UNUSUAL × sa moyenne) ;
+ * - unusual : sans budget, avec une habitude, elle dépense déjà nettement plus ce mois (plus de UNUSUAL × sa moyenne),
+ *   sur ses chiffres à elle (own : 2026-11-27, avec l'utilisateur — compté en famille, une principale passait au rouge
+ *   avec l'argent d'une sous-catégorie que son propre budget tient déjà, et « Tes habitudes », qui va par catégorie
+ *   seule, ne la montrait pas) ;
  * - problem : un budget dépassé, ou unusual (toujours montré sur l'écran Budget).
  * @param {State} s @param {string} today
  */
@@ -459,7 +464,7 @@ export function categoryBoard(s, today) {
     const byParent = !!a.parent_id && budgeted.has(a.parent_id), due = dueCats.has(id);
     const isCovered = budgets.length > 0 || byParent || due;
     // « Plus que d'habitude » : seulement hors de tout budget (une sous-catégorie dans le budget de sa principale non)
-    const unusual = !isCovered && habit && spent > average * UNUSUAL;
+    const unusual = !isCovered && own.habit && own.spent > own.average * UNUSUAL;
     out.push({ id, parent: a.parent_id || null, budgets, main: budgets.find(x => x.over) || budgets[0] || null, spent, average, habit, unusual,
       problem: unusual || budgets.some(x => x.over), own, covered: isCovered, byParent, due });
   }
@@ -478,6 +483,116 @@ export const habitsLeft = board => board.reduce((n, x) => {
   const f = x.own || x;
   return n + (!(x.covered ?? x.budgets.length > 0) && f.habit ? Math.max(0, f.average - f.spent) : 0);
 }, 0);
+
+/**
+ * Les 3 périodes de même longueur juste avant une période, la plus récente d'abord (2026-11-27, avec l'utilisateur : un
+ * budget se compare à d'habitude sur SA période). Une période de mois entiers (1, 3, 12…) recule du même nombre de mois (les mêmes
+ * bornes que la répétition d'un budget, currentWindow), sinon du même nombre de jours.
+ * @param {Span} w @param {number} [n]
+ * @returns {{ start: string, end: string, days: number }[]}
+ */
+export function previousPeriods(w, n = 3) {
+  let k = 0; // combien de mois entiers elle couvre (0 : pas un nombre de mois)
+  for (let m = 1; m <= 24 && !k; m++) if (w.end === shiftDay(addMonths(w.start, m), -1)) k = m;
+  const len = daysBetween(w.start, w.end) + 1;
+  const out = [];
+  for (let j = 1; j <= n; j++) {
+    const start = k ? addMonths(w.start, -k * j) : shiftDay(w.start, -j * len);
+    const end = k ? shiftDay(addMonths(w.start, -k * (j - 1)), -1) : shiftDay(start, len - 1);
+    out.push({ start, end, days: daysBetween(start, end) + 1 });
+  }
+  return out;
+}
+
+/** Marge de « comme d'habitude » : un écart de 10 % de l'habitude au plus. */
+export const PACE_SAME = 0.1;
+
+/**
+ * Où l'on en est face à d'habitude, au même stade de la période (2026-11-27, avec l'utilisateur) : habitPace sur les
+ * dépenses (argent courant, dans la monnaie) que `match` retient, la période en cours face aux périodes d'avant que le
+ * journal entier couvre (since : sa première dépense). Moins de 2 périodes couvertes : null, pas de repère.
+ * usual : dépensé d'habitude au même jour ; now : dépensé ; diff : now − usual ; verdict : 'same' (écart d'au plus 10 %
+ * de usual), 'above' ou 'below'.
+ * @param {{ spends: Spend[], match: (x: Spend) => boolean, cur: string, today: string, current: Span, previous: { start: string, end: string, days: number }[], since: string }} o
+ * @returns {{ now: number, usual: number, diff: number, verdict: 'same'|'above'|'below', months: number }|null}
+ */
+export function paceOf({ spends, match, cur, today, current, previous, since }) {
+  const moves = spends.filter(x => x.cur === cur && match(x)).map(x => ({ type: 'expense', amount: x.amount, date: x.date }));
+  const h = habitPace({ moves, today, current: { ...current, days: daysBetween(current.start, current.end) + 1 }, previous, since });
+  if (h.months < 2) return null;
+  const diff = h.now - h.usual;
+  return { now: h.now, usual: h.usual, diff, verdict: Math.abs(diff) <= h.usual * PACE_SAME ? 'same' : diff > 0 ? 'above' : 'below', months: h.months };
+}
+
+/** La première dépense du journal dans une monnaie (ce qui dit quelles périodes d'avant il couvre). @param {Spend[]} spends @param {string} cur */
+const journalStart = (spends, cur) => spends.reduce((d, x) => (x.cur === cur && x.date < d ? x.date : d), '9999-12-31');
+
+/**
+ * Le repère d'un budget : sa période en cours face aux 3 d'avant, au même stade ; null s'il n'a pas commencé ou sans
+ * historique. @param {BudgetStatus} st @param {Spend[]} spends @param {string} today @param {string} since
+ */
+export function budgetPace(st, spends, today, since) {
+  const b = st.budget;
+  if (st.window.start > today) return null;
+  return paceOf({ spends, match: x => inFamily(x, b.category), cur: b.currency, today, current: st.window, previous: previousPeriods(st.window), since });
+}
+
+/**
+ * Ce que montrent la page Budgets et Plan (2026-11-27, avec l'utilisateur : « d'habitude, à ce stade » ; remplace l'anneau et
+ * la liste unique) :
+ * - rows : une par catégorie qui a un budget (celui de board : main), les dépassés d'abord puis les plus entamés ; pace :
+ *   son repère (paceOf) ou null ; over : dépassé ; bad : dépassé ou au-dessus de son habitude à ce stade ;
+ * - watch : les catégories sans budget (la catégorie seule, own) ni échéance (covered) qui dépensent ce mois-ci au-dessus de
+ *   leur habitude à ce stade, de plus de 10 % ET d'au moins le pas d'une proposition de la devise (upStepOf : pas de
+ *   « 100 F de plus » pour 500 F de frais), du plus gros écart au plus petit ; spent : leur dépensé du mois.
+ * @param {State} s @param {string} today
+ */
+export function budgetView(s, today) {
+  const st = settingsOf(s), cur = st.currency;
+  const spends = spendsOf(s);
+  const since = journalStart(spends, cur);
+  const board = categoryBoard(s, today);
+  const used = (/** @type {{ main: BudgetStatus }} */ r) => r.main.spent / r.main.budget.amount;
+  const rows = board.flatMap(x => {
+    const main = x.main;
+    if (!main) return [];
+    const pace = budgetPace(main, spends, today, since);
+    return [{ id: x.id, x, main, pace, over: main.over, bad: main.over || pace?.verdict === 'above' }];
+  }).sort((p, q) => used(q) - used(p));
+  const month = budgetMonth(today, st.monthStart);
+  /** @type {{ start: string, end: string, days: number }[]} */
+  const previous = [];
+  for (let m = budgetMonth(shiftDay(month.start, -1), st.monthStart); previous.length < 3; m = budgetMonth(shiftDay(m.start, -1), st.monthStart)) previous.push({ ...m, days: daysBetween(m.start, m.end) + 1 });
+  const need = upStepOf(cur);
+  const watch = [];
+  for (const x of board) {
+    // seulement une habitude (des dépenses dans 2 des 3 mois d'avant) : une première dépense n'est pas « plus que d'habitude »
+    if (x.covered || !x.own.spent || !x.own.habit) continue;
+    const pace = paceOf({ spends, match: o => o.categoryId === x.id, cur, today, current: month, previous, since });
+    if (pace && pace.verdict === 'above' && pace.diff >= need) watch.push({ id: x.id, x, pace, spent: x.own.spent });
+  }
+  watch.sort((p, q) => q.pace.diff - p.pace.diff);
+  return { month, rows, watch };
+}
+
+/**
+ * Les lignes de la section Budgets de Plan, de la même vue que la page (2026-11-27, avec l'utilisateur) : ce qui va mal
+ * d'abord (un budget dépassé du plus dépassé au moins, puis au-dessus de son habitude du plus fort au plus faible, puis
+ * les catégories « à surveiller »), puis les autres budgets dans l'ordre de la page, jusqu'à max ; les budgets qui vont mal
+ * sont toujours montrés.
+ * @param {ReturnType<typeof budgetView>} v @param {number} max
+ * @returns {({ kind: 'budget' } & ReturnType<typeof budgetView>['rows'][number] | { kind: 'watch' } & ReturnType<typeof budgetView>['watch'][number])[]}
+ */
+export function planRows(v, max) {
+  const ratio = (/** @type {ReturnType<typeof budgetView>['rows'][number]} */ r) => (r.over ? 1e9 + r.main.spent / r.main.budget.amount : r.pace && r.pace.usual > 0 ? r.pace.diff / r.pace.usual : 1e6);
+  const bad = v.rows.filter(r => r.bad).sort((p, q) => ratio(q) - ratio(p));
+  const list = [
+    ...bad.map(r => ({ kind: /** @type {const} */ ('budget'), ...r })),
+    ...v.watch.map(w => ({ kind: /** @type {const} */ ('watch'), ...w })),
+    ...v.rows.filter(r => !r.bad).map(r => ({ kind: /** @type {const} */ ('budget'), ...r })),
+  ];
+  return list.slice(0, Math.max(max, bad.length));
+}
 
 /**
  * Budgets de sous-catégories plus gros que celui de leur principale (2026-11-11 : on prévient, on ne refuse pas). Pour

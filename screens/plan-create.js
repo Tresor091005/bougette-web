@@ -4,12 +4,29 @@
 // se propose en dépense prévue dans l'épargne, ou se garde telle quelle ; la personne décide, rien ne change en silence),
 // puis la jumelle (« Ajouter au montant de … ? » : la même opération les mêmes jours, D18 2026-11-20), puis la création.
 // Le message dit ce qui est fait : pour une seule fois, il donne la date (« Programmée pour le … »).
-import { account, category, settings, createDue, createReserve, openReserves, savingsAccounts, twinOfNew, addToDue, scheduleById, dueHead } from '../core/store.js';
+import { account, category, settings, createDue, createReserve, openReserves, savingsAccounts, twinOfNew, addToDue, scheduleById, dueHead, usualSpend, savingsReport } from '../core/store.js';
 import { money, esc, yearDate, today, currencyOf } from '../core/format.js';
 import { toast, menuSheet, confirmSheet, buzz } from '../core/ui.js';
 import { DUE, RES } from '../domain/words.js';
 import { whenPhrase, leavesEmptyMonths } from '../domain/when.js';
+import { monthSpan } from '../domain/month-start.js';
+import { addDays } from '../domain/dues.js';
+import { approxUp } from '../core/format.js';
+import { worthPreparing } from '../domain/reserves.js';
+
+/**
+ * Les mois de Bougette (selon le début du mois) où l'on peut mettre de côté avant la date : celui d'aujourd'hui, puis
+ * chacun qui commence avant elle. C'est ce que la question promet (2026-11-27, avec l'utilisateur : « c'est dans 1 mois »,
+ * compté en mois de 30 jours, ne disait pas qu'un mois entier passerait sans elle).
+ * @param {string} date @param {number|string} monthStart
+ */
+export function monthsBefore(date, monthStart) {
+  let n = 0;
+  for (let m = monthSpan(today(), monthStart); m.start < date && n < 600; m = monthSpan(addDays(m.end, 1), monthStart)) n++;
+  return Math.max(1, n);
+}
 import { openAccountSheet } from './accounts.js';
+import { openReserveSheet } from './reserves.js';
 import { numDate } from './reserves.js';
 import { dayShort, dueTitle, dueHref } from './due-page.js';
 
@@ -31,9 +48,20 @@ export async function createPlanned(data, { cur = account(data.accountId)?.curre
   const none = { what: /** @type {null} */ (null), made: null };
   const err = onError ? { onError } : {};
   // 1. La question : une dépense qui laisse des mois sans elle
-  if (data.kind === 'expense' && leavesEmptyMonths(/** @type {any} */ (data), today(), settings().monthStart)) {
+  if (data.kind === 'expense' && leavesEmptyMonths(/** @type {any} */ (data), today(), settings().monthStart)
+    && worthPreparing(data.amount, monthsBefore(data.start, settings().monthStart), usualSpend(cur))) {
     const k = await askPrepare(data, cur);
     if (!k) return none;
+    if (k === 'prep') {
+      // une seule épargne : elle la prend ; plusieurs : la feuille d'une dépense prévue, préremplie, où l'on choisit
+      // l'épargne (2026-11-27, avec l'utilisateur : un seul choix ici, pas un par épargne)
+      const same = sameSavings(cur);
+      if (same.length === 1) return prepare(data, same[0].id, cur, err);
+      // la feuille s'ouvre par-dessus la saisie, qui ne se ferme que si la dépense prévue est créée : fermée sans valider,
+      // on retrouve sa saisie telle quelle (2026-11-27, avec l'utilisateur)
+      const made = await new Promise(done => openReserveSheet({ preset: presetOf(data), onDone: done, openEntry: (/** @type {any} */ o) => import('./entry.js').then(m => m.openEntry(o)) }));
+      return made ? { what: 'prepared', made: null } : none;
+    }
     if (k !== 'keep') return prepare(data, k === 'new' ? null : k, cur, err);
   }
   // 2. La jumelle d'une opération qui existe : l'ajouter à son montant plutôt qu'en créer une autre
@@ -100,24 +128,35 @@ async function prepare(d, savId, cur, err) {
 
 /**
  * La question, à la validation (2026-11-25, avec l'utilisateur : la situation d'abord, puis les deux choix ; la personne
- * décide). Résout l'id de l'épargne où la préparer, 'new' (en créer une), 'keep' (la garder telle quelle), ou null (fermée).
+ * décide). Résout 'prep' (la préparer dans une épargne), 'new' (en créer une d'abord), 'keep' (la garder telle quelle), ou null (fermée).
  * @param {Record<string, any>} d @param {string} cur
  */
+/** Les épargnes qui peuvent préparer une dépense dans cette devise. @param {string} cur */
+const sameSavings = cur => savingsAccounts().filter(x => !x.archived && !x.emergency && x.currency === cur);
+/** Ce que la feuille d'une dépense prévue reprend d'une dépense programmée (son rythme gardé pour la reconduction). @param {Record<string, any>} d */
+const presetOf = d => ({ name: (d.note.trim() || category(d.categoryId)?.name || '').slice(0, 28), amount: d.amount, due: d.start, mode: 'once', category: d.categoryId,
+  keep: { every: d.every || null, interval: d.every ? d.interval : 1, ...(d.every && d.by ? { by: d.by } : {}) } });
 async function askPrepare(d, cur) {
-  const savChoices = savingsAccounts().filter(x => !x.archived && !x.emergency);
   const name = esc(d.note.trim() || category(d.categoryId)?.name || 'Cette dépense');
   const amt = money(d.amount, { cur });
-  const months = Math.max(1, Math.round((Date.parse(d.start) - Date.parse(today())) / (30.44 * 864e5)));
-  const title = d.every ? `${name} ne revient pas chaque mois` : `${name}, c’est dans ${months} mois`;
+  // ce que la préparer change, en chiffres : le montant réparti sur les mois de Bougette qui passent avant elle
+  const months = monthsBefore(d.start, settings().monthStart);
+  // un compte rond, dit « environ » quand la division ne tombe pas juste (5 000 F sur 3 mois : environ 2 000 F)
+  const each = d.amount % months === 0 ? money(d.amount / months, { cur }) : `environ ${money(approxUp(Math.ceil(d.amount / months), cur), { cur })}`;
+  const title = months > 1 ? `${name} : ${months} mois pour la préparer` : `${name} : à préparer ce mois-ci`;
   const text = (d.every
-    ? `Elle revient ${esc(low(whenPhrase(/** @type {any} */ (d))))} : des mois passent sans elle, et le jour venu, ${amt} tombent d’un coup sur un seul mois.`
-    : `Elle tombe le ${esc(yearDate(d.start))} : le jour venu, ${amt} tombent d’un coup sur un seul mois.`)
-    + ` Tu peux plutôt la préparer : mettre de côté un peu chaque mois dans ton épargne, et l’utiliser le jour venu${d.every ? ' (l’app te propose alors la fois suivante)' : ''}.`;
-  const same = savChoices.filter(a => a.currency === cur).slice(0, 3);
+    ? `Elle revient ${esc(low(whenPhrase(/** @type {any} */ (d))))}, la prochaine fois le ${esc(yearDate(d.start))}. Sans rien prévoir, ${amt} partent d’un coup ce mois-là.`
+    : `Elle tombe le ${esc(yearDate(d.start))}. Sans rien prévoir, ${amt} partent d’un coup ce mois-là.`)
+    + (months > 1 ? ` En la préparant, c’est ${each} par mois pendant ${months} mois, dans ton épargne` : ' En la préparant, tu mets ce montant de côté dans ton épargne dès ce mois-ci')
+    + `, et tu l’utilises le jour venu${d.every ? ' (l’app te propose alors la fois suivante)' : ''}.`;
+  const same = sameSavings(cur);
+  // l'accumulation, c'est l'épargne qui la juge ; la question rappelle seulement si elle manque déjà de quelque chose
+  const gap = same.length === 1 ? savingsReport(same[0].id)?.versement?.gap || 0 : 0;
+  const say = gap > 0 ? `${text}<br><br>Ton épargne manque déjà de ${money(gap, { cur })} par mois.` : text;
   const note = `${RES.A} de ${amt} pour le ${numDate(d.start)}, dans ton épargne`;
-  return menuSheet({ title, text, items: [
-    ...(same.length ? same.map(a => ({ key: a.id, icon: 'piggy-bank', label: same.length > 1 ? `La préparer dans ${esc(a.name)}` : 'La préparer', note }))
-      : [{ key: 'new', icon: 'piggy-bank', label: 'La préparer', note: `${note} (à créer)` }]),
+  return menuSheet({ title, text: say, items: [
+    same.length ? { key: 'prep', icon: 'piggy-bank', label: 'La préparer', note }
+      : { key: 'new', icon: 'piggy-bank', label: 'La préparer', note: `${note} (à créer)` },
     { key: 'keep', icon: d.every ? 'arrows-clockwise' : 'calendar-blank', label: d.every ? `Garder en ${DUE.one}` : 'La garder telle quelle',
       note: 'Rien de mis de côté : tu la confirmes le jour venu' },
   ] });

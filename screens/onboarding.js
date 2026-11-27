@@ -4,6 +4,7 @@
 // et la monnaie d'affichage des totaux se règle dans Moi → Monnaie et format.
 import { finishOnboarding } from '../core/store.js';
 import { logo } from '../core/icons.js';
+import { wordmark } from '../core/wordmark.js';
 import { buzz, toast, confirmSheet, $ } from '../core/ui.js';
 import { googleAvailable, account } from '../core/google.js';
 import { linkAccount } from '../core/cloud.js';
@@ -18,7 +19,7 @@ export function render(app, ctx) {
   const google = googleAvailable() && !isDemo() && !account();
   app.innerHTML = `<div class="screen no-tabs onboarding ob-0"><div class="ob-welcome">
     <div class="ob-illu">${logo()}</div>
-    <h1 class="ob-brand">Bougette</h1>
+    <h1 class="ob-brand">${wordmark()}</h1>
     <p class="ob-lead">Ton argent, au franc près.<br>Vois où il va, décide où il ira.</p>
     <div class="ob-foot">${google
       ? `<button class="btn primary" data-google>Continuer avec Google</button>

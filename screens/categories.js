@@ -10,7 +10,7 @@ import {
 import { esc } from '../core/format.js';
 import { icon, catIcon, searchIcons } from '../core/icons.js';
 import { openSheet, seg, wireSeg, buzz, toast, confirmSheet, chip, noticeHTML, enableReorder, afterSheets, wireArrange, arrangeBtnHTML, isArranging, fabHTML, $, $$ } from '../core/ui.js';
-import { pickColor, brushHTML } from './pickers.js';
+import { swatches } from './pickers.js';
 import { catTreeHTML, paintTree, catSearchHTML, wireCatSearch } from './catlist.js';
 import { editNote } from './entry/sheets.js';
 import { topbarHTML, wireBack, rowHTML, sectionHTML, fieldHTML, sheetHead, sheetActions } from './parts.js';
@@ -35,7 +35,8 @@ function catalogHTML(query, current) {
 export function openCategorySheet(id, type, { parent = null, name = '', onSaved = null } = {}) {
   const c = id ? category(id) : null;
   const was = c ? category(c.parent) || null : null; // place d'origine (libellés d'archivage)
-  const f = { name: c?.name || name, icon: c?.icon || 'dots-three', own: c?.color || 'c1', /* devenue principale, elle garde la teinte qu'elle affichait */ q: '', parent: c ? c.parent || null : parent || null };
+  // une nouvelle catégorie part de la première icône du catalogue (2026-11-27, avec l'utilisateur : on sait qu'on peut la changer)
+  const f = { name: c?.name || name, icon: c?.icon || searchIcons('')[0]?.icons[0]?.name || 'dots-three', own: c?.color || 'c1', /* devenue principale, elle garde la teinte qu'elle affichait */ q: '', parent: c ? c.parent || null : parent || null };
   const par = () => category(f.parent) || null;
   const color = () => par()?.color || f.own;
   const used = c ? categoryTxCount(c.id) : 0;
@@ -53,6 +54,7 @@ export function openCategorySheet(id, type, { parent = null, name = '', onSaved 
     ${fieldHTML({ label: 'Nom', attrs: 'data-namef', control: '<button type="button" class="field-btn" data-name></button>' })}
     ${fieldHTML({ label: 'Ranger dans', note: stayTop,
       control: `<button type="button" class="field-btn" data-par ${stayTop ? 'aria-disabled="true"' : ''}><b data-parl></b>${icon(stayTop ? 'lock-simple' : 'caret-right')}</button>${stayTop ? '' : '<small class="field-note" data-parn></small>'}` })}
+    ${fieldHTML({ label: 'Teinte', control: '<div class="cat-tints" data-tints></div>' })}
     ${c && !c.parent ? fieldHTML({ label: 'Sous-catégories', attrs: 'data-subsf', control: `<div class="group plain cat-subs">${subs.map(x => rowHTML({ cls: x.archived ? 'dim' : '', attrs: `data-sub="${x.id}"`, pill: chip(x),
       title: esc(x.name), sub: x.archived ? 'Archivée' : '', end: `<span class="end">${icon('caret-right')}</span>` })).join('')}
         ${rowHTML({ cls: 'add-row', attrs: 'data-add-sub', pill: `<span class="pill">${icon('plus')}</span>`, title: 'Ajouter une sous-catégorie' })}
@@ -73,7 +75,14 @@ export function openCategorySheet(id, type, { parent = null, name = '', onSaved 
   function paint() {
     const p = par();
     // teinte : le pinceau sur la pastille (une sous-catégorie prend celle de sa catégorie : pas de pinceau)
-    $('[data-pv]', el).innerHTML = `${p ? chip({ color: color(), icon: f.icon }, 'lg') : `<button type="button" class="pv-btn" data-tint aria-label="Teinte">${chip({ color: color(), icon: f.icon }, 'lg')}${brushHTML()}</button>`}`;
+    $('[data-pv]', el).innerHTML = chip({ color: color(), icon: f.icon }, 'lg');
+    // la teinte : une rangée sous « Ranger dans » (2026-11-27, avec l'utilisateur : le pinceau sur l'aperçu ne se devinait
+    // pas) ; une sous-catégorie montre celle de sa catégorie, éteinte (elle en hérite)
+    const tints = /** @type {HTMLElement} */ ($('[data-tints]', el));
+    const keep = tints.firstElementChild ? tints.firstElementChild.scrollLeft : 0;
+    tints.innerHTML = swatches(color());
+    if (tints.firstElementChild) tints.firstElementChild.scrollLeft = keep;
+    tints.classList.toggle('inherit', !!p);
     $$('[data-icon]', el).forEach(b => { const on = b.dataset.icon === f.icon; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
     el.querySelector('.cat-sheet').style.setProperty('--c', `var(--${color()})`);
     $('[data-parl]', el).textContent = p ? p.name : 'Aucune : catégorie principale';
@@ -105,12 +114,12 @@ export function openCategorySheet(id, type, { parent = null, name = '', onSaved 
     if (v != null) { f.name = v; paint(); }
   };
   $('[data-q]', el).oninput = e => { f.q = e.target.value; paintIcons(); };
-  $('[data-pv]', el).addEventListener('click', async e => {
-    if (!/** @type {HTMLElement} */ (e.target).closest('[data-tint]')) return;
-    buzz(6);
-    const c = await pickColor({ current: f.own, title: 'Teinte de la catégorie' });
-    if (c) { f.own = c; paint(); }
-  });
+  /** @type {HTMLElement} */ ($('[data-tints]', el)).onclick = e => {
+    const b = /** @type {HTMLElement|null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-color]'));
+    if (!b || par()) return;
+    f.own = b.dataset.color || f.own;
+    buzz(6); paint();
+  };
   iconsEl.onclick = e => { const b = e.target.closest('[data-icon]'); if (!b) return; f.icon = b.dataset.icon; buzz(8); paint(); };
   $('[data-par]', el).onclick = async () => {
     if (stayTop) { buzz([10, 40, 10]); return; }

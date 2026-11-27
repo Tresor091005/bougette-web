@@ -3,6 +3,7 @@
 // un message prérempli avec la version et le modèle du téléphone, jamais les données), les licences, la version.
 // Les guides d'utilisation viendront plus tard.
 import { icon } from '../core/icons.js';
+import { wordmark } from '../core/wordmark.js';
 import { buzz, toast, $ } from '../core/ui.js';
 import { esc } from '../core/format.js';
 import { topbarHTML, wireBack, rowHTML, sectionHTML } from './parts.js';
@@ -60,7 +61,7 @@ export function render(app, { back, go }) {
       ${ROW('data-go="#/reglages/conditions"', 'scales', 'Conditions d’utilisation', 'Les règles, en cinq points')}
       ${ROW('data-go="#/reglages/licences"', 'file-text', 'Licences', 'Icônes, polices et bibliothèques')}
     </div>` })}
-    <div class="about">${icon('logo')}<b>Bougette</b><span data-version>v ${esc(APP_VERSION)}</span></div>
+    <div class="about">${icon('logo')}${wordmark()}<span data-version>v ${esc(APP_VERSION)}</span></div>
   </div>`;
   wireBack(app, () => back('#/reglages'));
   // sept touchers sur la version ouvrent Développeur (le logo et la version ne sont plus qu'ici, 2026-11-24)

@@ -18,12 +18,13 @@ import {
 } from '../core/store.js';
 import { RES } from '../domain/words.js';
 import { dueRowsHTML, wireDues } from './dues-ui.js';
-import { money, esc, today, period, parse, windowOf, shiftWindow, windowFor, tabLabel, dayLabel, shortDate, addDays, yearDate } from '../core/format.js';
+import { money, esc, today, period, parse, windowOf, windowFor, dayLabel, shortDate, addDays, yearDate } from '../core/format.js';
 import { icon, catIcon } from '../core/icons.js';
 import { fitText, buzz, reducedMotion, afterSheets, openSheet, seg, wireSeg, chip, splitAmount, $, $$ } from '../core/ui.js';
 import { txRow, wireTxList } from './common.js';
 import { pickAccount, pickCategory, pickDate } from './pickers.js';
 import { topbarHTML, sheetHead } from './parts.js';
+import { UNITS, tabsFor, tabHTML, centerTab, swipePeriods, reportHref, reportState } from './period-bar.js';
 
 // état gardé d'un rendu à l'autre (filtres et période, eux, vivent dans l'adresse)
 // mois montrés à la fois quand la liste va par mois (« Afficher les mois d'avant » en ajoute autant)
@@ -33,10 +34,6 @@ const f = { q: '', find: false, months: MONTHS, unit: 'month', group: 'day' };
 if (typeof window !== 'undefined') window.addEventListener('bougette:space', () => Object.assign(f, { q: '', find: false, months: MONTHS, unit: 'month', group: 'day' }));
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const TYPES = { expense: 'Dépenses', income: 'Revenus', transfer: 'Virements' };
-const UNITS = [['day', 'Jour'], ['week', 'Semaine'], ['month', 'Mois'], ['quarter', 'Trimestre'], ['year', 'Année'], ['all', 'Tout'], ['custom', 'Personnalisé']];
-// onglets de période : de la première opération à aujourd'hui, 30 au plus ; au-delà, « Plus loin » propose de changer
-// d'échelle (l'échelle ne dit que combien on voit à la fois ; une date précise se choisit avec « Personnalisé »)
-const MAX_TABS = 30;
 // au-delà de deux mois (trimestre, année, tout, personnalisé long), les opérations se regroupent par mois, pas par jour
 const LONG_DAYS = 62;
 
@@ -228,29 +225,6 @@ function monthsHTML(list, cur, acc, rowOpts) {
   }).join('') + (shown.length < months.length ? `<button class="btn secondary more" data-more>Afficher les mois d’avant</button>` : '');
 }
 
-// Onglets de période, du plus ancien (à gauche) à aujourd'hui, puis « À venir » s'il y a des opérations prévues. Ils
-// remontent jusqu'à la période de la première opération, MAX_TABS au plus (mais toujours jusqu'à la période affichée,
-// venue d'un lien) ; further : il reste plus ancien.
-function tabsFor(w, ms, hasPlanned, first) {
-  const tabs = [];
-  let further = false;
-  if (w.unit === 'custom') tabs.push({ w, label: w.label });
-  else if (w.unit === 'all' || !w.start) tabs.push({ w: windowOf('all'), label: 'Tout' });
-  else {
-    let cur = windowOf(w.unit, today(), ms);
-    tabs.push({ w: cur, label: tabLabel(cur, ms) });
-    while ((tabs.length < MAX_TABS && cur.start > first) || cur.start > w.start) {
-      cur = shiftWindow(cur, -1, ms);
-      tabs.unshift({ w: cur, label: tabLabel(cur, ms) });
-    }
-    further = cur.start > first;
-  }
-  if (hasPlanned) tabs.push({ soon: true, label: 'À venir' });
-  return { tabs, further };
-}
-const tabHTML = (x, on) => (x.group
-  ? `<button type="button" role="tab" class="ops-tab ops-gap${on ? ' on' : ''}" aria-selected="${on}" tabindex="${on ? 0 : -1}" data-gap="${x.group}" aria-label="${esc(x.label)} : aucune opération">${esc(x.label)}</button>`
-  : `<button type="button" role="tab" class="ops-tab${on ? ' on' : ''}" aria-selected="${on}" tabindex="${on ? 0 : -1}"${x.soon ? ' data-soon' : ` data-from="${x.w.start || ''}" data-to="${x.w.end || ''}"`}>${esc(x.label)}</button>`);
 const fmtGap = new Intl.DateTimeFormat('fr-FR', { month: 'short', year: 'numeric' });
 /**
  * Les périodes vides qui se suivent (2026-11-19, avec l'utilisateur : un portefeuille qui n'existait pas encore, ou qui ne
@@ -278,62 +252,6 @@ function groupEmpty(tabs, empty, keep) {
 
 // sens d'arrivée de la liste après un glisser de période (1 : elle entre par la droite, −1 : par la gauche)
 let enter = 0;
-// Glisser horizontal n'importe où sur l'écran, vide sous la liste compris (pas sur la barre d'onglets, qui défile
-// elle-même, ni dans la recherche) : au-delà
-// de 72 px (ou un geste vif), l'onglet voisin est touché — vers la gauche la période suivante, vers la droite la
-// précédente. Sans voisin, la liste résiste et revient. Rien pendant une recherche (pas d'onglets).
-function swipePeriods(scr, perEl, listEl) {
-  if (!scr) return;
-  let swallow = false;
-  // un glisser ne doit pas ouvrir la fiche de l'opération sous le doigt
-  scr.addEventListener('click', e => { if (swallow) { e.stopPropagation(); e.preventDefault(); swallow = false; } }, true);
-  scr.addEventListener('pointerdown', e => {
-    const el = /** @type {Element} */ (e.target);
-    if (!e.isPrimary || e.button > 0 || el.closest('.ops-tabs, .ops-find, input')) return;
-    const on = $('.ops-tab.on', perEl);
-    if (!on) return;
-    const sib = n => (n && n.classList.contains('ops-tab') ? n : null);
-    const prev = sib(on.previousElementSibling), next = sib(on.nextElementSibling);
-    const moving = [listEl, $('.ops-sum', perEl)].filter(Boolean);
-    const x0 = e.clientX, y0 = e.clientY, t0 = performance.now();
-    let mode = '', dx = 0;
-    const set = (x, anim = false) => moving.forEach(m => {
-      m.style.transition = anim ? 'transform .2s var(--spring)' : 'none';
-      m.style.transform = x ? `translateX(${x}px)` : '';
-    });
-    const move = ev => {
-      const mx = ev.clientX - x0, my = ev.clientY - y0;
-      if (!mode) {
-        if (Math.abs(mx) > 10 && Math.abs(mx) > Math.abs(my) * 1.3) mode = 'h';
-        else if (Math.abs(my) > 10) { done(); return; }
-        else return;
-      }
-      dx = mx;
-      set((dx < 0 ? next : prev) ? dx * 0.6 : dx * 0.15);
-    };
-    const up = () => {
-      done();
-      if (mode !== 'h') return;
-      swallow = true;
-      setTimeout(() => { swallow = false; }, 0);
-      const target = dx < 0 ? next : prev;
-      const fast = Math.abs(dx) / Math.max(1, performance.now() - t0) > 0.5;
-      if (!target || !(Math.abs(dx) > 72 || (fast && Math.abs(dx) > 30))) { set(0, true); return; }
-      enter = dx < 0 ? 1 : -1;
-      if (reducedMotion()) { target.click(); return; }
-      set(dx < 0 ? -72 : 72, true);
-      setTimeout(() => target.click(), 90);
-    };
-    function done() {
-      removeEventListener('pointermove', move);
-      removeEventListener('pointerup', up);
-      removeEventListener('pointercancel', up);
-    }
-    addEventListener('pointermove', move);
-    addEventListener('pointerup', up);
-    addEventListener('pointercancel', up);
-  });
-}
 
 export function render(app, ctx) {
   const fl = readFilters();
@@ -409,7 +327,13 @@ export function render(app, ctx) {
       if (!gap) gapSel = null;
       else { list.length = 0; t = totals([], cur, fl.acc, false); }
       perEl.innerHTML = `<div class="ops-tabs" role="tablist" aria-label="Période">${further ? `<button type="button" class="ops-further" data-further>${icon('caret-left')}Plus loin</button>` : ''}${tabs.map(x => tabHTML(x, x.group ? x.group === gapSel : !gap && (x.soon ? fl.soon : !fl.soon && (x.w.start || null) === (w.start || null) && (x.w.end || null) === (w.end || null)))).join('')}</div>
-      ${sumHTML(t, cur, fl, foreign)}`;
+      ${sumHTML(t, cur, fl, foreign)}${gap || fl.soon ? '' : `<button type="button" class="ops-rep" data-rep>Voir le rapport de cette période${icon('caret-right')}</button>`}`;
+      // (2026-11-27, avec l'utilisateur : reproduit de Money Lover) l'entrée dans les rapports : même portefeuille, même période
+      $('[data-rep]', perEl)?.addEventListener('click', () => {
+        buzz(6);
+        if (!w.start) reportState.unit = 'all';
+        ctx.go(reportHref('', { acc: fl.acc, from: w.start, to: w.end }));
+      });
       const bar = $('.ops-tabs', perEl);
       // un toucher sur un onglet (délégué : les onglets ajoutés en glissant fonctionnent aussi)
       bar.onclick = e => {
@@ -433,27 +357,7 @@ export function render(app, ctx) {
       $$('[data-sumtype]', perEl).forEach(b => {
         b.onclick = () => setFilters({ type: fl.type === b.dataset.sumtype ? null : b.dataset.sumtype });
       });
-      // l'onglet affiché est visible (au bout à droite pour la période en cours) : centré, puis calé sur le début d'un
-      // onglet (jamais un bout de mot coupé à gauche), sans jamais le couper à droite. Recalé quand la police arrive ou
-      // que la largeur change (2026-11-13 : calé une seule fois, « Ce mois-ci » sortait à droite)
-      const on = $('.ops-tab.on', perEl);
-      const center = () => {
-        if (!on || !on.isConnected) return;
-        const kids = /** @type {HTMLElement[]} */ ([...bar.children]);
-        const base = kids[0].offsetLeft, starts = kids.map(k => k.offsetLeft - base);
-        const left = on.offsetLeft - base, right = left + on.offsetWidth;
-        const x = Math.min(left - (bar.clientWidth - on.offsetWidth) / 2, bar.scrollWidth - bar.clientWidth);
-        let start = starts.filter(v => v <= x + 1).pop() || 0;
-        // calé à gauche, il pourrait couper l'onglet à droite : le premier début qui le laisse entier
-        if (right > start + bar.clientWidth) start = starts.find(v => v >= right - bar.clientWidth) ?? left;
-        bar.scrollLeft = start;
-      };
-      center();
-      document.fonts?.ready.then(center);
-      if (typeof ResizeObserver !== 'undefined' && on) {
-        const ro = new ResizeObserver(() => { if (!bar.isConnected) ro.disconnect(); else center(); });
-        ro.observe(bar);
-      }
+      centerTab(bar);
     }
 
     let body;
@@ -489,7 +393,7 @@ export function render(app, ctx) {
     }
   }
   paint();
-  swipePeriods($('.screen.ops', app), perEl, listEl);
+  swipePeriods($('.screen.ops', app), perEl, () => [listEl, $('.ops-sum', perEl)].filter(Boolean), d => { enter = d; });
 
   // Feuille « Période et filtres » : d'abord ce qu'on voit (période, type, catégorie), puis comment (par jours ou par
   // catégories). Les choix se font dans la feuille ; le bouton dit combien d'opérations on verra et les met en place.

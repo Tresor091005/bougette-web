@@ -12,7 +12,7 @@
 import {
   account, savingsAccounts, savingsReport, emergencyAccount, monthlySpend, reserveById, createReserve,
   updateReserve, closeReserve, updateAccount, countedAccounts, pref, closedReserves, reserveChain,
-  reserveReconducted, reserveDeletedUses, reserveUses, category, settings, accounts, scheduleById, openReserves, shortfallWith,
+  reserveReconducted, reserveDeletedUses, reserveUses, category, settings, accounts, scheduleById, openReserves, shortfallWith, accountTxCount,
 } from '../core/store.js';
 import { openDueSheet, dueHref, dayShort } from './due-page.js';
 import { money, esc, yearDate, today, currencyOf, approx, approxUp, period } from '../core/format.js';
@@ -24,7 +24,7 @@ import { openAccountSheet } from './accounts.js';
 import { opsHref } from './transactions.js';
 import { openOperation } from './history.js';
 import { RES } from '../domain/words.js';
-import { addMonths, daysBetween, reconductDue } from '../domain/reserves.js';
+import { daysBetween, reconductDue } from '../domain/reserves.js';
 import { amountSheet, tapCaret } from './amount-sheet.js';
 import { topbarHTML, wireBack, rowHTML, sectionHTML, sheetHead, sheetActions, emptyState } from './parts.js';
 
@@ -241,13 +241,14 @@ export async function openReserveMenu({ id, openEntry, go, atWallet = false, fro
   const view = rep ? rep.reserves.find(v => v.reserve.id === r.id) || null : null;
   const uses = reserveUses(r).filter(u => u.id !== fromTx);
   const wallet = account(r.wallet);
-  /** @type {{ key: string, icon: string, label: string, note?: string }[]} */
+  /** @type {{ key: string, icon: string, label: string, note?: string, off?: boolean }[]} */
   const items = [];
   if (rep) {
     // Utiliser : en une fois, l'épargne doit pouvoir la payer entièrement (sinon la ligne dit ce qui manque) ; en plusieurs fois, toujours
     const need = view ? view.target : r.amount - r.used;
     const short = r.mode === 'once' && rep.balance < need;
-    items.push({ key: 'use', icon: 'arrow-right', label: 'Utiliser', note: short
+    // pas assez pour la payer en une fois : Utiliser s'éteint, sa ligne dit pourquoi (2026-11-27, avec l'utilisateur : plus de message après coup)
+    items.push({ key: 'use', icon: 'arrow-right', label: 'Utiliser', off: short, note: short
       ? `Il faut ${money(need, { cur })}, il y a ${money(Math.max(0, rep.balance), { cur })} sur ${esc(wallet?.name || 'l’épargne')}`
       : r.mode === 'once' ? `Tu notes la dépense de ${money(need, { cur })}, puis ${RES.the} se ferme` : 'Une partie maintenant, le reste plus tard' });
     items.push({ key: 'edit', icon: 'pencil-simple', label: 'Modifier', note: 'Montant, date ou sans date, nom, catégorie' });
@@ -303,13 +304,10 @@ function addVersement(walletId, openEntry) {
 export async function openAsideMenu(walletId, openEntry) {
   const a = account(walletId);
   if (!a) return;
+  // une seule porte (2026-11-27, avec l'utilisateur : Maintenant et Plus tard ouvraient la même saisie) : un virement vers
+  // l'épargne, passé, aujourd'hui ou à venir (la date décide) ; prérempli avec ce qui manque par mois, s'il manque quelque chose
   const gap = a.emergency ? null : savingsReport(walletId).versement.gap;
-  const k = await menuSheet({ title: `Mettre de côté · ${esc(a.name)}`, items: [
-    { key: 'now', icon: 'hand-coins', label: 'Maintenant', note: 'Un virement tout de suite' },
-    { key: 'plan', icon: 'arrows-clockwise', label: 'Plus tard', note: `Chaque mois ou une seule fois, à confirmer le jour venu${gap ? ` · il manque ${money(gap, { cur: a.currency })} par mois` : ''}` },
-  ] });
-  if (k === 'now') openEntry({ type: 'transfer', accountId: versementFrom(a), toAccountId: a.id });
-  else if (k === 'plan') afterSheets(() => addVersement(a.id, openEntry));
+  openEntry({ type: 'transfer', accountId: versementFrom(a), toAccountId: a.id, amount: gap && gap > 0 ? gap : 0, aside: true });
 }
 
 /**
@@ -429,6 +427,12 @@ export function render(app, ctx) {
       <div class="rs-acts${a.emergency ? ' one' : ''}">${a.emergency ? '' : act(`data-new="${a.id}"`, RES.New)}${act(`data-aside="${a.id}"`, 'Mettre de côté')}</div>
       ${a.emergency ? `<p class="muted b-note">Pour les coups durs. Il ne compte pas dans ton total et n’a pas ${RES.ofMany}. 3 mois de dépenses suffisent.</p>` : ''}
       ${(() => {
+        // ses opérations dans le Journal, filtré sur cette épargne (2026-11-27, avec l'utilisateur) : une ligne comme celle
+        // des terminées, avant elles (un lien direct ; les terminées allongent la page), sous les deux boutons
+        const n = accountTxCount(a.id);
+        return n ? `<a class="rs-ops" href="${opsHref({ acc: a.id })}">Ses opérations <span class="muted">${n}</span></a>` : '';
+      })()}
+      ${(() => {
         const done = closedReserves(a.id).slice(0, 12);
         return done.length ? `<details class="rs-done"><summary>${RES.Many} terminé${RES.e}s <span class="muted">${done.length}</span></summary>
           <div class="group plain">${done.map(closedRowHTML).join('')}</div></details>` : '';
@@ -524,9 +528,10 @@ function openClosedSheet(r, openEntry) {
  * et les fois d'avant. Ce qu'on fait d'elle est dans son petit menu
  * (openReserveMenu). Une réserve terminée s'ouvre en lecture (openClosedSheet).
  * onSaved : appelé après un enregistrement.
- * @param {{ id?: string|null, wallet?: string|null, from?: string|null, openEntry: (o: any) => any, onSaved?: (() => void)|null }} o
+ * onDone : appelé à la fermeture, vrai si une dépense prévue a été créée (la question « La préparer ? » garde sa saisie sinon).
+ * @param {{ id?: string|null, wallet?: string|null, from?: string|null, openEntry: (o: any) => any, onSaved?: (() => void)|null, preset?: Record<string, any>|null, onDone?: ((created: boolean) => void)|null }} o
  */
-export function openReserveSheet({ id = null, wallet = null, from = null, openEntry, onSaved = null }) {
+export function openReserveSheet({ id = null, wallet = null, from = null, openEntry, onSaved = null, preset = null, onDone = null }) {
   const r = id ? reserveById(id) : null;
   if (r && r.closed) return openClosedSheet(r, openEntry);
   const prev = from ? reserveById(from) : null;
@@ -547,7 +552,12 @@ export function openReserveSheet({ id = null, wallet = null, from = null, openEn
   const src = r || prev;
   // sans date = en pause (2026-11-24, avec l'utilisateur) : la pastille Date propose « Sans date » ; enlever la date
   // d'une datée la met en pause, en donner une à une en pause la reprend, créer sans date la fait naître en pause
-  const f = { name: src?.name || '', amount: src?.amount || 0, due: r ? r.due : prevDue || addMonths(today(), 3), mode: src?.mode || 'once', category: src?.category || null };
+  // preset (2026-11-27) : une dépense programmée qu'on prépare, depuis la question « La préparer ? » (son rythme suit dans keep)
+  const pre = !r && !prev ? preset : null;
+  const f = pre ? { name: pre.name || '', amount: pre.amount || 0, due: pre.due ?? null, mode: pre.mode || 'once', category: pre.category || null }
+    // une nouvelle, partie de rien : sans date (2026-11-27, avec l'utilisateur ; avant : dans 3 mois, une date inventée) ;
+    // reconduite : la date suivante ; depuis une dépense programmée (preset) : sa première fois
+    : { name: src?.name || '', amount: src?.amount || 0, due: r ? r.due : prevDue, mode: src?.mode || 'once', category: src?.category || null };
   const verb = r ? 'Enregistrer' : prev ? 'Reconduire' : 'Prévoir';
   const s = openSheet(`<div class="rs-sheet rs-edit">
     <div class="dv-from"><button type="button" class="mp set" data-wal${canMove ? '' : ' aria-disabled="true"'}>${icon('piggy-bank')}<span data-wall></span>${canMove ? '' : icon('lock-simple')}</button></div>
@@ -564,7 +574,8 @@ export function openReserveSheet({ id = null, wallet = null, from = null, openEn
     <button type="button" class="btn primary go" data-save><span class="lbl" data-savel></span></button>
     ${r ? `<button type="button" class="link rs-closeres" data-closeres>${r.used ? `Clore ${RES.the}` : `Abandonner ${RES.the}`}</button>` : ''}
     ${r ? historyHTML(r.id) : prev ? historyHTML(prev.id, true) : ''}
-  </div>`, { label: RES.One });
+  </div>`, { label: RES.One, onClose: () => { if (onDone) onDone(created); } });
+  let created = false;
   const el = s.el, errEl = $('[data-err]', el);
   const exprEl = /** @type {HTMLElement} */ ($('[data-expr]', el)), sayEl = $('[data-say]', el);
   const saveBtn = /** @type {HTMLButtonElement} */ ($('[data-save]', el)), saveLbl = $('[data-savel]', el);
@@ -703,9 +714,12 @@ export function openReserveSheet({ id = null, wallet = null, from = null, openEn
         if (!yes) return;
         dropGoal = true;
       }
-      const ok = await createReserve({ wallet: walletId, ...data, ...(prev ? { from: prev.id } : {}), ...(dropGoal ? { dropGoal: true } : {}) }, { onError: showErr });
+      const ok = await createReserve({ wallet: walletId, ...data, ...(pre?.keep || {}), ...(prev ? { from: prev.id } : {}), ...(dropGoal ? { dropGoal: true } : {}) }, { onError: showErr });
       if (!ok) return;
-      buzz(12); s.close(); toast(prev ? `${RES.One} reconduit${RES.e}` : `${RES.One} créé${RES.e}`);
+      created = true;
+      buzz(12); s.close();
+      if (pre && w) toast(`${data.name} : préparée dans ${w.name}`, { label: 'Voir', run: () => { location.hash = `#/epargne?w=${encodeURIComponent(w.id)}`; } });
+      else toast(prev ? `${RES.One} reconduit${RES.e}` : `${RES.One} créé${RES.e}`);
       return;
     }
     /** @type {Record<string, any>} */

@@ -864,7 +864,7 @@ function cardHTML(o, { ro, next, before = null }) {
       ${!may && (before || next) ? `<p class="muted dv-note">Confirme d’abord celle du ${dayShort((before || next).date)}.</p>` : ''}`;
   }
   return `<div class="dv-l1"><span>${esc(dayLabel(o.date))}</span>${o.rank && o.times ? `<span>${o.rank} sur ${o.times}</span>` : ''}</div>
-    <div class="dv-amt${o.kind === 'income' && open ? ' in' : ''}">${dueMoney(o)}${o.state === 'done' && o.currency === o.plannedCur && o.amount !== o.planned ? `<small class="dv-plan">· prévu ${money(o.planned, { cur: o.plannedCur })}</small>` : ''}</div>
+    <div class="dv-amt${o.kind === 'income' && open ? ' in' : ''}">${dueMoney(o)}</div>
     ${open && o.adjusted ? `<div class="dv-adj">Montant changé pour cette fois · d’habitude ${money(o.ruleAmount, { cur: o.currency })}</div>` : ''}
     <div class="dv-state ${o.state}">${state}${open && o.needsWallet ? (ro ? ` · ${RES.its} est ${RES.adj('clos', 'close')}` : ` · ${RES.its} est ${RES.adj('clos', 'close')} : choisis le portefeuille qui paie`) : ''}</div>
     <div class="dv-acts">${acts}</div>`;
